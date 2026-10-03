@@ -8,7 +8,7 @@ from ..config import TARIFA_IVA, TARIFA_RETEIVA
 from ..db import Session
 from .. import formato
 from ..formato import pesos
-from ..models import CERO, Asiento, Banco, DocumentoVenta, LineaVenta, Recaudo, Tercero
+from ..models import CERO, Asiento, Asunto, Banco, DocumentoVenta, LineaVenta, Recaudo, Tercero
 from . import XLSX, anio_arg, check, descargar, dinero, entero_requerido, fecha_arg, paginar, paginar_lista
 
 bp = Blueprint("ventas", __name__)
@@ -26,6 +26,9 @@ def lista():
     cliente_id = request.args.get("cliente", type=int)
     if cliente_id:
         q = q.filter(DocumentoVenta.cliente_id == cliente_id)
+    asunto_id = request.args.get("asunto", type=int)
+    if asunto_id:
+        q = q.filter(DocumentoVenta.asunto_id == asunto_id)
     docs = q.order_by(DocumentoVenta.fecha.desc(), DocumentoVenta.id.desc()).all()
     saldos = cartera.saldos_en_lote(s, docs)
     filas = [(doc, saldos[doc.id], cartera.estado_documento(s, doc, saldo=saldos[doc.id])) for doc in docs]
@@ -87,6 +90,7 @@ def nueva():
                                  fecha=fecha_arg("fecha"), cliente=cliente, subtotal=base, base_gravada=base,
                                  iva=iva, total=base + iva, notas=request.form.get("notas") or None)
             doc.vencimiento = fecha_arg("vencimiento") or doc.fecha + timedelta(days=cliente.plazo_dias or 0)
+            doc.asunto_id = _asunto_valido(s, cliente.id)
             if doc.tipo == "NC":
                 if not request.form.get("referencia_id"):
                     raise ValueError("Una nota crédito debe indicar la factura que afecta.")
@@ -112,7 +116,7 @@ def nueva():
             flash(f"No se pudo registrar: {e}", "error")
     facturas = s.query(DocumentoVenta).filter_by(tipo="FV").order_by(DocumentoVenta.fecha.desc()).all()
     return render_template("ventas/nueva.html", clientes=_clientes(s), facturas=facturas, tarifa_iva=TARIFA_IVA,
-                           form=request.form)
+                           form=request.form, asuntos=s.query(Asunto).filter_by(estado="abierto").order_by(Asunto.nombre).all())
 
 
 @bp.route("/ventas/<int:id>", methods=["GET", "POST"])
@@ -147,14 +151,26 @@ def detalle(id):
         return redirect(url_for("ventas.detalle", id=id))
     notas = s.query(DocumentoVenta).filter_by(referencia_id=doc.id).all()
     asientos = s.query(Asiento).filter_by(origen=f"venta:{doc.id}").all()
-    return render_template("ventas/detalle.html", doc=doc, saldo=cartera.saldo_documento(s, doc),
+    asuntos = s.query(Asunto).filter_by(cliente_id=doc.cliente_id).order_by(Asunto.estado, Asunto.nombre).all()
+    return render_template("ventas/detalle.html", doc=doc, saldo=cartera.saldo_documento(s, doc), asuntos=asuntos,
                            estado=cartera.estado_documento(s, doc), notas=notas, asientos=asientos,
                            reteiva_sugerida=contab.redondear(doc.iva * contab.d(TARIFA_RETEIVA), "1"),
                            bancos=s.query(Banco).filter_by(activo=True).all())
 
 
+def _asunto_valido(s, cliente_id):
+    aid = request.form.get("asunto_id", type=int) or None
+    if aid:
+        a = s.get(Asunto, aid)
+        if a is None or a.cliente_id != cliente_id:
+            raise ValueError("El asunto debe ser del mismo cliente de la factura.")
+    return aid
+
+
 def _actualizar_venta(s, doc, notas_asociadas):
     doc.vencimiento = fecha_arg("vencimiento", doc.vencimiento)
+    if "asunto_id" in request.form:
+        doc.asunto_id = _asunto_valido(s, doc.cliente_id)
     doc.reteiva_aplica = check("reteiva_aplica")
     doc.reteiva_valor = dinero("reteiva_valor") if doc.reteiva_aplica else CERO
     if doc.reteiva_valor < 0 or doc.reteiva_valor > doc.iva:
@@ -329,7 +345,9 @@ def cartera_edades():
         datos = [[f["cliente"].nombre, f["cliente"].nit] + [f[e[0]] for e in cartera.EDADES] + [f["total"]]
                  for f in filas]
         return descargar(exportar.excel({"Cartera": (enc, datos)}), f"cartera_{corte}.xlsx", XLSX)
-    return render_template("ventas/cartera.html", filas=filas, totales=totales, edades=cartera.EDADES, corte=corte)
+    from .. import correo
+    return render_template("ventas/cartera.html", filas=filas, totales=totales, edades=cartera.EDADES, corte=corte,
+                           correo_activo=correo.configuracion(s)["activo"])
 
 
 def _estado_cuenta(s, cliente, corte):
@@ -365,8 +383,77 @@ def estado_cuenta(cliente_id):
                 "le agradezco remitir el certificado.\n\nCordialmente,\n" + emp)
     mailto = (f"mailto:{cliente.email or ''}?subject={quote(f'Estado de cuenta {emp} al {corte:%d/%m/%Y}')}"
               f"&body={quote(cuerpo)}")
+    from .. import correo
     return render_template("ventas/estado_cuenta.html", cliente=cliente, filas=filas, total=total, corte=corte,
-                           anticipo=anticipo, mailto=mailto)
+                           anticipo=anticipo, mailto=mailto, correo_activo=correo.configuracion(s)["activo"])
+
+
+def _cuerpo_estado_cuenta(s, cliente, filas, total, corte):
+    emp = contab.config(s, "empresa_nombre", "")
+    return (f"Estimados señores {cliente.nombre}:\n\nAdjunto el estado de cuenta de {emp} con corte al "
+            f"{corte:%d/%m/%Y}. El saldo pendiente es de {pesos(total)}.\n\n"
+            + "\n".join(f"- {f['numero']} del {f['fecha']:%d/%m/%Y}: {pesos(f['saldo'])}"
+                        + (f" (vencida hace {f['dias']} días)" if f['dias'] > 0 else "") for f in filas)
+            + "\n\nSi ya realizó el pago, agradezco enviarnos el soporte. Si nos practicó retención de IVA, "
+              "le agradezco remitir el certificado.\n\nCordialmente,\n" + emp)
+
+
+def _enviar_estado_cuenta(s, cliente, corte):
+    from .. import correo
+    filas, total = _estado_cuenta(s, cliente, corte)
+    if not filas:
+        raise ValueError(f"{cliente.nombre} no tiene saldo pendiente.")
+    if not cliente.email:
+        raise ValueError(f"{cliente.nombre} no tiene correo registrado.")
+    emp = contab.config(s, "empresa_nombre", "")
+    pdf = exportar.estado_de_cuenta_pdf(exportar._empresa_dict(s), cliente, filas, total, corte)
+    correo.enviar(s, cliente.email, f"Estado de cuenta {emp} al {corte:%d/%m/%Y}",
+                  _cuerpo_estado_cuenta(s, cliente, filas, total, corte),
+                  [(f"estado_cuenta_{corte}.pdf", pdf, "application/pdf")])
+    return total
+
+
+@bp.route("/cartera/<int:cliente_id>/enviar", methods=["POST"])
+def enviar_estado_cuenta(cliente_id):
+    s = Session()
+    cliente = s.get(Tercero, cliente_id) or _404()
+    corte = fecha_arg("corte", date.today())
+    try:
+        _enviar_estado_cuenta(s, cliente, corte)
+        flash(f"Estado de cuenta enviado a {cliente.email}.", "ok")
+    except Exception as e:  # noqa: BLE001
+        flash(f"No se pudo enviar: {e}", "error")
+    return redirect(url_for("ventas.estado_cuenta", cliente_id=cliente_id, corte=corte.isoformat()))
+
+
+@bp.route("/cartera/recordatorios", methods=["POST"])
+def recordatorios():
+    """Envía el estado de cuenta a todos los clientes con facturas vencidas que tengan correo."""
+    s = Session()
+    corte = fecha_arg("corte", date.today())
+    enviados, sin_correo, errores = [], [], []
+    vistos = set()
+    for doc, _ in cartera.documentos_abiertos(s, al=corte):
+        if doc.cliente_id in vistos or not doc.vencimiento or doc.vencimiento >= corte:
+            continue
+        vistos.add(doc.cliente_id)
+        if not doc.cliente.email:
+            sin_correo.append(doc.cliente.nombre)
+            continue
+        try:
+            _enviar_estado_cuenta(s, doc.cliente, corte)
+            enviados.append(doc.cliente.nombre)
+        except Exception as e:  # noqa: BLE001
+            errores.append(f"{doc.cliente.nombre}: {e}")
+    if enviados:
+        flash(f"Recordatorio enviado a: {', '.join(enviados)}.", "ok")
+    if sin_correo:
+        flash(f"Sin correo registrado (no se envió): {', '.join(sin_correo)}.", "advertencia")
+    for e in errores:
+        flash(e, "error")
+    if not (enviados or sin_correo or errores):
+        flash("No hay clientes con facturas vencidas.", "info")
+    return redirect(url_for("ventas.cartera_edades", corte=corte.isoformat()))
 
 
 @bp.route("/certificados")

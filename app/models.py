@@ -125,6 +125,83 @@ class Movimiento(Base):
     cuenta_rel: Mapped[Cuenta] = relationship()
 
 
+class Asunto(Base):
+    """Caso, proceso o proyecto de un cliente: permite medir ingresos y gastos por asunto (rentabilidad)."""
+    __tablename__ = "asuntos"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    cliente_id: Mapped[int] = mapped_column(ForeignKey("terceros.id"))
+    nombre: Mapped[str] = mapped_column(String(160))
+    referencia: Mapped[str | None] = mapped_column(String(80))  # radicado, número de proceso, contrato
+    estado: Mapped[str] = mapped_column(String(10), default="abierto")  # abierto | cerrado
+    honorarios_pactados: Mapped[Decimal | None] = mapped_column(Dinero)
+    notas: Mapped[str | None] = mapped_column(Text)
+    creado: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+
+    cliente: Mapped[Tercero] = relationship()
+
+
+class Presupuesto(Base):
+    """Valor anual presupuestado: clave 'ingresos' o 'categoria:<id>'."""
+    __tablename__ = "presupuestos"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    anio: Mapped[int] = mapped_column(Integer, index=True)
+    clave: Mapped[str] = mapped_column(String(40))
+    valor: Mapped[Decimal] = mapped_column(Dinero, default=CERO)
+    __table_args__ = (UniqueConstraint("anio", "clave"),)
+
+
+class Cotizacion(Base):
+    """Propuesta de honorarios enviada a un cliente; al aceptarse se factura en el software de la DIAN."""
+    __tablename__ = "cotizaciones"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    numero: Mapped[str] = mapped_column(String(20), unique=True)
+    fecha: Mapped[date] = mapped_column(Date, index=True)
+    cliente_id: Mapped[int] = mapped_column(ForeignKey("terceros.id"))
+    asunto_id: Mapped[int | None] = mapped_column(ForeignKey("asuntos.id"))
+    titulo: Mapped[str] = mapped_column(String(200))
+    validez_dias: Mapped[int] = mapped_column(Integer, default=30)
+    estado: Mapped[str] = mapped_column(String(12), default="borrador")  # borrador|enviada|aceptada|rechazada|facturada
+    condiciones: Mapped[str | None] = mapped_column(Text)
+    notas: Mapped[str | None] = mapped_column(Text)
+    factura_id: Mapped[int | None] = mapped_column(ForeignKey("documentos_venta.id"))
+    enviada_el: Mapped[datetime | None] = mapped_column(DateTime)
+    creado: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+
+    cliente: Mapped[Tercero] = relationship()
+    asunto: Mapped[Asunto | None] = relationship()
+    lineas: Mapped[list["LineaCotizacion"]] = relationship(cascade="all, delete-orphan", order_by="LineaCotizacion.id")
+
+    @property
+    def subtotal(self):
+        return sum((l.valor for l in self.lineas), CERO)
+
+    @property
+    def iva(self):
+        return sum((l.iva for l in self.lineas), CERO)
+
+    @property
+    def total(self):
+        return self.subtotal + self.iva
+
+    @property
+    def vence(self):
+        from datetime import timedelta
+        return self.fecha + timedelta(days=self.validez_dias or 0)
+
+
+class LineaCotizacion(Base):
+    __tablename__ = "lineas_cotizacion"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    cotizacion_id: Mapped[int] = mapped_column(ForeignKey("cotizaciones.id", ondelete="CASCADE"))
+    descripcion: Mapped[str] = mapped_column(Text)
+    valor: Mapped[Decimal] = mapped_column(Dinero, default=CERO)
+    iva_pct: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=Decimal("19"))
+
+    @property
+    def iva(self):
+        return (self.valor * (self.iva_pct or 0) / 100).quantize(Decimal("0.01"))
+
+
 class DocumentoVenta(Base):
     """Factura de venta (FV), nota crédito (NC) o nota débito (ND) emitida."""
     __tablename__ = "documentos_venta"
@@ -150,9 +227,11 @@ class DocumentoVenta(Base):
     pdf_archivo: Mapped[str | None] = mapped_column(String(250))
     notas: Mapped[str | None] = mapped_column(Text)
     anulada: Mapped[bool] = mapped_column(Boolean, default=False)
+    asunto_id: Mapped[int | None] = mapped_column(ForeignKey("asuntos.id"))
     creado: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
 
     cliente: Mapped[Tercero] = relationship()
+    asunto: Mapped[Asunto | None] = relationship()
     referencia: Mapped["DocumentoVenta | None"] = relationship(remote_side=[id])
     lineas: Mapped[list["LineaVenta"]] = relationship(cascade="all, delete-orphan")
     aplicaciones: Mapped[list["AplicacionRecaudo"]] = relationship(back_populates="documento")
@@ -275,11 +354,15 @@ class Gasto(Base):
     revisado: Mapped[bool] = mapped_column(Boolean, default=True)
     recurrente: Mapped[bool] = mapped_column(Boolean, default=False)  # se espera cada mes (arriendo, internet…)
     vida_util_meses: Mapped[int | None] = mapped_column(Integer)  # solo activos fijos (cuentas 15xx)
+    asunto_id: Mapped[int | None] = mapped_column(ForeignKey("asuntos.id"))  # a qué caso/cliente se imputa
+    reembolsable: Mapped[bool] = mapped_column(Boolean, default=False)  # se le cobra al cliente
+    reembolsado: Mapped[bool] = mapped_column(Boolean, default=False)   # ya se incluyó en una factura
     notas: Mapped[str | None] = mapped_column(Text)
     creado: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
 
     proveedor: Mapped[Tercero | None] = relationship()
     categoria: Mapped[CategoriaGasto] = relationship()
+    asunto: Mapped[Asunto | None] = relationship()
     referencia_id: Mapped[int | None] = mapped_column(ForeignKey("gastos.id"))  # NC de proveedor -> factura
     pagos: Mapped[list["PagoGasto"]] = relationship(back_populates="gasto", cascade="all, delete-orphan")
     referencia: Mapped["Gasto | None"] = relationship(remote_side="Gasto.id", foreign_keys=[referencia_id],

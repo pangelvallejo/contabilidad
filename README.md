@@ -23,6 +23,9 @@ del equipo, salvo las copias de seguridad en OneDrive.
 | **Planeación** | Flujo de caja proyectado a 6 meses, proyección del impuesto anual, aviso de gastos mensuales no registrados y de clientes con honorarios fijos sin facturar. |
 | **Control** | Bloqueo automático de periodos declarados, historial de todos los cambios, búsqueda global, cierre formal del año, depreciación automática de activos. |
 | **Documentos** | Estados financieros, recibo de caja y estado de cuenta en PDF; ventas por cliente y por mes; paquete en Excel con todos los libros para el contador. |
+| **Informes** | Centro de informes con todo en un lugar: flujo de efectivo, cambios en el patrimonio, estado de resultados comparativo (año anterior o periodo anterior, análisis vertical y horizontal), balance comparativo, resultados mes a mes, indicadores (márgenes, liquidez, días de cobro, carga tributaria), cuentas por pagar por edades y estado de cuenta de proveedor, gastos por proveedor y por categoría mes a mes, presupuesto vs. real, informe de conciliación bancaria y comparación SIMPLE vs. régimen ordinario. |
+| **Gestión del despacho** | Asuntos o casos por cliente con rentabilidad (ingresos menos gastos imputados), gastos reembolsables pendientes de cobrar, cotizaciones o propuestas de honorarios en PDF con seguimiento (enviada, aceptada, facturada). |
+| **Correo saliente** | Con el correo configurado el programa envía estados de cuenta y recordatorios de cobro a los clientes, propuestas de honorarios y un resumen mensual del despacho. |
 | **Instalación** | Paquete portable con Python incluido, actualizaciones con un clic desde GitHub y acceso opcional desde el celular en la red local con contraseña. |
 
 ## Instalación en Windows
@@ -94,6 +97,24 @@ pruebas, construye el paquete portable con Windows y lo adjunta al lanzamiento
    registre el pago; el bimestre queda bloqueado contra cambios accidentales.
 7. **Cierre del año** → *Declaración SIMPLE (F260)*, *Declaración IVA (F300)*, *Exógena* y
    *Cierre del año*. Entregue al contador el *Paquete para el contador*.
+
+## Informes y gestión
+
+- **Informes → Todos los informes** reúne cada informe con su descripción; casi todos se descargan en PDF o Excel.
+- **Asuntos y casos**: cree un asunto por proceso o contrato y elíjalo al registrar facturas y gastos. *Rentabilidad
+  por cliente* muestra ingresos, gastos imputados y margen por cliente y asunto. Un gasto marcado como *reembolsable*
+  queda en *Gastos reembolsables pendientes* hasta que se incluya en una factura.
+- **Cotizaciones**: propuesta de honorarios con varias líneas, PDF con las condiciones, envío por correo y estados
+  (borrador, enviada, aceptada, rechazada, facturada). Al facturarla se vincula con la factura emitida en la DIAN.
+- **Presupuesto vs. real**: defina el ingreso anual esperado y el gasto por categoría; el informe prorratea el
+  presupuesto a los meses transcurridos y muestra la ejecución.
+- **SIMPLE vs. ordinario**: con las cifras proyectadas del año estima cuánto pagaría en cada régimen (renta del 35 %
+  sobre la utilidad, con el ICA deducible, más el ICA) para decidir en enero si conviene permanecer en el SIMPLE.
+- **Informe de conciliación bancaria**: escriba el saldo del extracto y el informe explica la diferencia con libros
+  (partidas en libros sin extracto y partidas del extracto sin registrar).
+- **Correo saliente**: con la misma cuenta del buzón (Configuración → Correo) se envían estados de cuenta,
+  recordatorios a todos los clientes con facturas vencidas (botón en *Cartera por cobrar*), cotizaciones y, si se
+  activa, un resumen el primer día de cada mes.
 
 ## Parámetros tributarios
 

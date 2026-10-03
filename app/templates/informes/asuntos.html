@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block titulo %}Asuntos{% endblock %}
+{% block contenido %}
+<div class="encabezado">
+  <div><h1>Asuntos y casos</h1><p class="sub">Procesos, contratos o proyectos de cada cliente. Asocie facturas y gastos a un asunto para ver su rentabilidad.</p></div>
+  <div class="acciones"><a class="btn" href="/informes/rentabilidad">Ver rentabilidad</a></div>
+</div>
+<div class="rejilla k2">
+  <form method="post" class="tarjeta">
+    <h2>{{ 'Editar asunto' if editar else 'Nuevo asunto' }}</h2>
+    {% if editar %}<input type="hidden" name="id" value="{{ editar.id }}">{% endif %}
+    <div class="campos">
+      <div class="campo ancho"><label>Cliente</label><select name="cliente_id" required><option value="">Seleccione…</option>{% for c in clientes %}<option value="{{ c.id }}" {{ 'selected' if editar and editar.cliente_id == c.id }}>{{ c.nombre }}</option>{% endfor %}</select></div>
+      <div class="campo ancho"><label>Nombre del asunto</label><input name="nombre" required value="{{ editar.nombre if editar else '' }}" placeholder="Proceso laboral vs. XYZ / Consultoría tributaria 2026"></div>
+      <div><label>Referencia (radicado, contrato)</label><input name="referencia" value="{{ editar.referencia or '' if editar else '' }}"></div>
+      <div><label>Honorarios pactados (opcional)</label><input class="n" name="honorarios_pactados" value="{{ editar.honorarios_pactados|entrada if editar and editar.honorarios_pactados else '' }}"></div>
+      <div><label>Estado</label><select name="estado"><option value="abierto">Abierto</option><option value="cerrado" {{ 'selected' if editar and editar.estado == 'cerrado' }}>Cerrado</option></select></div>
+      <div class="campo ancho"><label>Notas</label><textarea name="notas" rows="2">{{ editar.notas or '' if editar else '' }}</textarea></div>
+    </div>
+    <button class="primario">Guardar</button>
+    {% if editar %}<a class="btn" href="/informes/asuntos">Cancelar</a> <button class="peligro" name="accion" value="borrar" data-confirmar="¿Eliminar este asunto?">Eliminar</button>{% endif %}
+  </form>
+  <div class="tarjeta tabla-scroll">
+    <form class="filtros"><div><label>Mostrar</label><select name="estado"><option value="abierto" {{ 'selected' if estado == 'abierto' }}>Abiertos</option><option value="cerrado" {{ 'selected' if estado == 'cerrado' }}>Cerrados</option><option value="todos" {{ 'selected' if estado == 'todos' }}>Todos</option></select></div><button>Ver</button></form>
+    <table>
+      <tr><th>Asunto</th><th>Cliente</th><th class="n">Pactado</th><th class="n">Facturado</th><th class="n">Gastos</th><th></th></tr>
+      {% for a in asuntos %}{% set r = resumen.get(a.id) %}
+      <tr><td><a href="?editar={{ a.id }}&estado={{ estado }}">{{ a.nombre }}</a>{% if a.referencia %} <span class="nota">{{ a.referencia }}</span>{% endif %}{% if a.estado == 'cerrado' %} <span class="etiqueta Anulada">cerrado</span>{% endif %}</td>
+        <td>{{ a.cliente.nombre }}</td><td class="n">{{ a.honorarios_pactados|pesos if a.honorarios_pactados else '' }}</td>
+        <td class="n">{{ r.ingresos|pesos if r else '' }}</td><td class="n">{{ r.gastos|pesos if r and r.gastos else '' }}</td>
+        <td><a class="btn peq" href="/ventas?asunto={{ a.id }}">Facturas</a></td></tr>
+      {% else %}<tr><td colspan="6" class="vacio">Sin asuntos.</td></tr>{% endfor %}
+    </table>
+  </div>
+</div>
+{% endblock %}

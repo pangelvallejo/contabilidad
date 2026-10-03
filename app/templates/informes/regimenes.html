@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block titulo %}SIMPLE vs ordinario{% endblock %}
+{% block contenido %}
+<h1>SIMPLE vs. régimen ordinario</h1>
+<p class="sub">Estimación para el año {{ anio }} con las cifras proyectadas al {{ corte|fecha }}. Sirve para decidir en enero si conviene permanecer en el SIMPLE; no reemplaza el análisis del contador.</p>
+<form class="filtros"><div><label>Año</label><input type="number" name="anio" value="{{ anio }}" style="width:90px"></div><div><label>Corte</label><input type="date" name="corte" value="{{ corte }}"></div><button>Ver</button></form>
+{% if not c.proyeccion.confiable %}<p class="mensaje advertencia">Con menos de un mes de datos la proyección anual no es confiable.</p>{% endif %}
+<div class="rejilla k2">
+  <div class="tarjeta"><h2>Régimen SIMPLE</h2>
+    <table class="liquidacion">
+      <tr><td>Ingresos brutos proyectados</td><td class="n">{{ c.ingresos|pesos }}</td></tr>
+      <tr><td>Tarifa consolidada (art. 908 E.T.)</td><td class="n">{{ (c.tarifa_simple * 100)|pct1 }}</td></tr>
+      <tr class="res"><td>Impuesto SIMPLE (incluye ICA)</td><td class="n">{{ c.simple|pesos }}</td></tr>
+    </table>
+    <p class="nota">El SIMPLE se paga sobre ingresos sin importar los gastos, y ya incluye el ICA y el impuesto de renta. No se incluye el descuento del 0,5 % por pagos electrónicos.</p>
+  </div>
+  <div class="tarjeta"><h2>Régimen ordinario (estimado)</h2>
+    <table class="liquidacion">
+      <tr><td>Ingresos proyectados</td><td class="n">{{ c.ingresos|pesos }}</td></tr>
+      <tr><td>(−) Gastos deducibles proyectados</td><td class="n">{{ c.gastos|pesos }}</td></tr>
+      <tr><td>(−) ICA ({{ c.ica_por_mil }} por mil sobre ingresos), deducible</td><td class="n">{{ c.ica|pesos }}</td></tr>
+      <tr class="res"><td>Renta líquida</td><td class="n">{{ c.utilidad|pesos }} <span class="nota">({{ c.margen|pct1 }})</span></td></tr>
+      <tr><td>Impuesto de renta {{ (c.tarifa_renta * 100)|pct1 }}</td><td class="n">{{ c.renta|pesos }}</td></tr>
+      <tr><td>(+) ICA a pagar</td><td class="n">{{ c.ica|pesos }}</td></tr>
+      <tr class="res"><td>Total renta + ICA</td><td class="n">{{ c.ordinario|pesos }}</td></tr>
+    </table>
+    <form method="post" class="filtros" style="margin-top:8px"><div><label>Tarifa ICA (por mil)</label><input class="n" name="ica_por_mil" value="{{ c.ica_por_mil }}" style="width:100px"></div><button class="peq">Guardar</button></form>
+  </div>
+</div>
+<div class="tarjeta">
+  <h2>Conclusión</h2>
+  {% if c.diferencia > 0 %}<p class="mensaje ok">El SIMPLE resulta más económico por <b>{{ c.diferencia|pesos }}</b> en el año.</p>
+  {% elif c.diferencia < 0 %}<p class="mensaje advertencia">El régimen ordinario resultaría más económico por <b>{{ (-c.diferencia)|pesos }}</b>. Conviene revisarlo con el contador antes del 28 de febrero (plazo para cambiar de régimen).</p>
+  {% else %}<p class="mensaje info">Ambos regímenes cuestan lo mismo con estas cifras.</p>{% endif %}
+  <p class="nota">Punto de indiferencia: con un margen de utilidad del {{ c.margen_indiferencia|pct1 }} sobre los ingresos ambos regímenes cuestan igual; con márgenes mayores conviene el SIMPLE, con menores el ordinario. El ordinario también implica retenciones en la fuente, firma de contador o revisor en algunos casos y más obligaciones formales, que no se cuantifican aquí.</p>
+</div>
+{% endblock %}

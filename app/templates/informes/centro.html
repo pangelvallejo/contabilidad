@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block titulo %}Informes{% endblock %}
+{% block contenido %}
+<div class="encabezado"><div><h1>Informes</h1><p class="sub">Todos los informes del programa en un solo lugar. Casi todos se pueden descargar en PDF o Excel y filtrar por fechas.</p></div></div>
+{% for grupo, items in catalogo %}
+<div class="tarjeta">
+  <h2>{{ grupo }}</h2>
+  <div class="rejilla k4">
+    {% for url, nombre, desc in items %}
+    <a href="{{ url }}" class="kpi" style="display:block;text-decoration:none;color:inherit"><div class="etq" style="color:var(--acento-2);font-weight:600;font-size:13.5px">{{ nombre }}</div><div class="det" style="margin-top:4px">{{ desc }}</div></a>
+    {% endfor %}
+  </div>
+</div>
+{% endfor %}
+{% endblock %}

@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block titulo %}Cuentas por pagar{% endblock %}
+{% block contenido %}
+<div class="encabezado">
+  <div><h1>Cuentas por pagar por edades</h1><p class="sub">Facturas de proveedores a crédito pendientes al {{ corte|fecha_larga }}, según días de vencimiento.</p></div>
+  <div class="acciones"><a class="btn" href="?corte={{ corte }}&pdf=1">PDF</a><a class="btn" href="?corte={{ corte }}&xlsx=1">Excel</a></div>
+</div>
+<form class="filtros"><div><label>Fecha de corte</label><input type="date" name="corte" value="{{ corte }}"></div><button>Ver</button></form>
+<div class="tarjeta tabla-scroll">
+  {% if filas %}
+  <table>
+    <tr><th>Proveedor</th>{% for e in edades %}<th class="n">{{ e[0] }}</th>{% endfor %}<th class="n">Total</th><th></th></tr>
+    {% for f in filas %}
+    <tr><td>{{ f.proveedor.nombre if f.proveedor else 'Sin proveedor' }}</td>{% for e in edades %}<td class="n">{{ f[e[0]]|pesos if f[e[0]] else '' }}</td>{% endfor %}
+      <td class="n"><b>{{ f.total|pesos }}</b></td>
+      <td>{% if f.proveedor %}<a href="/informes/proveedor/{{ f.proveedor.id }}?corte={{ corte }}">Estado de cuenta</a>{% endif %}</td></tr>
+    {% endfor %}
+    <tr class="total"><td>Total</td>{% for e in edades %}<td class="n">{{ totales[e[0]]|pesos }}</td>{% endfor %}<td class="n">{{ totales.total|pesos }}</td><td></td></tr>
+  </table>
+  {% else %}<p class="vacio">No hay facturas de proveedores pendientes a esta fecha.</p>{% endif %}
+</div>
+{% endblock %}

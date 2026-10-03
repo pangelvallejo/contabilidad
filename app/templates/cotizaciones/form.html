@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block titulo %}{{ cot.numero if cot else 'Nueva cotización' }}{% endblock %}
+{% block contenido %}
+{% set v = form if form else {} %}
+<div class="encabezado">
+  <div><h1>{{ 'Cotización ' ~ cot.numero if cot else 'Nueva cotización' }}</h1>
+    <p class="sub">{% if cot %}{{ cot.cliente.nombre }} · <span class="etiqueta {{ {'borrador': 'Nota', 'enviada': 'adv', 'aceptada': 'ok', 'rechazada': 'crit', 'facturada': 'ok'}[cot.estado] }}">{{ estados[cot.estado] }}</span>{% if cot.enviada_el %} · enviada el {{ cot.enviada_el.strftime('%d/%m/%Y') }}{% endif %}{% else %}Propuesta de honorarios para un cliente. Puede tener varias líneas (etapas, servicios).{% endif %}</p></div>
+  <div class="acciones">{% if cot %}<a class="btn" href="/cotizaciones/{{ cot.id }}/pdf">Descargar PDF</a>{% endif %}<a class="btn" href="/cotizaciones/">Volver</a></div>
+</div>
+{% if cot %}
+<form method="post" class="tarjeta filtros" style="align-items:center">
+  <b>Estado:</b>
+  {% if cot.estado == 'borrador' or cot.estado == 'rechazada' %}
+    {% if correo_activo %}<button name="accion" value="enviar" class="primario" data-espera="Enviando…" data-confirmar="¿Enviar la propuesta en PDF al correo del cliente?">Enviar por correo</button>{% endif %}
+    <button name="accion" value="enviada">Marcar como enviada</button>
+  {% endif %}
+  {% if cot.estado == 'enviada' %}<button name="accion" value="aceptada" class="primario">Aceptada</button><button name="accion" value="rechazada">Rechazada</button>{% endif %}
+  {% if cot.estado == 'aceptada' %}
+    <select name="factura_id"><option value="">Factura emitida (opcional)…</option>{% for f in facturas %}<option value="{{ f.id }}">{{ f.numero }} · {{ f.fecha|fecha }} · {{ f.total|pesos }}</option>{% endfor %}</select>
+    <button name="accion" value="facturada" class="primario">Marcar como facturada</button>
+  {% endif %}
+  {% if cot.estado == 'facturada' and cot.factura_id %}<a href="/ventas/{{ cot.factura_id }}">Ver factura</a>{% endif %}
+  {% if cot.estado != 'borrador' %}<button name="accion" value="borrador" title="Volver a borrador para editarla">Reabrir</button>{% endif %}
+</form>
+{% endif %}
+<form method="post" class="tarjeta" id="form-cot">
+  <div class="campos">
+    <div><label>Fecha</label><input type="date" name="fecha" value="{{ v.get('fecha') or (cot.fecha if cot else hoy) }}" required></div>
+    <div><label>Cliente</label><select name="cliente_id" id="cliente" required><option value="">Seleccione…</option>{% for c in clientes %}<option value="{{ c.id }}" {{ 'selected' if (v.get('cliente_id') or (cot.cliente_id|string if cot else '')) == c.id|string }}>{{ c.nombre }}</option>{% endfor %}</select></div>
+    <div><label>Asunto (opcional)</label><select name="asunto_id" id="asunto"><option value="">—</option>{% for a in asuntos %}<option value="{{ a.id }}" data-cliente="{{ a.cliente_id }}" {{ 'selected' if (v.get('asunto_id') or (cot.asunto_id|string if cot and cot.asunto_id else '')) == a.id|string }}>{{ a.nombre }}</option>{% endfor %}</select></div>
+    <div><label>Validez (días)</label><input type="number" name="validez_dias" value="{{ v.get('validez_dias') or (cot.validez_dias if cot else 30) }}"></div>
+    <div class="campo ancho"><label>Título de la propuesta</label><input name="titulo" required value="{{ v.get('titulo') or (cot.titulo if cot else '') }}" placeholder="Asesoría tributaria para la reorganización de XYZ S.A.S."></div>
+  </div>
+  <h2>Honorarios</h2>
+  <table id="lineas">
+    <tr><th>Descripción del servicio o etapa</th><th class="n" style="width:160px">Honorarios (sin IVA)</th><th class="n" style="width:90px">% IVA</th><th></th></tr>
+    {% set lineas = cot.lineas if cot else [] %}
+    {% for i in range(lineas|length if lineas else 1) %}{% set l = lineas[i] if lineas else none %}
+    <tr><td><input name="descripcion" value="{{ l.descripcion if l else '' }}"></td><td><input class="n val" name="valor" value="{{ l.valor|entrada if l else '' }}"></td><td><input class="n" name="iva_pct" value="{{ l.iva_pct|entrada if l else 19 }}"></td><td><button type="button" class="peq quitar">×</button></td></tr>
+    {% endfor %}
+  </table>
+  <p><button type="button" class="peq" id="agregar">+ Agregar línea</button> <span class="nota">Subtotal: <b id="subtotal">0</b> · IVA: <b id="iva">0</b> · Total: <b id="total">0</b></span></p>
+  <div class="campos">
+    <div class="campo ancho"><label>Condiciones (aparecen en el PDF)</label><textarea name="condiciones" rows="4">{{ v.get('condiciones') or (cot.condiciones if cot else condiciones_defecto) }}</textarea></div>
+    <div class="campo ancho"><label>Notas internas (no aparecen en el PDF)</label><textarea name="notas" rows="2">{{ v.get('notas') or (cot.notas or '' if cot else '') }}</textarea></div>
+  </div>
+  <button class="primario" name="accion" value="guardar">Guardar</button>
+  {% if cot %}<button class="peligro" name="accion" value="borrar" data-confirmar="¿Eliminar esta cotización?">Eliminar</button>{% endif %}
+</form>
+<script>
+const num = v => { v = String(v || '').trim(); if (v.includes(',')) v = v.replace(/\./g, '').replace(',', '.'); else if ((v.match(/\./g) || []).length > 1 || /\.\d{3}$/.test(v)) v = v.replace(/\./g, ''); return parseFloat(v) || 0; };
+const fmt = v => v.toLocaleString('es-CO', {maximumFractionDigits: 0});
+const tabla = document.getElementById('lineas');
+function calc() {
+  let sub = 0, iva = 0;
+  tabla.querySelectorAll('tr').forEach(tr => { const v = tr.querySelector('input[name=valor]'); if (!v) return; const p = num(tr.querySelector('input[name=iva_pct]').value); sub += num(v.value); iva += num(v.value) * p / 100; });
+  document.getElementById('subtotal').textContent = fmt(sub); document.getElementById('iva').textContent = fmt(iva); document.getElementById('total').textContent = fmt(sub + iva);
+}
+tabla.addEventListener('input', calc);
+tabla.addEventListener('click', e => { if (e.target.classList.contains('quitar') && tabla.querySelectorAll('tr').length > 2) { e.target.closest('tr').remove(); calc(); } });
+document.getElementById('agregar').addEventListener('click', () => { const tr = tabla.querySelector('tr:last-child').cloneNode(true); tr.querySelectorAll('input').forEach(i => i.value = i.name === 'iva_pct' ? '19' : ''); tabla.appendChild(tr); });
+const cli = document.getElementById('cliente'), asu = document.getElementById('asunto');
+const filtrar = () => { Array.from(asu.options).forEach(o => { if (o.value) o.hidden = o.dataset.cliente !== cli.value; }); if (asu.selectedOptions[0] && asu.selectedOptions[0].hidden) asu.value = ''; };
+cli.addEventListener('change', filtrar); filtrar(); calc();
+</script>
+{% endblock %}

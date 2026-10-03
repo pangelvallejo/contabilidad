@@ -58,6 +58,7 @@
     {% endif %}
     <div class="campos">
       <div><label>Vencimiento</label><input type="date" name="vencimiento" value="{{ doc.vencimiento.isoformat() if doc.vencimiento }}"></div>
+      <div><label>Asunto / caso</label><select name="asunto_id"><option value="">— ninguno —</option>{% for a in asuntos %}<option value="{{ a.id }}" {{ 'selected' if doc.asunto_id == a.id }}>{{ a.nombre }}{{ ' (cerrado)' if a.estado == 'cerrado' }}</option>{% endfor %}</select></div>
       <div><label>Reemplazar PDF</label><input type="file" name="pdf" accept=".pdf"></div>
       <div class="campo ancho"><label>Notas</label><textarea name="notas" rows="2">{{ doc.notas or '' }}</textarea></div>
       <div class="campo ancho"><label class="check"><input type="checkbox" name="anulada" {{ 'checked' if doc.anulada }}> Documento anulado (no afecta contabilidad ni impuestos)</label></div>

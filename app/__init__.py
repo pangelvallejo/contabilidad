@@ -15,7 +15,7 @@ warnings.filterwarnings("ignore", message=".*Decimal objects natively.*")
 # Si Windows bloquea Pillow, fpdf2 avisa que no podrá insertar imágenes: el programa no las usa.
 warnings.filterwarnings("ignore", message="Pillow could not be imported.*")
 
-VERSION = "1.3.0"
+VERSION = "1.4.0"
 
 
 def create_app(datos_dir=None, respaldo_automatico=False):
@@ -48,6 +48,7 @@ def create_app(datos_dir=None, respaldo_automatico=False):
     app.jinja_env.filters["fecha_larga"] = formato.fecha_larga
     app.jinja_env.filters["entrada"] = formato.entrada
     app.jinja_env.filters["pct"] = lambda v: f"{float(v) * 100:.1f}".replace(".", ",") + " %"
+    app.jinja_env.filters["pct1"] = lambda v: "—" if v is None else f"{float(v):.1f}".replace(".", ",") + " %"
 
     @app.teardown_appcontext
     def _cerrar(_exc):
@@ -114,10 +115,10 @@ def create_app(datos_dir=None, respaldo_automatico=False):
         # XML y ZIP se descargan en vez de mostrarse: un XML recibido de un tercero no debe ejecutarse en el navegador.
         return send_file(ruta, as_attachment=ruta.suffix.lower() in (".xml", ".zip", ".html", ".htm", ".svg"))
 
-    from .routes import (ajustes, bancos, buscar, contabilidad, gastos, impuestos, inicio, planeacion, terceros,
-                         ventas)
+    from .routes import (ajustes, bancos, buscar, contabilidad, cotizaciones, gastos, impuestos, informes, inicio,
+                         planeacion, terceros, ventas)
     for bp in (inicio.bp, ventas.bp, gastos.bp, terceros.bp, impuestos.bp, contabilidad.bp, ajustes.bp, buscar.bp,
-               planeacion.bp, bancos.bp):
+               planeacion.bp, bancos.bp, informes.bp, cotizaciones.bp):
         app.register_blueprint(bp)
 
     if respaldo_automatico:  # modo normal (no pruebas): depreciaciones del mes y tareas en segundo plano

@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block titulo %}Gastos por categoría{% endblock %}
+{% block contenido %}
+<div class="encabezado">
+  <div><h1>Gastos por categoría mes a mes</h1><p class="sub">Año {{ anio }}, sin IVA descontable. Para fijar un presupuesto por categoría vaya a <a href="/informes/presupuesto?anio={{ anio }}">Presupuesto</a>.</p></div>
+  <div class="acciones"><a class="btn" href="?anio={{ anio }}&xlsx=1">Excel</a></div>
+</div>
+<form class="filtros"><div><label>Año</label><input type="number" name="anio" value="{{ anio }}" style="width:90px"></div><button>Ver</button></form>
+<div class="tarjeta tabla-scroll">
+  {% if filas %}
+  <table style="font-size:12.5px">
+    <tr><th>Categoría</th>{% for m in meses %}<th class="n">{{ m }}</th>{% endfor %}<th class="n">Total</th></tr>
+    {% for nombre, valores, t in filas %}<tr><td>{{ nombre }}</td>{% for v in valores %}<td class="n">{{ v|pesos if v else '' }}</td>{% endfor %}<td class="n"><b>{{ t|pesos }}</b></td></tr>{% endfor %}
+    <tr class="total"><td>Total</td>{% for v in totales %}<td class="n">{{ v|pesos }}</td>{% endfor %}<td class="n">{{ total|pesos }}</td></tr>
+  </table>
+  {% else %}<p class="vacio">Sin gastos en {{ anio }}.</p>{% endif %}
+</div>
+{% endblock %}

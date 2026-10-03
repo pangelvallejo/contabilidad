@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block titulo %}Gastos reembolsables{% endblock %}
+{% block contenido %}
+<div class="encabezado">
+  <div><h1>Gastos reembolsables pendientes de cobrar</h1><p class="sub">Gastos hechos por cuenta de un cliente (notarías, certificados, viajes) que todavía no se le han incluido en una factura. Total: {{ total|pesos }}.</p></div>
+</div>
+{% if por_cliente %}
+<form method="post">
+{% for cliente, gastos in por_cliente.items() %}
+<div class="tarjeta tabla-scroll">
+  <h2>{{ cliente.nombre }} <small class="nota">{{ gastos|sum(attribute='total')|pesos }}</small></h2>
+  <table>
+    <tr><th></th><th>Fecha</th><th>Asunto</th><th>Proveedor</th><th>Descripción</th><th class="n">Valor</th></tr>
+    {% for g in gastos %}<tr><td><input type="checkbox" name="id" value="{{ g.id }}"></td><td>{{ g.fecha|fecha }}</td><td>{{ g.asunto.nombre }}</td><td>{{ g.proveedor.nombre if g.proveedor else '' }}</td><td><a href="/gastos/{{ g.id }}">{{ g.descripcion or g.categoria.nombre }}</a></td><td class="n">{{ g.total|pesos }}</td></tr>{% endfor %}
+  </table>
+</div>
+{% endfor %}
+<button class="primario">Marcar los seleccionados como ya cobrados</button>
+</form>
+{% else %}<div class="tarjeta"><p class="vacio">No hay gastos reembolsables pendientes. Al registrar un gasto, marque "Reembolsable al cliente" y elija el asunto.</p></div>{% endif %}
+{% endblock %}

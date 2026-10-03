@@ -7,15 +7,20 @@ import email
 import hashlib
 import imaplib
 import re
+import smtplib
 from dataclasses import dataclass, field
 from email.header import decode_header
+from email.message import EmailMessage
+from email.utils import formataddr
 
 from . import contab
 from .importacion import importar_archivo
 from .models import CorreoProcesado
 
 SERVIDORES = {"gmail": ("imap.gmail.com", 993), "outlook": ("outlook.office365.com", 993)}
-CLAVES = ("correo_servidor", "correo_usuario", "correo_clave", "correo_carpeta", "correo_dias", "correo_filtro")
+SMTP = {"gmail": ("smtp.gmail.com", 465, True), "outlook": ("smtp.office365.com", 587, False)}  # (host, puerto, SSL directo)
+CLAVES = ("correo_servidor", "correo_usuario", "correo_clave", "correo_carpeta", "correo_dias", "correo_filtro",
+          "correo_smtp", "correo_copia")
 
 
 @dataclass
@@ -69,6 +74,57 @@ def explicar_error(e: Exception) -> str:
     if isinstance(e, (OSError, TimeoutError)):
         return "no hay conexión con el servidor (revise internet, el nombre del servidor y el puerto)."
     return texto
+
+
+def _smtp(c):
+    """Servidor de salida: el configurado ('host:puerto[:ssl]'), o el que corresponde al proveedor del buzón."""
+    propio = (c.get("correo_smtp") or "").strip().lower()
+    if propio:
+        partes = propio.split(":")
+        host = partes[0]
+        puerto = int(partes[1]) if len(partes) > 1 and partes[1].isdigit() else 465
+        return host, puerto, (partes[2] == "ssl") if len(partes) > 2 else puerto == 465
+    nombre = (c.get("correo_servidor") or "gmail").strip().lower()
+    if nombre in SMTP:
+        return SMTP[nombre]
+    host = nombre.partition(":")[0]
+    return host.replace("imap.", "smtp.", 1), 465, True
+
+
+def enviar(session, para, asunto, cuerpo, adjuntos=()):
+    """Envía un correo desde la cuenta configurada. adjuntos: [(nombre, bytes, 'application/pdf')]."""
+    c = configuracion(session)
+    if not c["activo"]:
+        raise ValueError("Configure el correo (usuario y contraseña de aplicación) en Configuración → Correo.")
+    if not para or "@" not in para:
+        raise ValueError("El destinatario no tiene un correo válido.")
+    remitente = contab.config(session, "empresa_nombre", "") or c["correo_usuario"]
+    msg = EmailMessage()
+    msg["From"] = formataddr((remitente, c["correo_usuario"]))
+    msg["To"] = para
+    msg["Subject"] = asunto
+    if (c.get("correo_copia") or "si") != "no":
+        msg["Bcc"] = c["correo_usuario"]  # copia al propio buzón, para tener constancia
+    msg.set_content(cuerpo)
+    for nombre, datos, mime in adjuntos:
+        tipo, _, subtipo = (mime or "application/octet-stream").partition("/")
+        msg.add_attachment(datos, maintype=tipo, subtype=subtipo, filename=nombre)
+    host, puerto, ssl = _smtp(c)
+    try:
+        if ssl:
+            with smtplib.SMTP_SSL(host, puerto, timeout=20) as smtp:
+                smtp.login(c["correo_usuario"], c["correo_clave"])
+                smtp.send_message(msg)
+        else:
+            with smtplib.SMTP(host, puerto, timeout=20) as smtp:
+                smtp.starttls()
+                smtp.login(c["correo_usuario"], c["correo_clave"])
+                smtp.send_message(msg)
+    except smtplib.SMTPAuthenticationError as e:
+        raise ValueError("El servidor de correo rechazó el usuario o la contraseña de aplicación.") from e
+    except (OSError, smtplib.SMTPException) as e:
+        raise ValueError(f"No se pudo enviar el correo: {explicar_error(e)}") from e
+    return True
 
 
 def probar(session) -> str:
