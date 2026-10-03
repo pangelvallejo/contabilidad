@@ -830,10 +830,11 @@ def test_segunda_auditoria_cierre_y_depreciacion(cliente_web, s):
     a = contab.guardar_asiento(s, origen=None, tipo="AJ", fecha=date(2027, 2, 1), descripcion="x", tercero_id=None,
                                lineas=[("11200501", 100, 0, None, None), ("310505", 0, 100, None, None)])
     s.commit()
+    aid = a.id
     contab.set_config(s, "periodo_bloqueado_hasta", "2027-02-28")
     s.commit()
-    assert cliente_web.post(f"/contabilidad/asiento/{a.id}", data={"accion": "eliminar"}).status_code == 302
-    assert s.get(Asiento, a.id) is not None
+    assert cliente_web.post(f"/contabilidad/asiento/{aid}", data={"accion": "eliminar"}).status_code == 302
+    assert s.get(Asiento, aid) is not None
     contab.set_config(s, "periodo_bloqueado_hasta", "2026-12-31")
     s.commit()
     # Marcar certificado recibido y una reteIVA posterior sobre una factura del periodo bloqueado sí se permite
@@ -862,9 +863,9 @@ def test_segunda_auditoria_cierre_y_depreciacion(cliente_web, s):
     assert planeacion.anio_cerrado(s, 2026)
     assert impuestos.ingresos_brutos(s, date(2026, 1, 1), date(2026, 12, 31)) == ingresos_antes
     assert impuestos.declaracion_simple(s, 2026).impuesto > 0
-    simple = s.query(Asiento).filter_by(origen="simple:2026").one()
+    simple_id = s.query(Asiento).filter_by(origen="simple:2026").one().id
     assert cliente_web.post("/impuestos/f260?anio=2026").status_code == 302
-    assert s.query(Asiento).filter_by(origen="simple:2026").one().id == simple.id
+    assert s.query(Asiento).filter_by(origen="simple:2026").one().id == simple_id
     assert reportes.saldo_cuenta(s, "540505", date(2026, 12, 31)) == 0  # cerrado contra 370505
     assert reportes.saldo_cuenta(s, "370505") < 0 and reportes.saldo_cuenta(s, "360505") == 0
     assert reportes.balance_general(s, date(2027, 3, 31))["cuadre"] == 0
@@ -1002,10 +1003,10 @@ def test_tercera_auditoria_nc_proveedor_reteiva_y_validaciones(cliente_web, s):
     s.expire_all()
     assert s.get(MovimientoBanco, m.id).estado == "conciliado"
     # Validaciones de dominio y errores que antes daban 500
-    doc = s.query(DocumentoVenta).one()
-    cliente_web.post(f"/ventas/{doc.id}", data={"accion": "guardar", "reteiva_aplica": "on", "reteiva_valor": "-5"})
+    doc_id = s.query(DocumentoVenta).one().id
+    cliente_web.post(f"/ventas/{doc_id}", data={"accion": "guardar", "reteiva_aplica": "on", "reteiva_valor": "-5"})
     s.expire_all()
-    assert s.get(DocumentoVenta, doc.id).reteiva_valor == D("142500")
+    assert s.get(DocumentoVenta, doc_id).reteiva_valor == D("142500")
     assert cliente_web.post("/gastos/nuevo", data={"tipo_soporte": "ZZ", "fecha": "2026-12-01", "categoria_id": "1",
                                                    "subtotal": "100"}).status_code == 200
     assert cliente_web.post("/gastos/revisar", data={"id": ["abc"], "ok_abc": "on", "categoria_abc": "1"}).status_code == 302
