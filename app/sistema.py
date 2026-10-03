@@ -92,7 +92,7 @@ def preparar_actualizacion(contenido_zip: bytes, destino: Path) -> Path:
     script = destino / "aplicar_actualizacion.bat"
     # Copia todo menos los datos del usuario y el entorno de Python ya instalado; luego reinicia.
     # chcp 65001: el archivo está en UTF-8 para que funcionen rutas con tildes (C:\Users\Ángel).
-    script.write_text(
+    contenido = (
         "@echo off\r\n"
         "chcp 65001 >nul\r\n"
         "timeout /t 3 /nobreak >nul\r\n"
@@ -101,8 +101,8 @@ def preparar_actualizacion(contenido_zip: bytes, destino: Path) -> Path:
         "  echo No se pudieron copiar los archivos de la actualizacion. Cierre el programa y vuelva a intentarlo.\r\n"
         "  pause\r\n"
         ")\r\n"
-        f'start "" /d "{RAIZ}" "{RAIZ / iniciador}"\r\n',
-        encoding="utf-8")
+        f'start "" /d "{RAIZ}" "{RAIZ / iniciador}"\r\n')
+    script.write_bytes(contenido.encode("utf-8"))  # bytes: evita que Windows duplique el retorno de carro
     return script
 
 

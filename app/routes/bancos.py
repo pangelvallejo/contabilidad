@@ -7,7 +7,7 @@ from .. import bancos, cartera, contab, reportes
 from ..db import Session
 from ..models import (CERO, Banco, CategoriaGasto, Cuenta, Gasto, MovimientoBanco, PagoGasto, Recaudo,
                       Tercero)
-from . import check, dinero, fecha_arg
+from . import check, fecha_arg
 
 bp = Blueprint("bancos", __name__, url_prefix="/bancos")
 

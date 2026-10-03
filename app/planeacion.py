@@ -5,7 +5,7 @@ from datetime import date
 from decimal import Decimal
 
 from . import cartera, contab, impuestos, reportes
-from .models import CERO, Asiento, Gasto, PagoImpuesto, Vencimiento
+from .models import CERO, Asiento, Gasto, Vencimiento
 
 CTA_DEPRECIACION_GASTO = {"1524": "516015", "1528": "516020"}
 CTA_DEPRECIACION_ACUM = {"1524": "159215", "1528": "159220"}

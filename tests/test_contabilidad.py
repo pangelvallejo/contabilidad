@@ -3,8 +3,6 @@ import zipfile
 from datetime import date
 from decimal import Decimal
 
-import pytest
-
 from ubl import EMPRESA, documento, factura_compra, factura_venta
 
 CLIENTE = ("900123456", "7", "CLIENTE DEMO S.A.S.")
@@ -563,7 +561,7 @@ def test_formularios_no_fallan_con_datos_invalidos(cliente_web, s):
 
 def test_bloqueo_de_periodo_e_historial(cliente_web, s):
     from app import contab
-    from app.models import Bitacora, DocumentoVenta, Gasto
+    from app.models import Bitacora, Gasto
     importar(s, "1.xml", factura_venta("ALC-1", "2026-09-01", CLIENTE, 1_000_000))
     importar(s, "g.xml", factura_compra("P-1", "2026-09-05", ARRENDADOR, 100_000, 19_000, descripcion="ARRIENDO"))
     # al pagar el 2593 del bimestre 5 queda bloqueado hasta el 31-10-2026
@@ -804,13 +802,13 @@ def test_acceso_red_actualizacion_y_restauracion(cliente_web, s, tmp_path):
 
 def test_segunda_auditoria_cierre_y_depreciacion(cliente_web, s):
     from app import contab, impuestos, planeacion, reportes
-    from app.models import Asiento, Bitacora, Gasto, Tercero
+    from app.models import Asiento, Bitacora, Gasto
     _escenario(s)  # ingresos 15M en sep/oct 2026
     importar(s, "pc.xml", factura_compra("PC-1", "2026-03-10", ("800000009", "1", "TIENDA PC"), 3_000_000, 570_000,
                                          descripcion="Computador portatil"))
     pc = s.query(Gasto).filter_by(numero="PC-1").one()
     # Nota crédito del proveedor sobre el activo reduce la base depreciable
-    from ubl import contenedor, documento
+    from ubl import documento
     nc = documento(tipo="CreditNote", numero="NC-PC", cufe="cude-pc", fecha="2026-03-15",
                    emisor=("800000009", "1", "TIENDA PC"), receptor=EMPRESA, base=1_000_000, iva=190_000,
                    descripcion="Computador portatil", referencia=("PC-1", "cufe-pc-1"))
@@ -968,7 +966,7 @@ def test_segunda_auditoria_bancos_y_sistema(cliente_web, s):
 
 
 def test_tercera_auditoria_nc_proveedor_reteiva_y_validaciones(cliente_web, s):
-    from app import contab, reportes
+    from app import reportes
     from app.models import Banco, DocumentoVenta, Gasto, MovimientoBanco
     from ubl import documento
     # La NC del proveedor descuenta el saldo de la factura afectada
