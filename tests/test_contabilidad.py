@@ -996,7 +996,7 @@ def test_tercera_auditoria_nc_proveedor_reteiva_y_validaciones(cliente_web, s):
     assert reportes.saldo_cuenta(s, "240405") == D("295000") and reportes.saldo_cuenta(s, "135595") == 0
     # 'Otro ingreso' desde el banco solo a cuentas de movimiento de ingreso/pasivo/patrimonio
     from app import bancos
-    bancos.importar_extracto(s, s.get(Banco, 1), "e.csv", b"Fecha;Descripcion;Valor\n05/12/2026;ABONO;1000\n")
+    bancos.importar_extracto(s, s.get(Banco, 1), "e.csv", b"Fecha;Descripcion;Valor\n05/01/2027;ABONO;1000\n")
     m = s.query(MovimientoBanco).one()
     cliente_web.post(f"/bancos/movimiento/{m.id}", data={"accion": "ingreso", "cuenta": "1"})
     assert s.get(MovimientoBanco, m.id).estado == "pendiente"
