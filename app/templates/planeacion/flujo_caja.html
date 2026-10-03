@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block titulo %}Flujo de caja{% endblock %}
+{% block contenido %}
+<h1>Flujo de caja proyectado</h1>
+<p class="sub">Qué entra y qué sale cada mes según los vencimientos registrados: cartera por cobrar, cuentas por pagar, impuestos pendientes y el promedio de gastos de los últimos tres meses ({{ promedio|pesos }}/mes). Los honorarios mensuales fijos de los clientes se suman desde el mes siguiente.</p>
+<form class="filtros"><div><label>Meses</label><input type="number" name="meses" value="{{ meses }}" min="1" max="24" style="width:80px"></div><button>Ver</button></form>
+<div class="tarjeta tabla-scroll">
+  <table>
+    <tr><th>Mes</th><th class="n">Saldo inicial</th><th class="n">Cobros previstos</th><th class="n">Cobros vencidos</th><th class="n">Honorarios fijos</th>
+      <th class="n">Pagos a proveedores</th><th class="n">Impuestos</th><th class="n">Gastos recurrentes</th><th class="n">Saldo final</th></tr>
+    {% for f in filas %}
+    <tr><td>{{ ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'][f.inicio.month-1] }} {{ f.inicio.year }}</td>
+      <td class="n">{{ f.saldo_inicial|pesos }}</td><td class="n">{{ f.cobros|pesos }}</td>
+      <td class="n">{% if f.cobros_vencidos %}<span class="etiqueta adv" title="Facturas ya vencidas; se asume que se cobran este mes">{{ f.cobros_vencidos|pesos }}</span>{% endif %}</td>
+      <td class="n">{{ f.retainers|pesos if f.retainers else '' }}</td>
+      <td class="n">{{ f.pagos_proveedores|pesos }}</td>
+      <td class="n" title="{% for o, p, v in f.detalle_impuestos %}{{ o }} {{ p }}: {{ v|pesos }}&#10;{% endfor %}">{{ f.impuestos|pesos }}</td>
+      <td class="n">{{ f.gastos_recurrentes|pesos }}</td>
+      <td class="n"><b class="{{ 'etiqueta crit' if f.saldo_final < 0 }}">{{ f.saldo_final|pesos }}</b></td></tr>
+    {% endfor %}
+  </table>
+</div>
+<div class="tarjeta" style="max-width:720px">
+  <h2>Impuestos del año {{ proyeccion.anio }} (proyección al {{ proyeccion.corte|fecha }})</h2>
+  <table class="liquidacion">
+    <tr><td>Ingresos brutos a la fecha</td><td class="n">{{ proyeccion.ingresos_a_la_fecha|pesos }}</td></tr>
+    <tr><td>Ingresos proyectados a diciembre (mismo ritmo)</td><td class="n">{{ proyeccion.ingresos_proyectados|pesos }}</td></tr>
+    <tr><td>Tarifa SIMPLE que aplicaría</td><td class="n">{{ proyeccion.tarifa|pct }}</td></tr>
+    <tr class="res"><td>Impuesto SIMPLE estimado del año</td><td class="n">{{ proyeccion.simple_proyectado|pesos }}</td></tr>
+    <tr><td>(−) Anticipos ya pagados</td><td class="n">{{ proyeccion.anticipos_pagados|pesos }}</td></tr>
+    <tr><td>SIMPLE pendiente de pagar en el año</td><td class="n">{{ proyeccion.simple_pendiente|pesos }}</td></tr>
+    <tr><td>IVA neto a la fecha (generado − descontable − reteIVA)</td><td class="n">{{ proyeccion.iva_neto_a_la_fecha|pesos }}</td></tr>
+    <tr><td>IVA neto proyectado del año</td><td class="n">{{ proyeccion.iva_neto_proyectado|pesos }}</td></tr>
+    <tr class="res"><td>Carga tributaria total estimada (SIMPLE + IVA)</td><td class="n">{{ proyeccion.carga_total|pesos }}</td></tr>
+  </table>
+  {% if not proyeccion.confiable %}<p class="nota">Con menos de 30 días de datos del año no se extrapola: se muestran los valores a la fecha.</p>{% endif %}
+  {% if proyeccion.supera_limite %}<p class="mensaje critico">A este ritmo los ingresos superarían las 12.000 UVT del año: revise la permanencia en el SIMPLE.</p>{% endif %}
+</div>
+{% endblock %}

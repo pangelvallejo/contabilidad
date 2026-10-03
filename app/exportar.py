@@ -10,7 +10,7 @@ from openpyxl.utils import get_column_letter
 
 from .formato import fecha, pesos
 
-FORMATO_PESOS = '#,##0;[Red]-#,##0'
+FORMATO_PESOS = '#,##0.00;[Red]-#,##0.00'
 
 
 def excel(hojas: dict) -> bytes:
@@ -95,4 +95,114 @@ def estado_de_cuenta_pdf(empresa: dict, cliente, filas, total, corte: date) -> b
     pdf.multi_cell(0, 4, _latin1(
         "Si ya realizó el pago, por favor haga caso omiso de este estado de cuenta y envíenos el soporte. "
         "Si nos practicó retención de IVA, le agradecemos remitir el certificado correspondiente."))
+    return bytes(pdf.output())
+
+
+class _Informe(FPDF):
+    def __init__(self, empresa, titulo, subtitulo="", orientacion="P"):
+        super().__init__(orientation=orientacion, unit="mm", format="Letter")
+        self.empresa, self.titulo, self.subtitulo = empresa, titulo, subtitulo
+        self.set_auto_page_break(True, margin=15)
+
+    def header(self):
+        self.set_font("helvetica", "B", 12)
+        self.cell(0, 6, _latin1(self.empresa.get("nombre", "")), new_x="LMARGIN", new_y="NEXT")
+        self.set_font("helvetica", "", 8)
+        self.cell(0, 4, _latin1(f"NIT {self.empresa.get('nit', '')}  {self.empresa.get('ciudad') or ''}"),
+                  new_x="LMARGIN", new_y="NEXT")
+        self.ln(2)
+        self.set_font("helvetica", "B", 13)
+        self.cell(0, 7, _latin1(self.titulo), new_x="LMARGIN", new_y="NEXT")
+        if self.subtitulo:
+            self.set_font("helvetica", "", 9)
+            self.cell(0, 5, _latin1(self.subtitulo), new_x="LMARGIN", new_y="NEXT")
+        self.ln(3)
+
+    def footer(self):
+        self.set_y(-12)
+        self.set_font("helvetica", "I", 7)
+        self.cell(0, 5, _latin1(f"Página {self.page_no()} · generado el {date.today():%d/%m/%Y}"), align="R")
+
+
+def _empresa_dict(session):
+    from .contab import config as cfg
+    emp = {k: cfg(session, f"empresa_{k}", "") for k in ("nombre", "direccion", "ciudad", "email", "telefono")}
+    emp["nit"] = f"{cfg(session, 'empresa_nit', '')}-{cfg(session, 'empresa_dv', '')}"
+    return emp
+
+
+def informe_pdf(empresa, titulo, subtitulo, columnas, filas, orientacion="P", notas=None) -> bytes:
+    """Tabla genérica. columnas: [(título, ancho_mm, alineación)]; filas: listas de celdas; una fila puede ser
+    un dict {"celdas": [...], "estilo": "grupo"|"total"|"res"} para resaltarla."""
+    pdf = _Informe(empresa, titulo, subtitulo, orientacion)
+    pdf.add_page()
+    ancho_total = sum(c[1] for c in columnas)
+
+    def encabezado():
+        pdf.set_font("helvetica", "B", 8)
+        pdf.set_fill_color(31, 58, 95)
+        pdf.set_text_color(255)
+        for t, w, al in columnas:
+            pdf.cell(w, 6, _latin1(t), align=al, fill=True)
+        pdf.ln()
+        pdf.set_text_color(0)
+
+    encabezado()
+    for i, fila in enumerate(filas):
+        estilo = ""
+        celdas = fila
+        if isinstance(fila, dict):
+            celdas, estilo = fila["celdas"], fila.get("estilo", "")
+        if pdf.get_y() > pdf.h - 25:
+            pdf.add_page()
+            encabezado()
+        pdf.set_font("helvetica", "B" if estilo else "", 8)
+        if estilo == "total":
+            pdf.set_fill_color(220, 226, 235)
+        else:
+            pdf.set_fill_color(242, 245, 249)
+        relleno = estilo in ("total", "grupo") or (not estilo and i % 2 == 0)
+        for (t, w, al), v in zip(columnas, celdas):
+            texto = pesos(v) if isinstance(v, Decimal) else (fecha(v) if isinstance(v, date) else str(v))
+            pdf.cell(w, 5.5, _latin1(texto)[:int(w / 1.7)], align=al, fill=relleno)
+        pdf.ln()
+    if notas:
+        pdf.ln(4)
+        pdf.set_font("helvetica", "", 8)
+        for n in notas:
+            pdf.multi_cell(ancho_total, 4, _latin1(n))
+    return bytes(pdf.output())
+
+
+def recibo_de_caja_pdf(empresa, rec) -> bytes:
+    """Comprobante para el cliente de un pago recibido y las facturas que cubrió."""
+    pdf = _Informe(empresa, f"Recibo de caja No. {rec.id}", f"Fecha: {fecha(rec.fecha)}")
+    pdf.add_page()
+    pdf.set_font("helvetica", "", 10)
+    pdf.cell(0, 6, _latin1(f"Recibido de: {rec.cliente.nombre}   NIT {rec.cliente.nit_completo}"), new_x="LMARGIN", new_y="NEXT")
+    pdf.cell(0, 6, _latin1(f"Valor recibido: {pesos(rec.valor)}   Cuenta: {rec.banco.nombre}"
+                           f"{'   Ref. ' + rec.referencia if rec.referencia else ''}"), new_x="LMARGIN", new_y="NEXT")
+    pdf.ln(4)
+    columnas = [("Factura", 40, "L"), ("Fecha", 30, "C"), ("Valor factura", 40, "R"), ("Abono", 40, "R")]
+    pdf.set_font("helvetica", "B", 9)
+    pdf.set_fill_color(31, 58, 95)
+    pdf.set_text_color(255)
+    for t, w, al in columnas:
+        pdf.cell(w, 6, t, align=al, fill=True)
+    pdf.ln()
+    pdf.set_text_color(0)
+    pdf.set_font("helvetica", "", 9)
+    for a in rec.aplicaciones:
+        for (t, w, al), v in zip(columnas, [a.documento.numero, fecha(a.documento.fecha), pesos(a.documento.total),
+                                            pesos(a.valor)]):
+            pdf.cell(w, 6, _latin1(v), align=al)
+        pdf.ln()
+    if rec.sin_aplicar > 0:
+        pdf.cell(110, 6, "Anticipo (sin aplicar a facturas)", align="R")
+        pdf.cell(40, 6, _latin1(pesos(rec.sin_aplicar)), align="R")
+        pdf.ln()
+    pdf.ln(10)
+    pdf.set_font("helvetica", "", 8)
+    pdf.multi_cell(0, 4, _latin1("Este recibo acredita el pago recibido. La factura electrónica correspondiente fue "
+                                 "emitida a través de la DIAN."))
     return bytes(pdf.output())

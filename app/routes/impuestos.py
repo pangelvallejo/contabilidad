@@ -3,7 +3,7 @@ from datetime import date
 
 from flask import Blueprint, abort, flash, redirect, render_template, request, url_for
 
-from .. import archivos, contab, exogena, exportar, impuestos
+from .. import archivos, bancos, contab, exogena, exportar, impuestos
 from ..config import BIMESTRES, SIMPLE_TARIFA_ANUAL, SIMPLE_TARIFA_BIMESTRAL
 from ..db import Session
 from ..models import Banco, PagoImpuesto, Vencimiento
@@ -23,7 +23,7 @@ def iva():
 
 @bp.route("/iva/<int:anio>/<int:bim>")
 def iva_detalle(anio, bim):
-    if bim not in BIMESTRES:
+    if bim not in BIMESTRES or not 2000 <= anio <= 2100:
         abort(404)
     s = Session()
     r = impuestos.resumen_iva_bimestre(s, anio, bim)
@@ -52,7 +52,7 @@ def simple():
     recibos = [impuestos.recibo_2593(s, anio, b) for b in BIMESTRES]
     return render_template("impuestos/simple.html", recibos=recibos, anio=anio, nombres=impuestos.nombre_bimestre,
                            bancos=s.query(Banco).filter_by(activo=True).all(),
-                           tabla=SIMPLE_TARIFA_BIMESTRAL, uvt=impuestos.uvt(anio),
+                           tabla=SIMPLE_TARIFA_BIMESTRAL, uvt=impuestos.uvt(anio, s),
                            base=contab.config(s, "simple_base", "causacion"))
 
 
@@ -66,8 +66,10 @@ def registrar_pago():
                          banco_id=int(request.form["banco_id"]),
                          numero_formulario=request.form.get("numero_formulario") or None)
         p.archivo = archivos.guardar_upload("impuestos", request.files.get("archivo"))
-        if p.total <= 0:
-            raise ValueError("El valor pagado debe ser mayor que cero.")
+        if p.total <= 0 or p.valor_simple < 0 or p.valor_iva < 0:
+            raise ValueError("Los valores pagados deben ser positivos.")
+        if p.formulario not in ("2593", "260", "300") or (p.formulario == "2593" and p.bimestre not in BIMESTRES):
+            raise ValueError("Formulario o bimestre no válido.")
         s.add(p)
         s.flush()
         s.refresh(p)
@@ -77,6 +79,12 @@ def registrar_pago():
                                              Vencimiento.periodo.like(f"Bimestre {p.bimestre} %{p.anio}")).first())
             if v:
                 v.cumplido = True
+            # Al pagar el recibo, el bimestre queda declarado: se bloquea para evitar cambios accidentales.
+            fin = impuestos.rango_bimestre(p.anio, p.bimestre)[1] if p.bimestre else None
+            tope = contab.periodo_bloqueado_hasta(s)
+            if fin and (tope is None or fin > tope):
+                contab.set_config(s, "periodo_bloqueado_hasta", fin.isoformat())
+                flash(f"Contabilidad bloqueada hasta el {fin:%d/%m/%Y}. Se puede cambiar en Configuración.", "info")
         s.commit()
         flash("Pago registrado y contabilizado.", "ok")
     except Exception as e:  # noqa: BLE001
@@ -89,10 +97,15 @@ def registrar_pago():
 def eliminar_pago(id):
     s = Session()
     p = s.get(PagoImpuesto, id) or abort(404)
-    contab.borrar_asientos(s, f"impuesto:{p.id}")
-    s.delete(p)
-    s.commit()
-    flash("Pago eliminado.", "ok")
+    try:
+        bancos.liberar(s, "impuesto", p.id)
+        contab.borrar_asientos(s, f"impuesto:{p.id}")
+        s.delete(p)
+        s.commit()
+        flash("Pago eliminado.", "ok")
+    except Exception as e:  # noqa: BLE001
+        s.rollback()
+        flash(f"No se pudo eliminar: {e}", "error")
     return redirect(destino_seguro(request.form.get("volver"), url_for("impuestos.simple")))
 
 
@@ -101,14 +114,18 @@ def f260():
     s = Session()
     anio = anio_arg()
     if request.method == "POST":
-        impuestos.causar_simple_anual(s, anio)
-        s.commit()
-        flash(f"Impuesto SIMPLE {anio} causado en la contabilidad (asiento al 31 de diciembre).", "ok")
+        try:
+            impuestos.causar_simple_anual(s, anio)
+            s.commit()
+            flash(f"Impuesto SIMPLE {anio} causado en la contabilidad (asiento al 31 de diciembre).", "ok")
+        except Exception as e:  # noqa: BLE001
+            s.rollback()
+            flash(f"No se pudo causar: {e}", "error")
         return redirect(url_for("impuestos.f260", anio=anio))
     dec = impuestos.declaracion_simple(s, anio)
     pagos = s.query(PagoImpuesto).filter_by(formulario="260", anio=anio).all()
     return render_template("impuestos/f260.html", dec=dec, anio=anio, tabla=SIMPLE_TARIFA_ANUAL,
-                           uvt=impuestos.uvt(anio), pagos=pagos, bancos=s.query(Banco).filter_by(activo=True).all())
+                           uvt=impuestos.uvt(anio, s), pagos=pagos, bancos=s.query(Banco).filter_by(activo=True).all())
 
 
 @bp.route("/f300")
@@ -127,10 +144,15 @@ def calendario():
     s = Session()
     if request.method == "POST":
         if request.form.get("accion") == "agregar":
-            s.add(Vencimiento(obligacion=request.form["obligacion"], periodo=request.form.get("periodo"),
+            if not request.form.get("obligacion", "").strip() or fecha_arg("fecha") is None:
+                flash("Indique la obligación y una fecha válida.", "error")
+                return redirect(url_for("impuestos.calendario"))
+            s.add(Vencimiento(obligacion=request.form["obligacion"].strip(), periodo=request.form.get("periodo"),
                               fecha=fecha_arg("fecha"), notas=request.form.get("notas") or None))
         elif request.form.get("eliminar"):
-            s.delete(s.get(Vencimiento, int(request.form["eliminar"])))
+            v = s.get(Vencimiento, request.form.get("eliminar", type=int) or 0)
+            if v is not None:
+                s.delete(v)
         else:
             for v in s.query(Vencimiento):
                 v.fecha = fecha_arg(f"fecha_{v.id}", v.fecha)

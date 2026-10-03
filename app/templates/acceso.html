@@ -1,0 +1,9 @@
+<!doctype html>
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Acceso · {{ empresa_nombre }}</title><link rel="stylesheet" href="{{ url_for('static', filename='estilos.css') }}"></head>
+<body><main style="max-width:380px;margin:60px auto">
+  <div class="tarjeta"><h1 style="font-size:18px">{{ empresa_nombre }}</h1><p class="sub">Contabilidad · acceso desde la red</p>
+    {% with mensajes = get_flashed_messages(with_categories=true) %}{% for cat, msg in mensajes %}<div class="mensaje {{ cat }}">{{ msg }}</div>{% endfor %}{% endwith %}
+    <form method="post"><div class="campos"><div class="campo ancho"><label>Contraseña</label><input type="password" name="clave" autofocus></div></div>
+      <input type="hidden" name="siguiente" value="{{ siguiente }}"><button class="primario">Entrar</button></form>
+  </div></main></body></html>

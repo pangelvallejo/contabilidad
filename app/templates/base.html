@@ -11,6 +11,7 @@
   <nav class="lateral">
     <div class="marca">{{ empresa_nombre }}<small>Contabilidad · Régimen SIMPLE</small></div>
     {% set ruta = request.path %}
+    <form action="/buscar" style="padding:0 14px 8px"><input name="q" placeholder="Buscar…" value="{{ request.args.get('q', '') if ruta == '/buscar' else '' }}" style="font-size:13px;padding:5px 8px"></form>
     <a href="/" class="{{ 'activo' if ruta == '/' }}">Tablero</a>
     <h4>Ingresos</h4>
     <a href="/ventas" class="{{ 'activo' if ruta.startswith('/ventas') and ruta != '/ventas/importar' }}">Facturas de venta</a>
@@ -22,6 +23,7 @@
     <a href="/gastos" class="{{ 'activo' if ruta == '/gastos' or ruta.startswith('/gastos/') and ruta not in ('/gastos/importar', '/gastos/nuevo') }}">Gastos</a>
     <a href="/gastos/importar" class="{{ 'activo' if ruta == '/gastos/importar' }}">Importar XML de proveedores</a>
     <a href="/gastos/nuevo" class="{{ 'activo' if ruta == '/gastos/nuevo' }}">Registrar gasto</a>
+    <a href="/gastos/revisar" class="{{ 'activo' if ruta == '/gastos/revisar' }}">Revisar importados</a>
     <a href="/gastos?por_pagar=1">Cuentas por pagar</a>
     <h4>Impuestos</h4>
     <a href="/impuestos/iva" class="{{ 'activo' if ruta.startswith('/impuestos/iva') }}">IVA por bimestre</a>
@@ -30,6 +32,8 @@
     <a href="/impuestos/f300" class="{{ 'activo' if ruta.startswith('/impuestos/f300') }}">Declaración IVA (F300)</a>
     <a href="/impuestos/exogena" class="{{ 'activo' if ruta.startswith('/impuestos/exogena') }}">Exógena</a>
     <a href="/impuestos/calendario" class="{{ 'activo' if ruta.startswith('/impuestos/calendario') }}">Calendario tributario</a>
+    <a href="/flujo-caja" class="{{ 'activo' if ruta == '/flujo-caja' }}">Flujo de caja y proyección</a>
+    <a href="/bancos/conciliacion" class="{{ 'activo' if ruta.startswith('/bancos') }}">Conciliación bancaria</a>
     <h4>Contabilidad</h4>
     <a href="/contabilidad/resultados" class="{{ 'activo' if ruta.startswith('/contabilidad/resultados') }}">Estado de resultados</a>
     <a href="/contabilidad/balance" class="{{ 'activo' if ruta == '/contabilidad/balance' }}">Balance general</a>
@@ -38,9 +42,15 @@
     <a href="/contabilidad/mayor" class="{{ 'activo' if ruta.startswith('/contabilidad/mayor') }}">Libro mayor</a>
     <a href="/contabilidad/asiento/nuevo" class="{{ 'activo' if ruta.startswith('/contabilidad/asiento') }}">Asiento manual</a>
     <a href="/contabilidad/puc" class="{{ 'activo' if ruta.startswith('/contabilidad/puc') }}">Plan de cuentas</a>
+    <a href="/contabilidad/depreciaciones" class="{{ 'activo' if ruta.startswith('/contabilidad/depreciaciones') }}">Activos y depreciación</a>
+    <a href="/contabilidad/cierre" class="{{ 'activo' if ruta.startswith('/contabilidad/cierre') }}">Cierre del año</a>
+    <a href="/contabilidad/ventas-clientes" class="{{ 'activo' if ruta.startswith('/contabilidad/ventas-clientes') }}">Ventas por cliente</a>
+    <a href="/contabilidad/paquete" title="Un solo Excel con todos los libros del año">Paquete para el contador</a>
     <h4>Otros</h4>
     <a href="/terceros" class="{{ 'activo' if ruta.startswith('/terceros') }}">Clientes y proveedores</a>
+    <a href="/historial" class="{{ 'activo' if ruta.startswith('/historial') }}">Historial de cambios</a>
     <a href="/configuracion/" class="{{ 'activo' if ruta.startswith('/configuracion') }}">Configuración</a>
+    {% if session.get('autenticado') %}<a href="/salir">Cerrar sesión</a>{% endif %}
   </nav>
   <main>
     {% with mensajes = get_flashed_messages(with_categories=true) %}

@@ -1,0 +1,6 @@
+{% if paginas > 1 %}
+{% set args = request.args.to_dict() %}
+<p class="nota" style="margin-top:10px">Página {{ pagina }} de {{ paginas }}
+  {% if pagina > 1 %}{% set _ = args.update({'pagina': pagina - 1}) %} · <a href="?{{ args|urlencode }}">← anterior</a>{% endif %}
+  {% if pagina < paginas %}{% set _ = args.update({'pagina': pagina + 1}) %} · <a href="?{{ args|urlencode }}">siguiente →</a>{% endif %}</p>
+{% endif %}

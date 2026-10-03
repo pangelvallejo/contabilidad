@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block titulo %}Ventas por cliente{% endblock %}
+{% block contenido %}
+<div class="encabezado"><div><h1>Ingresos por cliente {{ anio }}</h1><p class="sub">Honorarios sin IVA, netos de notas crédito, por mes y comparados con {{ anio - 1 }}.</p></div>
+  <div class="acciones"><a class="btn" href="?anio={{ anio }}&xlsx=1">Exportar a Excel</a></div></div>
+<form class="filtros"><div><label>Año</label><input type="number" name="anio" value="{{ anio }}" style="width:90px"></div><button>Ver</button></form>
+<div class="tarjeta tabla-scroll">
+  {% if filas %}
+  {% set meses = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'] %}
+  <table>
+    <tr><th>Cliente</th>{% for m in meses %}<th class="n">{{ m }}</th>{% endfor %}<th class="n">Total {{ anio }}</th><th class="n">{{ anio - 1 }}</th><th class="n">Var.</th></tr>
+    {% for c, vals, t, ant in filas %}
+    <tr><td><a href="/cartera/{{ c.id }}">{{ c.nombre }}</a></td>{% for v in vals %}<td class="n">{{ (v / 1000)|round|int|numero if v else '' }}</td>{% endfor %}
+      <td class="n"><b>{{ t|pesos }}</b></td><td class="n">{{ ant|pesos if ant else '' }}</td>
+      <td class="n">{% if ant %}{{ ((t - ant) / ant * 100)|round(0)|int }} %{% endif %}</td></tr>
+    {% endfor %}
+    <tr class="total"><td>Total</td>{% for v in totales_mes %}<td class="n">{{ (v / 1000)|round|int|numero if v else '' }}</td>{% endfor %}
+      <td class="n">{{ total|pesos }}</td><td class="n">{{ total_anterior|pesos }}</td><td class="n">{% if total_anterior %}{{ ((total - total_anterior) / total_anterior * 100)|round(0)|int }} %{% endif %}</td></tr>
+  </table>
+  <p class="nota">Los valores mensuales están en miles de pesos.</p>
+  {% else %}<p class="vacio">Sin ventas en {{ anio }}.</p>{% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,32 @@
+# Al publicar una etiqueta vX.Y.Z se construye el paquete portable para Windows (con Python incluido)
+# y se adjunta a un lanzamiento de GitHub. El programa lo descarga desde "Buscar actualizaciones".
+name: Paquete portable Windows
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  paquete:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Pruebas
+        run: |
+          python -m pip install -q -r requirements-dev.txt
+          python -m pytest -q
+      - name: Construir paquete
+        run: python herramientas/crear_paquete.py
+      - name: Publicar lanzamiento
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: dist/Contabilidad-*-windows.zip
+          generate_release_notes: true

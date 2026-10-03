@@ -24,6 +24,8 @@ def init_engine(url: str):
 
     Session.remove()
     Session.configure(bind=engine)
+    from .bitacora import activar
+    activar(Session.session_factory)
     return engine
 
 

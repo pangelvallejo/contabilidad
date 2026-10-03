@@ -23,34 +23,41 @@
     <div class="campo ancho"><label>Proveedor</label>
       <select name="proveedor_id" id="proveedor">
         <option value="">Sin proveedor (recibo menor)</option>
-        <option value="nuevo">+ Proveedor nuevo…</option>
-        {% for p in proveedores %}<option value="{{ p.id }}" {{ 'selected' if g and g.proveedor_id == p.id }}>{{ p.nombre }} — {{ p.nit }}</option>{% endfor %}
+        <option value="nuevo" {{ 'selected' if form.get('proveedor_id') == 'nuevo' }}>+ Proveedor nuevo…</option>
+        {% for p in proveedores %}<option value="{{ p.id }}" {{ 'selected' if (form.get('proveedor_id') == p.id|string) or (not form.get('proveedor_id') and g and g.proveedor_id == p.id) }}>{{ p.nombre }} — {{ p.nit }}</option>{% endfor %}
       </select></div>
     <div id="nuevo-prov" class="campo ancho" style="display:none">
       <div class="campos" style="margin:0">
         <div><label>Tipo documento</label><select name="nuevo_tipo_doc"><option value="31">NIT</option><option value="13">Cédula</option></select></div>
-        <div><label>NIT / cédula (sin DV)</label><input name="nuevo_nit"></div>
-        <div><label>Nombre o razón social</label><input name="nuevo_nombre"></div>
+        <div><label>NIT / cédula (sin DV)</label><input name="nuevo_nit" value="{{ form.get('nuevo_nit', '') }}"></div>
+        <div><label>Nombre o razón social</label><input name="nuevo_nombre" value="{{ form.get('nuevo_nombre', '') }}"></div>
       </div></div>
+    <div class="campo ancho" id="ref-nc" style="display:none"><label>Factura del proveedor que afecta la nota crédito</label>
+      <select name="referencia_id"><option value="">— sin asociar —</option>
+      {% for f in facturas_proveedor %}<option value="{{ f.id }}" {{ 'selected' if g and g.referencia_id == f.id }}>{{ f.numero or '—' }} · {{ f.proveedor.nombre if f.proveedor else '' }} · {{ f.fecha|fecha }} · {{ f.total|pesos }}</option>{% endfor %}</select></div>
     <div class="campo ancho"><label>Categoría</label><select name="categoria_id" id="categoria" required>
-      {% for c in categorias %}<option value="{{ c.id }}" data-desc="{{ 1 if c.iva_descontable_def else 0 }}" {{ 'selected' if g and g.categoria_id == c.id }}>{{ c.nombre }} ({{ c.cuenta }})</option>{% endfor %}</select></div>
+      {% for c in categorias %}<option value="{{ c.id }}" data-desc="{{ 1 if c.iva_descontable_def else 0 }}" {{ 'selected' if (form.get('categoria_id') == c.id|string) or (not form.get('categoria_id') and g and g.categoria_id == c.id) }}>{{ c.nombre }} ({{ c.cuenta }})</option>{% endfor %}</select></div>
     <div class="campo ancho"><label>Descripción</label><input name="descripcion" value="{{ val('descripcion') }}"></div>
     <div><label>Base (antes de impuestos)</label><input class="n" name="subtotal" id="subtotal" value="{{ val('subtotal') }}" required inputmode="decimal"></div>
     <div><label>IVA</label><input class="n" name="iva" id="iva" value="{{ val('iva', 0) }}" inputmode="decimal"></div>
     <div><label>Otros impuestos (INC, etc.)</label><input class="n" name="otros_impuestos" id="otros" value="{{ val('otros_impuestos', 0) }}" inputmode="decimal"></div>
     <div><label>Total</label><input class="n" id="total" disabled></div>
-    <div class="campo ancho"><label class="check"><input type="checkbox" name="iva_descontable" id="desc" {{ 'checked' if (g.iva_descontable if g else true) }}> El IVA es descontable (se cruza contra el IVA generado)</label>
+    <div class="campo ancho"><label class="check"><input type="checkbox" name="iva_descontable" id="desc" {{ 'checked' if (form.get('iva_descontable') if form else (g.iva_descontable if g else true)) }}> El IVA es descontable (se cruza contra el IVA generado)</label>
       <p class="nota">No es descontable el IVA de activos fijos ni el que no esté soportado en factura electrónica a nombre de la firma.</p></div>
     <div><label>Forma de pago</label><select name="forma_pago" id="forma">
-      <option value="contado" {{ 'selected' if not g or g.forma_pago == 'contado' }}>Pagado (contado)</option>
-      <option value="credito" {{ 'selected' if g and g.forma_pago == 'credito' }}>Por pagar (crédito)</option></select></div>
+      {% set fp = form.get('forma_pago') or (g.forma_pago if g else 'contado') %}
+      <option value="contado" {{ 'selected' if fp == 'contado' }}>Pagado (contado)</option>
+      <option value="credito" {{ 'selected' if fp == 'credito' }}>Por pagar (crédito)</option></select></div>
     <div id="cuenta-pago"><label>Pagado desde</label><select name="cuenta_pago">
-      {% for cta, nombre in opciones_pago %}<option value="{{ cta }}" {{ 'selected' if g and g.cuenta_pago == cta }}>{{ nombre }}</option>{% endfor %}</select></div>
+      {% set cp = form.get('cuenta_pago') or (g.cuenta_pago if g else '') %}{% for cta, nombre in opciones_pago %}<option value="{{ cta }}" {{ 'selected' if cp == cta }}>{{ nombre }}</option>{% endfor %}</select></div>
+    <div class="campo ancho"><label class="check"><input type="checkbox" name="recurrente" {{ 'checked' if (form.get('recurrente') if form else (g.recurrente if g else false)) }}> Gasto mensual recurrente (arriendo, internet, software…): el tablero avisará si en un mes no se ha registrado</label></div>
+    <div id="vida-util"><label>Vida útil en meses (solo activos fijos)</label><input type="number" name="vida_util_meses" value="{{ form.get('vida_util_meses') or (g.vida_util_meses if g else '') or '' }}" placeholder="60 equipos, 120 muebles"></div>
     <div><label>Soporte (PDF o foto)</label><input type="file" name="soporte" accept=".pdf,.png,.jpg,.jpeg,.heic,.webp,.xml"></div>
     <div><label>CUFE (opcional)</label><input name="cufe" value="{{ val('cufe') }}"></div>
     <div class="campo ancho"><label>Notas</label><textarea name="notas" rows="2">{{ val('notas') }}</textarea></div>
   </div>
   <button class="primario" name="accion" value="guardar">Guardar</button>
+  {% if g %}<a class="btn" href="/gastos/nuevo?copiar={{ g.id }}">Duplicar</a>{% endif %}
   {% if not g %}<button name="otro" value="1">Guardar y registrar otro</button>{% endif %}
   {% if g %}<button class="peligro" name="accion" value="eliminar" data-confirmar="¿Eliminar este gasto y su contabilidad?">Eliminar</button>{% endif %}
 </form>
@@ -82,13 +89,17 @@ const ids = ['subtotal', 'iva', 'otros'].map(i => document.getElementById(i));
 const total = document.getElementById('total');
 const calc = () => total.value = (num(ids[0].value) + num(ids[1].value) + num(ids[2].value)).toLocaleString('es-CO', {maximumFractionDigits: 2});
 ids.forEach(i => i.addEventListener('input', calc)); calc();
+const tipoSop = document.querySelector('select[name=tipo_soporte]'), refNc = document.getElementById('ref-nc');
+const actNc = () => refNc.style.display = tipoSop.value === 'NC' ? '' : 'none'; tipoSop.addEventListener('change', actNc); actNc();
 const forma = document.getElementById('forma'), cp = document.getElementById('cuenta-pago');
 const act = () => cp.style.display = forma.value === 'contado' ? '' : 'none'; forma.addEventListener('change', act); act();
+const vida = document.getElementById('vida-util');
+const actVida = () => vida.style.display = cat.selectedOptions[0].text.includes('(activo)') ? '' : 'none';
 const prov = document.getElementById('proveedor'), np = document.getElementById('nuevo-prov');
-prov.addEventListener('change', () => np.style.display = prov.value === 'nuevo' ? '' : 'none');
-{% if not g %}
+const mostrarNuevo = () => np.style.display = prov.value === 'nuevo' ? '' : 'none';
+prov.addEventListener('change', mostrarNuevo); mostrarNuevo();
 const cat = document.getElementById('categoria'), desc = document.getElementById('desc');
-cat.addEventListener('change', () => desc.checked = cat.selectedOptions[0].dataset.desc === '1');
-{% endif %}
+cat.addEventListener('change', () => { actVida(); {% if not g %}desc.checked = cat.selectedOptions[0].dataset.desc === '1';{% endif %} });
+actVida();
 </script>
 {% endblock %}

@@ -36,6 +36,7 @@
     <tr class="total"><td colspan="4">Total</td><td class="n">{{ totales.base|pesos }}</td><td class="n">{{ totales.iva|pesos }}</td>
       <td class="n">{{ totales.total|pesos }}</td><td class="n">{{ totales.reteiva|pesos }}</td><td class="n">{{ totales.saldo|pesos }}</td><td></td></tr>
   </table>
+  {% include "_paginacion.html" %}
   {% else %}<p class="vacio">No hay documentos. <a href="/ventas/importar">Importe el XML de su primera factura.</a></p>{% endif %}
 </div>
 {% endblock %}

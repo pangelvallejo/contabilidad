@@ -3,6 +3,7 @@
 {% block contenido %}
 <h1>Estado de resultados</h1>
 <p class="sub">{{ desde|fecha_larga }} a {{ hasta|fecha_larga }}</p>
+<div class="acciones"><a class="btn" href="?desde={{ desde.isoformat() }}&hasta={{ hasta.isoformat() }}&pdf=1">Descargar PDF</a></div>
 <form class="filtros">{% include "contabilidad/_periodo.html" %}<button>Ver</button></form>
 {% macro detalle(filas) %}{% for c, v in filas %}<tr><td style="padding-left:24px">{{ c.codigo }} {{ c.nombre }}</td><td class="n">{{ v|pesos }}</td></tr>{% endfor %}{% endmacro %}
 <div class="tarjeta" style="max-width:760px">

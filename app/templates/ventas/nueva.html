@@ -6,19 +6,19 @@
 <form class="tarjeta" method="post" enctype="multipart/form-data">
   <div class="campos">
     <div><label>Tipo</label><select name="tipo" id="tipo">
-      <option value="FV">Factura de venta</option><option value="NC">Nota crédito</option><option value="ND">Nota débito</option></select></div>
-    <div><label>Número (prefijo y consecutivo)</label><input name="numero" required></div>
-    <div><label>Fecha</label><input type="date" name="fecha" value="{{ hoy.isoformat() }}" required></div>
-    <div><label>Vencimiento</label><input type="date" name="vencimiento"></div>
+      {% for k, n in [('FV','Factura de venta'),('NC','Nota crédito'),('ND','Nota débito')] %}<option value="{{ k }}" {{ 'selected' if form.get('tipo') == k }}>{{ n }}</option>{% endfor %}</select></div>
+    <div><label>Número (prefijo y consecutivo)</label><input name="numero" value="{{ form.get('numero', '') }}" required></div>
+    <div><label>Fecha</label><input type="date" name="fecha" value="{{ form.get('fecha') or hoy.isoformat() }}" required></div>
+    <div><label>Vencimiento</label><input type="date" name="vencimiento" value="{{ form.get('vencimiento', '') }}"></div>
     <div class="campo ancho"><label>Cliente</label><select name="cliente_id" required>
       <option value="">Seleccione…</option>
-      {% for c in clientes %}<option value="{{ c.id }}">{{ c.nombre }} — {{ c.nit }}</option>{% endfor %}</select>
+      {% for c in clientes %}<option value="{{ c.id }}" {{ 'selected' if form.get('cliente_id') == c.id|string }}>{{ c.nombre }} — {{ c.nit }}</option>{% endfor %}</select>
       <p class="nota"><a href="/terceros/nuevo?tipo=cliente&volver=/ventas/nueva">Crear cliente nuevo</a></p></div>
-    <div id="ref" style="display:none" class="campo ancho"><label>Factura que afecta la nota crédito</label><select name="referencia_id">
-      <option value="">—</option>{% for f in facturas %}<option value="{{ f.id }}">{{ f.numero }} · {{ f.cliente.nombre }} · {{ f.total|pesos }}</option>{% endfor %}</select></div>
-    <div class="campo ancho"><label>Descripción del servicio</label><input name="descripcion" value="Honorarios profesionales"></div>
-    <div><label>Base (antes de IVA)</label><input class="n" name="base" id="base" required inputmode="decimal"></div>
-    <div><label>IVA {{ (tarifa_iva*100)|int }}%</label><input class="n" name="iva" id="iva" inputmode="decimal"></div>
+    <div id="ref" style="{{ '' if form.get('tipo') == 'NC' else 'display:none' }}" class="campo ancho"><label>Factura que afecta la nota crédito</label><select name="referencia_id">
+      <option value="">—</option>{% for f in facturas %}<option value="{{ f.id }}" {{ 'selected' if form.get('referencia_id') == f.id|string }}>{{ f.numero }} · {{ f.cliente.nombre }} · {{ f.total|pesos }}</option>{% endfor %}</select></div>
+    <div class="campo ancho"><label>Descripción del servicio</label><input name="descripcion" value="{{ form.get('descripcion') or 'Honorarios profesionales' }}"></div>
+    <div><label>Base (antes de IVA)</label><input class="n" name="base" id="base" value="{{ form.get('base', '') }}" required inputmode="decimal"></div>
+    <div><label>IVA {{ (tarifa_iva*100)|int }}%</label><input class="n" name="iva" id="iva" value="{{ form.get('iva', '') }}" inputmode="decimal"></div>
     <div><label>Total</label><input class="n" id="total" disabled></div>
     <div><label>CUFE (opcional)</label><input name="cufe"></div>
     <div><label>PDF de la factura (opcional)</label><input type="file" name="pdf" accept=".pdf"></div>

@@ -36,6 +36,7 @@
     <tr class="total"><td colspan="4">Total</td><td class="n">{{ totales.subtotal|pesos }}</td><td class="n">{{ totales.iva|pesos }}</td>
       <td class="n">{{ totales.iva_desc_valor|pesos }}</td><td class="n">{{ totales.total|pesos }}</td><td colspan="2"></td></tr>
   </table>
+  {% include "_paginacion.html" %}
   {% else %}<p class="vacio">No hay gastos con estos filtros.</p>{% endif %}
 </div>
 {% endblock %}

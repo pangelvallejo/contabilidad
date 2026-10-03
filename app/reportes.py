@@ -12,9 +12,11 @@ from .models import CERO, Asiento, Cuenta, Gasto, Movimiento
 NIVELES = (1, 2, 4, 6, 8)
 
 
-def _sumas_por_cuenta(session, desde=None, hasta=None):
+def _sumas_por_cuenta(session, desde=None, hasta=None, incluir_cierre=True):
     q = (session.query(Movimiento.cuenta, func.sum(Movimiento.debito), func.sum(Movimiento.credito))
          .join(Asiento))
+    if not incluir_cierre:  # el asiento de cierre (tipo CI) no es un movimiento del periodo
+        q = q.filter(Asiento.tipo != "CI")
     if desde:
         q = q.filter(Asiento.fecha >= desde)
     if hasta:
@@ -39,10 +41,25 @@ class FilaBalance:
         return len(self.cuenta.codigo)
 
 
+CTA_RESULTADOS_ANTERIORES = "370505"
+
+
+def resultado_acumulado(session, hasta: date) -> Decimal:
+    """Utilidad (+) o pérdida (−) de los años cerrados antes de la fecha: clases 4 − 5 − 6 hasta el 31-12 anterior."""
+    s = _sumas_por_cuenta(session, hasta=hasta)
+    return _saldo_prefijo(s, "4", "C") - _saldo_prefijo(s, "5", "D") - _saldo_prefijo(s, "6", "D")
+
+
 def balance_de_prueba(session, desde: date, hasta: date, nivel_max=8):
     cuentas = {c.codigo: c for c in session.query(Cuenta)}
     previas = _sumas_por_cuenta(session, hasta=date.fromordinal(desde.toordinal() - 1))
     periodo = _sumas_por_cuenta(session, desde, hasta)
+    # Cierre implícito: el resultado de los años anteriores se presenta en 370505 (utilidades acumuladas).
+    anteriores = resultado_acumulado(session, date(desde.year - 1, 12, 31))
+    if anteriores:
+        previas = dict(previas)
+        dp, cp = previas.get(CTA_RESULTADOS_ANTERIORES, (CERO, CERO))
+        previas[CTA_RESULTADOS_ANTERIORES] = (dp + max(-anteriores, CERO), cp + max(anteriores, CERO))
     agregados = defaultdict(lambda: [CERO, CERO, CERO, CERO])  # deb_prev, cre_prev, deb, cre
     for origen, idx in ((previas, 0), (periodo, 2)):
         for codigo, (dbt, cr) in origen.items():
@@ -100,7 +117,7 @@ def _detalle(session, sumas, prefijos, nivel=4):
 
 
 def estado_resultados(session, desde: date, hasta: date):
-    s = _sumas_por_cuenta(session, desde, hasta)
+    s = _sumas_por_cuenta(session, desde, hasta, incluir_cierre=False)
     ingresos_op = _saldo_prefijo(s, "41", "C")
     ingresos_no_op = _saldo_prefijo(s, "42", "C")
     gastos_admin = _saldo_prefijo(s, "51", "D")
@@ -127,15 +144,22 @@ def balance_general(session, corte: date):
     activo = _saldo_prefijo(s, "1", "D")
     pasivo = _saldo_prefijo(s, "2", "C")
     patrimonio = _saldo_prefijo(s, "3", "C")
-    # Resultado del ejercicio en curso y de años anteriores aún no trasladados a patrimonio
-    resultado = (_saldo_prefijo(s, "4", "C") - _saldo_prefijo(s, "5", "D") - _saldo_prefijo(s, "6", "D"))
+    anteriores = resultado_acumulado(session, date(corte.year - 1, 12, 31))
+    # Resultado del ejercicio en curso (del 1 de enero al corte), sin el asiento de cierre del propio año
+    sp = _sumas_por_cuenta(session, date(corte.year, 1, 1), corte, incluir_cierre=False)
+    resultado = _saldo_prefijo(sp, "4", "C") - _saldo_prefijo(sp, "5", "D") - _saldo_prefijo(sp, "6", "D")
+    cerrado = (session.query(Asiento).filter(Asiento.origen == f"cierre:{corte.year}", Asiento.fecha <= corte)
+               .first() is not None)
+    if cerrado:  # el resultado ya quedó en 3605/3610 con el asiento de cierre
+        resultado = CERO
     return {
         "activo": activo, "det_activo": _detalle(session, s, ["1"]),
         "pasivo": pasivo, "det_pasivo": _detalle(session, s, ["2"]),
         "patrimonio": patrimonio, "det_patrimonio": _detalle(session, s, ["3"]),
+        "anteriores": anteriores,
         "resultado": resultado,
-        "total_patrimonio": patrimonio + resultado,
-        "cuadre": activo - pasivo - patrimonio - resultado,
+        "total_patrimonio": patrimonio + anteriores + resultado,
+        "cuadre": activo - pasivo - patrimonio - anteriores - resultado,
     }
 
 
@@ -182,7 +206,7 @@ def serie_mensual(session, anio):
     for mes in range(1, 13):
         inicio = date(anio, mes, 1)
         fin = date(anio + (mes == 12), (mes % 12) + 1, 1)
-        s = _sumas_por_cuenta(session, inicio, date.fromordinal(fin.toordinal() - 1))
+        s = _sumas_por_cuenta(session, inicio, date.fromordinal(fin.toordinal() - 1), incluir_cierre=False)
         ingresos = _saldo_prefijo(s, "4", "C")
         gastos = sum((_saldo_prefijo(s, p, "D") for p in ("51", "52", "53")), CERO)
         filas.append((mes, ingresos, gastos))

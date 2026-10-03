@@ -13,7 +13,8 @@
       <tr><td>(−) IVA de notas crédito</td><td class="n">{{ r.iva_devoluciones|pesos }}</td></tr>
       <tr><td>(−) IVA descontable</td><td class="n">{{ r.iva_descontable|pesos }}</td></tr>
       <tr><td>(−) ReteIVA practicada por clientes</td><td class="n">{{ r.reteiva|pesos }}</td></tr>
-      <tr class="res"><td>{{ 'Saldo a pagar' if r.neto >= 0 else 'Saldo a favor' }}</td><td class="n">{{ (r.neto if r.neto >= 0 else -r.neto)|pesos }}</td></tr>
+      {% if r.saldo_favor_anterior %}<tr><td>(−) Saldo a favor del bimestre anterior</td><td class="n">{{ r.saldo_favor_anterior|pesos }}</td></tr>{% endif %}
+      <tr class="res"><td>{{ 'Saldo a pagar' if r.neto_con_arrastre >= 0 else 'Saldo a favor' }}</td><td class="n">{{ (r.neto_con_arrastre if r.neto_con_arrastre >= 0 else -r.neto_con_arrastre)|pesos }}</td></tr>
       <tr><td>Valor para el recibo 2593 (múltiplo de mil)</td><td class="n">{{ r.a_pagar|pesos }}</td></tr>
     </table>
     {% if r.iva_no_descontable %}<p class="nota">IVA no descontable llevado como mayor valor del gasto: {{ r.iva_no_descontable|pesos }}</p>{% endif %}

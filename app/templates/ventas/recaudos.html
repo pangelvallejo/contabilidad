@@ -15,10 +15,11 @@
       <td>{{ r.referencia or '' }}{% if r.soporte_archivo %} <a href="/archivo/{{ r.soporte_archivo }}" target="_blank">soporte</a>{% endif %}</td>
       <td>{% for a in r.aplicaciones %}<a href="/ventas/{{ a.documento.id }}">{{ a.documento.numero }}</a> ({{ a.valor|pesos }}){{ ', ' if not loop.last }}{% endfor %}</td>
       <td class="n">{{ r.valor|pesos }}</td><td class="n">{{ r.sin_aplicar|pesos if r.sin_aplicar else '' }}</td>
-      <td><form method="post" action="/recaudos/{{ r.id }}/eliminar"><button class="peq peligro" data-confirmar="¿Eliminar este recaudo? Las facturas volverán a quedar pendientes.">Eliminar</button></form></td></tr>
+      <td><a class="btn peq" href="/recaudos/{{ r.id }}">Editar</a> <a class="btn peq" href="/recaudos/{{ r.id }}/pdf" title="Recibo de caja en PDF">PDF</a> <form method="post" action="/recaudos/{{ r.id }}/eliminar" style="display:inline"><button class="peq peligro" data-confirmar="¿Eliminar este recaudo? Las facturas volverán a quedar pendientes.">Eliminar</button></form></td></tr>
     {% endfor %}
     <tr class="total"><td colspan="5">Total</td><td class="n">{{ total|pesos }}</td><td colspan="2"></td></tr>
   </table>
+  {% include "_paginacion.html" %}
   {% else %}<p class="vacio">No hay recaudos registrados.</p>{% endif %}
 </div>
 {% endblock %}

@@ -3,7 +3,6 @@ import os
 import sqlite3
 import tempfile
 import threading
-import time
 import zipfile
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -32,6 +31,10 @@ def crear_respaldo(session) -> Path:
     from .contab import config as cfg, set_config
     with _lock:
         destino = carpeta_destino(session)
+        try:
+            conservar = max(1, int(cfg(session, "respaldos_a_conservar", "30")))
+        except ValueError:
+            conservar = 30
         destino.mkdir(parents=True, exist_ok=True)
         nombre = destino / f"respaldo_{datetime.now():%Y%m%d_%H%M%S}.zip"
         with tempfile.TemporaryDirectory() as tmp:
@@ -48,7 +51,6 @@ def crear_respaldo(session) -> Path:
                     for f in config.ADJUNTOS_DIR.rglob("*"):
                         if f.is_file():
                             z.write(f, Path("adjuntos") / f.relative_to(config.ADJUNTOS_DIR))
-        conservar = int(cfg(session, "respaldos_a_conservar", "30"))
         for viejo in sorted(destino.glob("respaldo_*.zip"))[:-conservar]:
             viejo.unlink(missing_ok=True)
         set_config(session, "ultimo_respaldo", datetime.now().isoformat(timespec="seconds"))
@@ -62,20 +64,3 @@ def respaldo_pendiente(session, horas=24) -> bool:
     if not ultimo:
         return True
     return datetime.now() - datetime.fromisoformat(ultimo) > timedelta(hours=horas)
-
-
-def iniciar_respaldo_automatico(session_factory):
-    """Hilo en segundo plano: revisa cada hora y respalda si pasaron 24 horas."""
-    def ciclo():
-        while True:
-            s = session_factory()
-            try:
-                if respaldo_pendiente(s):
-                    crear_respaldo(s)
-            except Exception as e:  # noqa: BLE001 — un fallo de respaldo no debe tumbar la app
-                print(f"[respaldo] No se pudo crear el respaldo: {e}")
-            finally:
-                s.close()
-            time.sleep(3600)
-
-    threading.Thread(target=ciclo, daemon=True, name="respaldo").start()

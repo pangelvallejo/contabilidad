@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block titulo %}Conciliación bancaria{% endblock %}
+{% block contenido %}
+<div class="encabezado">
+  <div><h1>Conciliación bancaria · {{ banco.nombre }}</h1>
+    <p class="sub">Importe el extracto (CSV o Excel descargado del banco). El programa cruza cada línea con los recaudos y pagos registrados; lo que no coincida lo registra aquí con un clic (4x1000, comisiones, pagos que faltaban).</p></div>
+</div>
+<div class="rejilla k4" style="margin-bottom:16px">
+  <div class="kpi"><div class="etq">Saldo según libros al {{ corte|fecha }}</div><div class="val">{{ saldo_libros|pesos }}</div></div>
+  <div class="kpi"><div class="etq">Saldo según extracto importado</div><div class="val">{{ saldo_extracto|pesos }}</div><div class="det">Diferencia {{ (saldo_libros - saldo_extracto)|pesos }}</div></div>
+  <div class="kpi"><div class="etq">Líneas pendientes</div><div class="val">{{ pendientes }}</div></div>
+</div>
+<form class="tarjeta filtros" method="post" enctype="multipart/form-data" action="/bancos/conciliacion?banco={{ banco.id }}">
+  <div><label>Banco</label><select name="banco" onchange="location='/bancos/conciliacion?banco='+this.value">{% for b in bancos %}<option value="{{ b.id }}" {{ 'selected' if b.id == banco.id }}>{{ b.nombre }}</option>{% endfor %}</select></div>
+  <div style="flex:1"><label>Extracto (CSV o Excel)</label><input type="file" name="extracto" accept=".csv,.xlsx,.txt"></div>
+  <button class="primario">Importar y conciliar</button>
+</form>
+<form class="filtros">
+  <input type="hidden" name="banco" value="{{ banco.id }}">
+  <div><label>Mostrar</label><select name="estado">{% for e, n in [('pendiente','Pendientes'),('conciliado','Conciliados'),('ignorado','Ignorados'),('todos','Todos')] %}<option value="{{ e }}" {{ 'selected' if e == estado }}>{{ n }}</option>{% endfor %}</select></div>
+  <div><label>Saldos al</label><input type="date" name="corte" value="{{ corte.isoformat() }}"></div>
+  <button>Ver</button>
+</form>
+<div class="tarjeta tabla-scroll">
+  {% if movs %}
+  <table>
+    <tr><th>Fecha</th><th>Descripción</th><th class="n">Valor</th><th>Estado</th><th style="min-width:420px">Acción</th></tr>
+    {% for m in movs %}
+    <tr><td>{{ m.fecha|fecha }}</td><td>{{ m.descripcion }}{% if m.referencia %} <span class="nota">{{ m.referencia }}</span>{% endif %}</td>
+      <td class="n">{{ m.valor|pesos }}</td>
+      <td>{% if m.estado == 'conciliado' %}<span class="etiqueta ok">conciliado</span> <span class="nota">{{ m.origen_tipo }} {{ m.origen_id }}</span>{% elif m.estado == 'ignorado' %}<span class="etiqueta Nota">ignorado</span>{% else %}<span class="etiqueta adv">pendiente</span>{% endif %}</td>
+      <td>
+        {% if m.estado == 'pendiente' %}
+        {% set sug = sugerencias.get(m.id, []) %}
+        <form method="post" action="/bancos/movimiento/{{ m.id }}" class="filtros" style="margin:0;gap:6px">
+          <input type="hidden" name="volver_estado" value="{{ estado }}">
+          {% if sug %}
+          <select name="origen">{% for tipo, oid, texto, valor in sug %}<option value="{{ tipo }}:{{ oid }}">{{ texto }} · {{ valor|pesos }}</option>{% endfor %}</select>
+          <button class="peq primario" name="accion" value="vincular">Vincular</button>
+          {% endif %}
+          {% if m.valor < 0 %}
+          <select name="categoria_id">{% set csug = categorias_sug.get(m.id) %}{% for c in categorias %}<option value="{{ c.id }}" {{ 'selected' if c.nombre == csug }}>{{ c.nombre }}</option>{% endfor %}</select>
+          <button class="peq" name="accion" value="gasto" title="Registra un gasto pagado desde este banco">Crear gasto</button>
+          <select name="gasto_id" class="sel-fact" data-mov="{{ m.id }}"><option value="">Pago de factura de proveedor…</option></select>
+          <select name="proveedor_id" class="sel-prov" data-mov="{{ m.id }}"><option value="">(proveedor)</option>{% for p in proveedores %}<option value="{{ p.id }}">{{ p.nombre }}</option>{% endfor %}</select>
+          <button class="peq" name="accion" value="pago_proveedor">Aplicar pago</button>
+          {% else %}
+          <select name="cliente_id"><option value="">Cliente…</option>{% for c in clientes %}<option value="{{ c.id }}">{{ c.nombre }}</option>{% endfor %}</select>
+          <label class="check" title="Tarjeta o pasarela"><input type="checkbox" name="medio_electronico"> electrónico</label>
+          <button class="peq" name="accion" value="recaudo" title="Crea el recaudo y lo aplica a las facturas más antiguas">Crear recaudo</button>
+          <select name="cuenta"><option value="421005">Rendimientos financieros</option><option value="425050">Reintegro de gastos</option><option value="235505">Aporte del socio</option></select>
+          <button class="peq" name="accion" value="ingreso">Otro ingreso</button>
+          {% endif %}
+          <button class="peq" name="accion" value="ignorar" title="No corresponde a la contabilidad">Ignorar</button>
+        </form>
+        {% else %}
+        <form method="post" action="/bancos/movimiento/{{ m.id }}"><input type="hidden" name="volver_estado" value="{{ estado }}"><button class="peq" name="accion" value="pendiente">Deshacer</button></form>
+        {% endif %}
+      </td></tr>
+    {% endfor %}
+  </table>
+  {% else %}<p class="vacio">No hay movimientos {{ estado if estado != 'todos' else '' }}. Importe un extracto para empezar.</p>{% endif %}
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+document.querySelectorAll('.sel-prov').forEach(sel => sel.addEventListener('change', async () => {
+  const dest = document.querySelector('.sel-fact[data-mov="' + sel.dataset.mov + '"]');
+  dest.innerHTML = '<option value="">Pago de factura de proveedor…</option>';
+  if (!sel.value) return;
+  const r = await fetch('/bancos/facturas-proveedor?proveedor=' + sel.value);
+  const d = await r.json();
+  d.facturas.forEach(f => { const o = document.createElement('option'); o.value = f.id; o.textContent = f.texto; dest.appendChild(o); });
+}));
+</script>
+{% endblock %}

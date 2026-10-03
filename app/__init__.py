@@ -9,7 +9,7 @@ from .db import Session, init_engine, sincronizar_esquema
 
 warnings.filterwarnings("ignore", message=".*Decimal objects natively.*")
 
-VERSION = "1.0.0"
+VERSION = "1.2.0"
 
 
 def create_app(datos_dir=None, respaldo_automatico=False):
@@ -20,6 +20,8 @@ def create_app(datos_dir=None, respaldo_automatico=False):
         config.ADJUNTOS_DIR = config.DATOS_DIR / "adjuntos"
     config.DATOS_DIR.mkdir(parents=True, exist_ok=True)
     config.ADJUNTOS_DIR.mkdir(parents=True, exist_ok=True)
+    from .sistema import aplicar_restauracion_pendiente, clave_secreta
+    restaurado = aplicar_restauracion_pendiente()
 
     init_engine(f"sqlite:///{config.DB_PATH}")
     sincronizar_esquema()
@@ -29,7 +31,10 @@ def create_app(datos_dir=None, respaldo_automatico=False):
 
     app = Flask(__name__)
     app.config["MAX_CONTENT_LENGTH"] = 200 * 1024 * 1024
-    app.secret_key = "contabilidad-local"  # solo se usa para mensajes flash; la app escucha en 127.0.0.1
+    app.secret_key = clave_secreta()
+    app.config["RESTAURADO"] = restaurado
+    app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+    app.config["SESSION_COOKIE_HTTPONLY"] = True
 
     app.jinja_env.filters["pesos"] = formato.pesos
     app.jinja_env.filters["numero"] = formato.numero
@@ -48,6 +53,44 @@ def create_app(datos_dir=None, respaldo_automatico=False):
         s = Session()
         return {"empresa_nombre": cfg(s, "empresa_nombre", ""), "hoy": date.today(), "version": VERSION}
 
+    @app.before_request
+    def _control_acceso():
+        """Desde el propio computador no pide clave; desde otro equipo de la red, sí (si está activado)."""
+        from flask import flash, redirect, render_template, request, session as sesion, url_for
+        from .sistema import acceso_red_activo, es_local, misma_origen
+        if request.method == "POST" and not misma_origen(request):
+            abort(403)
+        if request.endpoint == "static" or es_local(request.remote_addr or ""):
+            return None
+        s = Session()
+        if not acceso_red_activo(s):
+            abort(403)
+        if sesion.get("autenticado"):
+            return None
+        if request.path == "/acceso":
+            if request.method == "POST":
+                from .contab import config as cfg
+                import hmac
+                if hmac.compare_digest(request.form.get("clave", ""), cfg(s, "clave_acceso", "")):
+                    sesion["autenticado"] = True
+                    sesion.permanent = True
+                    from .routes import destino_seguro
+                    return redirect(destino_seguro(request.form.get("siguiente"), "/"))
+                flash("Contraseña incorrecta.", "error")
+            return render_template("acceso.html", siguiente=request.args.get("siguiente", "/"))
+        return redirect(url_for("acceso", siguiente=request.path))
+
+    @app.route("/acceso", methods=["GET", "POST"])
+    def acceso():
+        from flask import redirect
+        return redirect("/")  # el control real está en before_request; desde el PC local no aplica
+
+    @app.route("/salir")
+    def salir():
+        from flask import redirect, session as sesion
+        sesion.clear()
+        return redirect("/")
+
     @app.route("/archivo/<path:relativa>")
     def archivo(relativa):
         from .archivos import ruta_absoluta
@@ -59,13 +102,25 @@ def create_app(datos_dir=None, respaldo_automatico=False):
             abort(404)
         return send_file(ruta)
 
-    from .routes import contabilidad, gastos, inicio, impuestos, terceros, ajustes, ventas
-    for bp in (inicio.bp, ventas.bp, gastos.bp, terceros.bp, impuestos.bp, contabilidad.bp, ajustes.bp):
+    from .routes import (ajustes, bancos, buscar, contabilidad, gastos, impuestos, inicio, planeacion, terceros,
+                         ventas)
+    for bp in (inicio.bp, ventas.bp, gastos.bp, terceros.bp, impuestos.bp, contabilidad.bp, ajustes.bp, buscar.bp,
+               planeacion.bp, bancos.bp):
         app.register_blueprint(bp)
 
-    if respaldo_automatico:
+    if respaldo_automatico:  # modo normal (no pruebas): depreciaciones del mes y tareas en segundo plano
+        try:
+            from .planeacion import causar_depreciaciones
+            causar_depreciaciones(Session(), forzar=True)  # automática, como la causación del impuesto
+        except Exception as e:  # noqa: BLE001
+            print(f"[depreciación] {e}")
+        finally:
+            Session.remove()
         from sqlalchemy.orm import sessionmaker
+        from .bitacora import activar
         from .db import engine
-        from .respaldo import iniciar_respaldo_automatico
-        iniciar_respaldo_automatico(sessionmaker(bind=engine))
+        from .tareas import iniciar
+        fabrica = sessionmaker(bind=engine)
+        activar(fabrica)  # lo que importan el correo y la carpeta vigilada también queda en el historial
+        iniciar(fabrica)
     return app

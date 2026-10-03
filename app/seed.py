@@ -63,6 +63,8 @@ PUC = [
     ("37", "Resultados de ejercicios anteriores", "C"),
     ("3705", "Utilidades acumuladas", "C"),
     ("370505", "Utilidades acumuladas", "C"),
+    ("3710", "Pérdidas acumuladas", "D"),
+    ("371005", "Pérdidas acumuladas", "D"),
     ("4", "INGRESOS", "C"),
     ("41", "Operacionales", "C"),
     ("4155", "Actividades empresariales y de consultoría", "C"),
@@ -166,7 +168,7 @@ CATEGORIAS = [
     ("Taxis y transporte urbano", "519545", "5016", "uber,taxi,cabify,didi,indriver,transporte", True),
     ("Parqueaderos", "519565", "5016", "parqueadero,parking,city parking", True),
     ("Mensajería", "513540", "5004",
-     "mensajeria,servientrega,envia,interrapidisimo,4-72,coordinadora,deprisa,domicilio", True),
+     "mensajeria,servientrega,envia colvanes,interrapidisimo,4-72,coordinadora,deprisa,domicilio", True),
     ("Viajes: tiquetes", "515515", "5016", "avianca,latam,tiquete,vuelo,aerolinea,jetsmart,wingo,satena", True),
     ("Viajes: hoteles y viáticos", "515505", "5016", "hotel,alojamiento,airbnb,hospedaje", True),
     ("Publicidad y página web", "523560", "5004", "publicidad,marketing,linkedin,dominio,hosting,pagina web", True),
@@ -212,12 +214,25 @@ NOTA_FECHA_ESTIMADA = "Fecha estimada con el calendario 2026; confirmar con el d
 
 
 def sembrar(session):
-    if session.get(Cuenta, "1") is None:
-        codigos = [c for c, _, _ in PUC]
-        for codigo, nombre, nat in PUC:
-            tiene_hijas = any(o != codigo and o.startswith(codigo) for o in codigos)
-            session.add(Cuenta(codigo=codigo, nombre=nombre, naturaleza=nat, movimiento=not tiene_hijas))
-        session.flush()
+    session.info["sin_bitacora"] = True  # los datos iniciales no son cambios del usuario
+    try:
+        _sembrar(session)
+    finally:
+        session.info.pop("sin_bitacora", None)
+
+
+def _sembrar(session):
+    codigos = [c for c, _, _ in PUC]
+    existentes = {c.codigo for c in session.query(Cuenta.codigo)}
+    for codigo, nombre, nat in PUC:  # también agrega cuentas nuevas de versiones posteriores
+        if codigo in existentes:
+            continue
+        tiene_hijas = any(o != codigo and o.startswith(codigo) for o in codigos)
+        session.add(Cuenta(codigo=codigo, nombre=nombre, naturaleza=nat, movimiento=not tiene_hijas))
+        padre = session.get(Cuenta, codigo[:-2]) if len(codigo) > 2 else None
+        if padre is not None and padre.movimiento:
+            padre.movimiento = False
+    session.flush()
 
     if not session.query(CategoriaGasto).first():
         for nombre, cuenta, concepto, claves, desc in CATEGORIAS:

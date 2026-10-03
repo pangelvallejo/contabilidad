@@ -3,6 +3,7 @@
 Cada documento (factura, recaudo, gasto, pago) es dueño de sus asientos, identificados por
 `origen`. Al crear o editar un documento se regeneran; al borrarlo, se eliminan.
 """
+from datetime import date
 from decimal import Decimal, ROUND_HALF_UP
 
 from sqlalchemy import func
@@ -35,6 +36,7 @@ TIPOS_ASIENTO = {
     "CE": "Comprobante de egreso",
     "IM": "Pago de impuestos",
     "AJ": "Ajuste / manual",
+    "CI": "Cierre de ejercicio",
 }
 
 
@@ -74,19 +76,45 @@ def set_config(session, clave, valor):
     c.valor = valor
 
 
+def periodo_bloqueado_hasta(session):
+    """Fecha hasta la cual la contabilidad está cerrada (se fija al pagar el 2593 o al cerrar el año)."""
+    valor = config(session, "periodo_bloqueado_hasta")
+    try:
+        return date.fromisoformat(valor) if valor else None
+    except ValueError:
+        return None
+
+
+def verificar_periodo(session, fecha, forzar=False):
+    tope = periodo_bloqueado_hasta(session)
+    if not forzar and tope and fecha and fecha <= tope:
+        raise ErrorContable(
+            f"El periodo hasta el {tope:%d/%m/%Y} está bloqueado porque ya se declaró. "
+            "Para corregirlo cambie la fecha de bloqueo en Configuración.")
+
+
 def _siguiente_numero(session, tipo):
     return (session.query(func.max(Asiento.numero)).filter(Asiento.tipo == tipo).scalar() or 0) + 1
 
 
-def guardar_asiento(session, *, origen, tipo, fecha, descripcion, tercero_id, lineas, asiento=None):
+def guardar_asiento(session, *, origen, tipo, fecha, descripcion, tercero_id, lineas, asiento=None, forzar=False):
     """Crea o reemplaza el asiento (origen, tipo). `lineas`: (cuenta, débito, crédito, tercero_id, detalle).
 
     Las líneas con valor cero se omiten; si no queda ninguna, el asiento se elimina.
+    Rechaza fechas dentro de un periodo bloqueado, salvo `forzar` (cierres y causaciones).
     """
     lineas = [(c, redondear(db), redondear(cr), t, det) for c, db, cr, t, det in lineas
               if redondear(db) != 0 or redondear(cr) != 0]
     if asiento is None and origen is not None:
         asiento = session.query(Asiento).filter_by(origen=origen, tipo=tipo).one_or_none()
+    if asiento is not None and asiento.fecha == fecha and asiento.tercero_id == tercero_id:
+        actuales = [(l.cuenta, l.debito, l.credito, l.tercero_id, l.descripcion or None) for l in asiento.lineas]
+        if actuales == [(c, db, cr, t, det or None) for c, db, cr, t, det in lineas]:
+            asiento.descripcion = descripcion[:250]
+            return asiento  # nada cambió en la contabilidad: no cuenta como modificación del periodo
+    verificar_periodo(session, fecha, forzar)
+    if asiento is not None:
+        verificar_periodo(session, asiento.fecha, forzar)
     if not lineas:
         if asiento is not None:
             session.delete(asiento)
@@ -110,8 +138,9 @@ def guardar_asiento(session, *, origen, tipo, fecha, descripcion, tercero_id, li
     return asiento
 
 
-def borrar_asientos(session, origen):
+def borrar_asientos(session, origen, forzar=False):
     for a in session.query(Asiento).filter_by(origen=origen).all():
+        verificar_periodo(session, a.fecha, forzar)
         session.delete(a)
     session.flush()
 
@@ -194,9 +223,17 @@ def contabilizar_pago_impuesto(session, p):
     periodo = f"bimestre {p.bimestre} de {p.anio}" if p.bimestre else str(p.anio)
     desc = f"Formulario {p.formulario} {periodo}"
     if p.formulario == "2593":
-        lineas = [(CTA_ANTICIPO_SIMPLE, p.valor_simple, 0, None, "Anticipo SIMPLE"),
+        # El anticipo del bimestre 6 se paga en enero: ya es un pago del impuesto causado al cierre (pasivo),
+        # no un anticipo del año en curso.
+        cta_simple = CTA_SIMPLE_POR_PAGAR if p.fecha.year > p.anio else CTA_ANTICIPO_SIMPLE
+        lineas = [(cta_simple, p.valor_simple, 0, None, "Anticipo SIMPLE"),
                   (CTA_IVA_PAGADO_2593, p.valor_iva, 0, None, "IVA bimestral"),
                   (p.banco.cuenta, 0, p.total, None, desc)]
+        if p.bimestre:
+            # La reteIVA que practicaron los clientes en el bimestre se aplica contra el IVA generado.
+            from .impuestos import resumen_iva_bimestre
+            rete = resumen_iva_bimestre(session, p.anio, p.bimestre).reteiva
+            lineas += [(CTA_IVA_GENERADO, rete, 0, None, "ReteIVA aplicada"), (CTA_RETEIVA, 0, rete, None, "ReteIVA aplicada")]
     else:  # saldo de declaración anual: 260 cancela SIMPLE por pagar; 300 cancela IVA
         cta = CTA_SIMPLE_POR_PAGAR if p.formulario == "260" else CTA_IVA_PAGADO_2593
         lineas = [(cta, p.total, 0, None, desc), (p.banco.cuenta, 0, p.total, None, desc)]
