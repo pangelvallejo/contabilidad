@@ -63,6 +63,8 @@ PUC = [
     ("37", "Resultados de ejercicios anteriores", "C"),
     ("3705", "Utilidades acumuladas", "C"),
     ("370505", "Utilidades acumuladas", "C"),
+    ("3710", "Pérdidas acumuladas", "D"),
+    ("371005", "Pérdidas acumuladas", "D"),
     ("4", "INGRESOS", "C"),
     ("41", "Operacionales", "C"),
     ("4155", "Actividades empresariales y de consultoría", "C"),
@@ -220,12 +222,17 @@ def sembrar(session):
 
 
 def _sembrar(session):
-    if session.get(Cuenta, "1") is None:
-        codigos = [c for c, _, _ in PUC]
-        for codigo, nombre, nat in PUC:
-            tiene_hijas = any(o != codigo and o.startswith(codigo) for o in codigos)
-            session.add(Cuenta(codigo=codigo, nombre=nombre, naturaleza=nat, movimiento=not tiene_hijas))
-        session.flush()
+    codigos = [c for c, _, _ in PUC]
+    existentes = {c.codigo for c in session.query(Cuenta.codigo)}
+    for codigo, nombre, nat in PUC:  # también agrega cuentas nuevas de versiones posteriores
+        if codigo in existentes:
+            continue
+        tiene_hijas = any(o != codigo and o.startswith(codigo) for o in codigos)
+        session.add(Cuenta(codigo=codigo, nombre=nombre, naturaleza=nat, movimiento=not tiene_hijas))
+        padre = session.get(Cuenta, codigo[:-2]) if len(codigo) > 2 else None
+        if padre is not None and padre.movimiento:
+            padre.movimiento = False
+    session.flush()
 
     if not session.query(CategoriaGasto).first():
         for nombre, cuenta, concepto, claves, desc in CATEGORIAS:

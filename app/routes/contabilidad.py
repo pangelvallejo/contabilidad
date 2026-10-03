@@ -229,10 +229,18 @@ def asiento(id=None):
             flash("Este asiento es automático: modifique el documento que lo origina.", "error")
             return redirect(url_for("contabilidad.asiento", id=id))
         if request.form.get("accion") == "eliminar" and a is not None:
-            s.delete(a)
-            s.commit()
-            flash("Asiento eliminado.", "ok")
-            return redirect(url_for("contabilidad.diario"))
+            try:
+                contab.verificar_periodo(s, a.fecha)
+                from .. import bancos
+                bancos.liberar(s, "asiento", a.id)
+                s.delete(a)
+                s.commit()
+                flash("Asiento eliminado.", "ok")
+                return redirect(url_for("contabilidad.diario"))
+            except contab.ErrorContable as e:
+                s.rollback()
+                flash(str(e), "error")
+                return redirect(url_for("contabilidad.asiento", id=id))
         try:
             lineas = []
             cuentas = request.form.getlist("cuenta")

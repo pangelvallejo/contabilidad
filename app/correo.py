@@ -4,6 +4,7 @@ Funciona con Gmail usando una "contraseña de aplicación" (requiere verificaci�
 cualquier proveedor IMAP. Solo se descargan adjuntos .zip y .xml; cada mensaje se procesa una sola vez.
 """
 import email
+import hashlib
 import imaplib
 import re
 from dataclasses import dataclass, field
@@ -36,6 +37,12 @@ def _decodificar(texto):
     for valor, cod in decode_header(texto or ""):
         partes.append(valor.decode(cod or "utf-8", "replace") if isinstance(valor, bytes) else valor)
     return "".join(partes)
+
+
+def _clave_mensaje(message_id, uid) -> str:
+    """Identificador estable y corto del mensaje: hash del Message-ID o, si no trae, del UID IMAP."""
+    base = (message_id or "").strip() or f"uid-{uid.decode() if isinstance(uid, bytes) else uid}"
+    return "sha1:" + hashlib.sha1(base.encode("utf-8", "replace")).hexdigest()
 
 
 def _servidor(nombre):
@@ -74,28 +81,35 @@ def revisar(session, limite=50) -> ResultadoCorreo:
         res.error = f"No se pudo conectar al correo: {e}"
         return res
     try:
-        imap.select(c["correo_carpeta"] or "INBOX", readonly=True)
+        estado, datos = imap.select(c["correo_carpeta"] or "INBOX", readonly=True)
+        if estado != "OK":
+            res.error = f"La carpeta '{c['correo_carpeta'] or 'INBOX'}' no existe en el buzón."
+            return res
         dias = int(c["correo_dias"] or 30)
         from datetime import date, timedelta
         desde = (date.today() - timedelta(days=dias)).strftime("%d-%b-%Y")
-        criterio = f'(SINCE {desde})'
-        if c["correo_filtro"]:
-            criterio = f'(SINCE {desde} SUBJECT "{c["correo_filtro"]}")'
-        estado, datos = imap.search(None, criterio)
+        filtro = (c["correo_filtro"] or "").strip()
+        if filtro:
+            # El asunto puede llevar tildes: se envía como literal UTF-8 (imaplib solo codifica ASCII).
+            imap.literal = filtro.encode("utf-8")
+            estado, datos = imap.uid("search", "CHARSET", "UTF-8", "SINCE", desde, "SUBJECT")
+        else:
+            estado, datos = imap.uid("search", None, "SINCE", desde)
         if estado != "OK":
             res.error = "La búsqueda en el buzón falló."
             return res
         ids = datos[0].split()[-limite:]
         procesados = {m.mensaje_id for m in session.query(CorreoProcesado.mensaje_id)}
         for uid in ids:
-            estado, partes = imap.fetch(uid, "(BODY.PEEK[HEADER.FIELDS (MESSAGE-ID SUBJECT)])")
+            estado, partes = imap.uid("fetch", uid, "(BODY.PEEK[HEADER.FIELDS (MESSAGE-ID SUBJECT)])")
             if estado != "OK" or not partes or not isinstance(partes[0], tuple):
                 continue
             cab = email.message_from_bytes(partes[0][1])
-            mid = (cab.get("Message-ID") or f"uid-{uid.decode()}").strip()
+            mid = _clave_mensaje(cab.get("Message-ID"), uid)
             if mid in procesados:
                 continue
-            estado, partes = imap.fetch(uid, "(BODY.PEEK[])")
+            procesados.add(mid)
+            estado, partes = imap.uid("fetch", uid, "(BODY.PEEK[])")
             if estado != "OK" or not partes or not isinstance(partes[0], tuple):
                 continue
             msg = email.message_from_bytes(partes[0][1])
@@ -113,7 +127,7 @@ def revisar(session, limite=50) -> ResultadoCorreo:
                     lineas.append(f"{'OK' if r.ok else 'NO'} {r.archivo}: {r.mensaje}")
                     if r.ok:
                         res.importados += 1
-            session.add(CorreoProcesado(mensaje_id=mid[:250], asunto=asunto[:250],
+            session.add(CorreoProcesado(mensaje_id=mid, asunto=asunto[:250],
                                         resultado="\n".join(lineas) or "Sin adjuntos XML/ZIP"))
             session.commit()
             if lineas:

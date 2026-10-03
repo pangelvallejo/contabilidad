@@ -3,7 +3,7 @@ from datetime import date
 
 from flask import Blueprint, abort, flash, redirect, render_template, request, url_for
 
-from .. import archivos, contab, exogena, exportar, impuestos
+from .. import archivos, bancos, contab, exogena, exportar, impuestos
 from ..config import BIMESTRES, SIMPLE_TARIFA_ANUAL, SIMPLE_TARIFA_BIMESTRAL
 from ..db import Session
 from ..models import Banco, PagoImpuesto, Vencimiento
@@ -95,10 +95,15 @@ def registrar_pago():
 def eliminar_pago(id):
     s = Session()
     p = s.get(PagoImpuesto, id) or abort(404)
-    contab.borrar_asientos(s, f"impuesto:{p.id}")
-    s.delete(p)
-    s.commit()
-    flash("Pago eliminado.", "ok")
+    try:
+        bancos.liberar(s, "impuesto", p.id)
+        contab.borrar_asientos(s, f"impuesto:{p.id}")
+        s.delete(p)
+        s.commit()
+        flash("Pago eliminado.", "ok")
+    except Exception as e:  # noqa: BLE001
+        s.rollback()
+        flash(f"No se pudo eliminar: {e}", "error")
     return redirect(destino_seguro(request.form.get("volver"), url_for("impuestos.simple")))
 
 
@@ -107,9 +112,13 @@ def f260():
     s = Session()
     anio = anio_arg()
     if request.method == "POST":
-        impuestos.causar_simple_anual(s, anio)
-        s.commit()
-        flash(f"Impuesto SIMPLE {anio} causado en la contabilidad (asiento al 31 de diciembre).", "ok")
+        try:
+            impuestos.causar_simple_anual(s, anio)
+            s.commit()
+            flash(f"Impuesto SIMPLE {anio} causado en la contabilidad (asiento al 31 de diciembre).", "ok")
+        except Exception as e:  # noqa: BLE001
+            s.rollback()
+            flash(f"No se pudo causar: {e}", "error")
         return redirect(url_for("impuestos.f260", anio=anio))
     dec = impuestos.declaracion_simple(s, anio)
     pagos = s.query(PagoImpuesto).filter_by(formulario="260", anio=anio).all()

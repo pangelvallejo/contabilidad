@@ -31,7 +31,12 @@ def _texto(v):
     return "" if v is None else str(v)[:80]
 
 
+SENSIBLES = ("clave", "token", "password", "contrasena")
+
+
 def _cambios(obj):
+    if isinstance(obj, Config) and any(x in (obj.clave or "").lower() for x in SENSIBLES):
+        return "valor: •••• → ••••"
     partes = []
     for attr in inspect(obj).attrs:
         if attr.key in IGNORAR_CAMPOS or not hasattr(attr, "history"):

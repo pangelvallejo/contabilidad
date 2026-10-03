@@ -23,8 +23,10 @@ def flujo_caja():
 def depreciaciones():
     s = Session()
     if request.method == "POST":
-        n = planeacion.causar_depreciaciones(s)
+        n, omitidos = planeacion.causar_depreciaciones(s)
         flash(f"{n} asiento(s) de depreciación creados." if n else "No había depreciaciones pendientes.", "ok")
+        if omitidos:
+            flash(f"{omitidos} cuota(s) quedaron sin causar porque caen en un periodo bloqueado.", "advertencia")
         return redirect(url_for("planeacion.depreciaciones"))
     return render_template("planeacion/depreciaciones.html", filas=planeacion.resumen_activos(s))
 
@@ -40,7 +42,7 @@ def cierre():
                 planeacion.reabrir_anio(s, anio)
                 flash(f"Año {anio} reabierto. Recuerde ajustar la fecha de bloqueo en Configuración.", "ok")
             else:
-                planeacion.causar_depreciaciones(s, date(anio, 12, 31))
+                planeacion.causar_depreciaciones(s, date(anio, 12, 31), forzar=True)
                 impuestos.causar_simple_anual(s, anio)
                 resultado = planeacion.cerrar_anio(s, anio)
                 flash(f"Año {anio} cerrado. Resultado del ejercicio: {resultado:,.0f}. Contabilidad bloqueada "

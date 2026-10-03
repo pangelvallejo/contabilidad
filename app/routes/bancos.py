@@ -5,7 +5,7 @@ from flask import Blueprint, abort, flash, redirect, render_template, request, u
 
 from .. import bancos, cartera, contab, reportes
 from ..db import Session
-from ..models import (CERO, Banco, CategoriaGasto, DocumentoVenta, Gasto, MovimientoBanco, PagoGasto, Recaudo,
+from ..models import (CERO, Banco, CategoriaGasto, Cuenta, Gasto, MovimientoBanco, PagoGasto, Recaudo,
                       Tercero)
 from . import check, dinero, fecha_arg
 
@@ -30,10 +30,12 @@ def conciliacion():
             flash("Seleccione el archivo del extracto (CSV o Excel).", "error")
         else:
             try:
-                nuevas, repetidas = bancos.importar_extracto(s, banco, archivo.filename, archivo.read())
+                nuevas, repetidas, omitidas = bancos.importar_extracto(s, banco, archivo.filename, archivo.read())
                 auto = bancos.conciliar_automatico(s, banco.id)
                 flash(f"{nuevas} movimiento(s) importado(s), {repetidas} ya existían. {auto} conciliado(s) "
                       "automáticamente.", "ok")
+                if omitidas:
+                    flash(f"{omitidas} fila(s) del archivo se omitieron (sin fecha o valor, o líneas de saldo).", "info")
             except Exception as e:  # noqa: BLE001
                 s.rollback()
                 flash(f"No se pudo importar el extracto: {e}", "error")
@@ -63,15 +65,26 @@ def accion(id):
     mov = s.get(MovimientoBanco, id) or abort(404)
     accion = request.form.get("accion")
     try:
+        if accion == "pendiente":
+            bancos.deshacer(s, mov)
+            s.commit()
+            return redirect(url_for("bancos.conciliacion", banco=mov.banco_id,
+                                    estado=request.form.get("volver_estado", "pendiente")))
+        if mov.estado != "pendiente":
+            raise ValueError("La línea ya fue conciliada o ignorada; use 'Deshacer' primero.")
         if accion == "vincular":
-            tipo, _, oid = request.form["origen"].partition(":")
+            tipo, _, oid = request.form.get("origen", "").partition(":")
+            if tipo not in bancos.TIPOS_ORIGEN or not oid.isdigit() or not bancos.origen_existe(s, tipo, int(oid)):
+                raise ValueError("Seleccione un movimiento válido para vincular.")
+            if (tipo, int(oid)) in bancos._ya_conciliados(s):
+                raise ValueError("Ese movimiento ya está vinculado a otra línea del extracto.")
             mov.origen_tipo, mov.origen_id, mov.estado = tipo, int(oid), "conciliado"
         elif accion == "ignorar":
             mov.estado = "ignorado"
-        elif accion == "pendiente":
-            mov.estado, mov.origen_tipo, mov.origen_id = "pendiente", None, None
         elif accion == "gasto":
-            categoria = s.get(CategoriaGasto, int(request.form["categoria_id"]))
+            categoria = s.get(CategoriaGasto, request.form.get("categoria_id", type=int) or 0)
+            if categoria is None:
+                raise ValueError("Seleccione una categoría.")
             g = Gasto(tipo_soporte=request.form.get("tipo_soporte", "RE"), fecha=mov.fecha,
                       proveedor_id=request.form.get("proveedor_id", type=int) or None, categoria=categoria,
                       descripcion=mov.descripcion, subtotal=-mov.valor, iva=CERO, iva_descontable=False,
@@ -83,36 +96,41 @@ def accion(id):
             s.flush()
             s.refresh(g)
             contab.contabilizar_gasto(s, g)
-            mov.origen_tipo, mov.origen_id, mov.estado = "gasto", g.id, "conciliado"
+            mov.origen_tipo, mov.origen_id, mov.estado, mov.creado_aqui = "gasto", g.id, "conciliado", True
         elif accion == "pago_proveedor":
-            g = s.get(Gasto, int(request.form["gasto_id"]))
-            if g is None or -mov.valor > g.saldo:
+            g = s.get(Gasto, request.form.get("gasto_id", type=int) or 0)
+            if g is None or mov.valor >= 0 or -mov.valor > g.saldo:
                 raise ValueError("El valor supera el saldo de la factura del proveedor.")
             p = PagoGasto(fecha=mov.fecha, cuenta_pago=mov.banco.cuenta, valor=-mov.valor)
             s.add(p)
             g.pagos.append(p)
             s.flush()
             contab.contabilizar_pago_gasto(s, p)
-            mov.origen_tipo, mov.origen_id, mov.estado = "pagogasto", p.id, "conciliado"
+            mov.origen_tipo, mov.origen_id, mov.estado, mov.creado_aqui = "pagogasto", p.id, "conciliado", True
         elif accion == "recaudo":
             if mov.valor <= 0:
                 raise ValueError("Solo las entradas de dinero se registran como recaudo.")
             cliente_id = int(request.form["cliente_id"])
             rec = Recaudo(fecha=mov.fecha, cliente_id=cliente_id, banco_id=mov.banco_id, valor=mov.valor,
-                          medio_electronico=check("medio_electronico"), referencia=(mov.referencia or mov.descripcion)[:80])
+                          medio_electronico=check("medio_electronico"), referencia=(mov.referencia or mov.descripcion)[:80],
+                          notas="Conciliación bancaria")
             s.add(rec)
             sugerencia, _ = cartera.aplicar_automatico(s, cliente_id, mov.valor)
             cartera.registrar_aplicaciones(rec, {doc: v for doc, _, v in sugerencia})
             s.flush()
             contab.contabilizar_recaudo(s, rec)
-            mov.origen_tipo, mov.origen_id, mov.estado = "recaudo", rec.id, "conciliado"
+            mov.origen_tipo, mov.origen_id, mov.estado, mov.creado_aqui = "recaudo", rec.id, "conciliado", True
         elif accion == "ingreso":
             # Rendimientos, reintegros u otros ingresos sin factura: asiento banco contra la cuenta elegida
             cuenta = request.form.get("cuenta", "421005")
+            if mov.valor <= 0:
+                raise ValueError("Solo las entradas de dinero se registran como ingreso.")
+            if s.get(Cuenta, cuenta) is None:
+                raise ValueError("Cuenta no válida.")
             a = contab.guardar_asiento(s, origen=None, tipo="AJ", fecha=mov.fecha,
                                        descripcion=f"Banco: {mov.descripcion}"[:250], tercero_id=None,
                                        lineas=[(mov.banco.cuenta, mov.valor, 0, None, None), (cuenta, 0, mov.valor, None, None)])
-            mov.origen_tipo, mov.origen_id, mov.estado = "asiento", a.id, "conciliado"
+            mov.origen_tipo, mov.origen_id, mov.estado, mov.creado_aqui = "asiento", a.id, "conciliado", True
         s.commit()
     except Exception as e:  # noqa: BLE001
         s.rollback()

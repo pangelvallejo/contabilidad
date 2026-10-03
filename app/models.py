@@ -321,6 +321,7 @@ class MovimientoBanco(Base):
     estado: Mapped[str] = mapped_column(String(12), default="pendiente")  # pendiente | conciliado | ignorado
     origen_tipo: Mapped[str | None] = mapped_column(String(12))  # recaudo | pagogasto | gasto | impuesto | asiento
     origen_id: Mapped[int | None] = mapped_column(Integer)
+    creado_aqui: Mapped[bool] = mapped_column(Boolean, default=False)  # el documento vinculado lo creó la conciliación
     importado: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
 
     banco: Mapped[Banco] = relationship()

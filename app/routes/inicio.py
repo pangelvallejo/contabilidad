@@ -51,6 +51,7 @@ def alertas(s, hoy):
     # Clientes con honorarios mensuales a los que no se les ha facturado este mes
     for t in s.query(Tercero).filter(Tercero.retainer_mensual.isnot(None), Tercero.retainer_mensual > 0):
         facturado = (s.query(DocumentoVenta).filter(DocumentoVenta.cliente_id == t.id, DocumentoVenta.tipo == "FV",
+                                                    DocumentoVenta.anulada.is_(False),
                                                     DocumentoVenta.fecha >= inicio_mes).first())
         if facturado is None:
             res.append(("info", f"Honorarios mensuales sin facturar este mes: {t.nombre}", t.retainer_mensual,

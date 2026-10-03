@@ -26,13 +26,18 @@ CAMPOS_EMPRESA = ["empresa_nombre", "empresa_nit", "empresa_dv", "empresa_direcc
 def inicio():
     s = Session()
     if request.method == "POST":
-        accion = request.form.get("accion")
+        accion = (request.form.getlist("accion") or [""])[-1]  # el botón pulsado va después del campo oculto
         if accion == "empresa":
             for campo in CAMPOS_EMPRESA:
                 if campo in request.form:
                     valor = request.form.get(campo, "").strip()
                     if campo in ("empresa_nit", "empresa_dv"):
                         valor = re.sub(r"\D", "", valor)
+                    if campo == "periodo_bloqueado_hasta" and valor:
+                        valor = _fecha_iso(valor)
+                        if valor is None:
+                            flash("La fecha de bloqueo no es válida; use el selector de fecha.", "error")
+                            continue
                     contab.set_config(s, campo, valor)
             if request.form.get("uvt_anio") and request.form.get("uvt_valor", "").strip():
                 try:
@@ -172,3 +177,14 @@ def _nueva_subcuenta(s, padre):
     existentes = [c.codigo for c in s.query(Cuenta).filter(Cuenta.codigo.like(f"{padre}__"))]
     n = max((int(c[-2:]) for c in existentes), default=0) + 1
     return f"{padre}{n:02d}"
+
+
+def _fecha_iso(texto):
+    """Acepta 2026-12-31 o 31/12/2026 y devuelve ISO; None si no es una fecha."""
+    from datetime import datetime
+    for fmt in ("%Y-%m-%d", "%d/%m/%Y"):
+        try:
+            return datetime.strptime(texto.strip(), fmt).date().isoformat()
+        except ValueError:
+            continue
+    return None

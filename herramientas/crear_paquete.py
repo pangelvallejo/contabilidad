@@ -44,7 +44,9 @@ def main():
         zipfile.ZipFile(io.BytesIO(r.read())).extractall(py_dir)
     # Habilitar site-packages en la distribución embebida
     pth = next(py_dir.glob("python3*._pth"))
-    pth.write_text(pth.read_text().replace("#import site", "import site"), encoding="utf-8")
+    # Habilita site-packages y agrega la carpeta del programa (..) para que `python -m app` encuentre `app/`:
+    # el Python embebido fija safe_path y no incluye el directorio actual.
+    pth.write_text(pth.read_text().replace("#import site", "import site").rstrip() + "\n..\n", encoding="utf-8")
     print("Instalando pip y dependencias…")
     with urllib.request.urlopen(URL_GET_PIP) as r:
         (py_dir / "get-pip.py").write_bytes(r.read())
@@ -53,6 +55,9 @@ def main():
     subprocess.check_call([str(python), "-m", "pip", "install", "-q", "--no-warn-script-location",
                            "-r", str(carpeta / "requirements.txt")])
     (py_dir / "get-pip.py").unlink()
+    # Prueba de humo: el paquete debe poder importar el programa con su propio Python
+    subprocess.check_call([str(python), "-c", "import app, flask, sqlalchemy, openpyxl, fpdf; print('paquete OK', app.VERSION)"],
+                          cwd=str(carpeta))
 
     (carpeta / "Contabilidad.bat").write_text(
         "@echo off\r\n"

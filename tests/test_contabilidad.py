@@ -603,12 +603,14 @@ def test_correo_imap_simulado(s, monkeypatch):
     crudo = msg.as_bytes()
 
     class Imap:
+        literal = None
         def select(self, *a, **k): return "OK", [b"1"]
-        def search(self, *a): return "OK", [b"1"]
-        def fetch(self, uid, que):
-            if "HEADER" in que:
-                return "OK", [(b"1", b"Message-ID: <abc@proveedor>\r\nSubject: Factura\r\n\r\n")]
-            return "OK", [(b"1", crudo)]
+        def uid(self, cmd, *args):
+            if cmd == "search":
+                return "OK", [b"7"]
+            if "HEADER" in args[1]:
+                return "OK", [(b"7", b"Message-ID: <abc@proveedor>\r\nSubject: Factura\r\n\r\n")]
+            return "OK", [(b"7", crudo)]
         def logout(self): pass
 
     monkeypatch.setattr(correo, "conectar", lambda session: (Imap(), {"correo_carpeta": "INBOX", "correo_dias": "30",
@@ -669,8 +671,8 @@ def test_depreciacion_flujo_y_cierre(cliente_web, s):
                                          descripcion="Computador portatil"))
     g = s.query(Gasto).filter_by(numero="PC-1").one()
     assert g.categoria.cuenta == "152805" and not g.iva_descontable
-    assert planeacion.causar_depreciaciones(s, date(2026, 10, 31)) == 7
-    assert planeacion.causar_depreciaciones(s, date(2026, 10, 31)) == 0  # idempotente
+    assert planeacion.causar_depreciaciones(s, date(2026, 10, 31)) == (7, 0)
+    assert planeacion.causar_depreciaciones(s, date(2026, 10, 31)) == (0, 0)  # idempotente
     assert reportes.saldo_cuenta(s, "159220") == -D("59500") * 7
     filas, promedio = planeacion.flujo_de_caja(s, 6, date(2026, 10, 3))
     assert filas[0].cobros_vencidos + filas[0].cobros > 0 and filas[1].impuestos > 0
@@ -712,9 +714,9 @@ def test_conciliacion_bancaria(cliente_web, s):
                 "26/09/2026;ABONO INTERESES;15.000,00;\n"
                 "27/09/2026;CONSIGNACION NUEVO CLIENTE;500.000,00;\n").encode("latin-1")
     banco = s.get(Banco, 1)
-    nuevas, repetidas = bancos.importar_extracto(s, banco, "extracto.csv", extracto)
+    nuevas, repetidas, _ = bancos.importar_extracto(s, banco, "extracto.csv", extracto)
     assert (nuevas, repetidas) == (6, 0)
-    assert bancos.importar_extracto(s, banco, "extracto.csv", extracto) == (0, 6)
+    assert bancos.importar_extracto(s, banco, "extracto.csv", extracto) == (0, 6, 0)
     assert bancos.conciliar_automatico(s, 1) == 1  # el recaudo de 1.190.000
     movs = {m.descripcion: m for m in s.query(MovimientoBanco)}
     assert movs["TRANSFERENCIA CLIENTE DEMO"].estado == "conciliado"
@@ -755,7 +757,7 @@ def test_conciliacion_bancaria(cliente_web, s):
     ws.append([date(2026, 9, 29), "Consignación", None, 250000])
     buf = io.BytesIO()
     wb.save(buf)
-    assert bancos.importar_extracto(s, s.get(Banco, 2), "e.xlsx", buf.getvalue()) == (2, 0)
+    assert bancos.importar_extracto(s, s.get(Banco, 2), "e.xlsx", buf.getvalue()) == (2, 0, 0)
     vals = sorted(m.valor for m in s.query(MovimientoBanco).filter_by(banco_id=2))
     assert vals == [D("-100000"), D("250000")]
 
@@ -798,3 +800,163 @@ def test_acceso_red_actualizacion_y_restauracion(cliente_web, s, tmp_path):
     app2 = create_app(config.DATOS_DIR)
     assert app2.config["RESTAURADO"] and Session().query(DocumentoVenta).count() == 1
     assert list(Path(config.DATOS_DIR).glob("contabilidad_antes_de_restaurar_*.db"))
+
+
+def test_segunda_auditoria_cierre_y_depreciacion(cliente_web, s):
+    from app import contab, impuestos, planeacion, reportes
+    from app.models import Asiento, Bitacora, Gasto, Tercero
+    _escenario(s)  # ingresos 15M en sep/oct 2026
+    importar(s, "pc.xml", factura_compra("PC-1", "2026-03-10", ("800000009", "1", "TIENDA PC"), 3_000_000, 570_000,
+                                         descripcion="Computador portatil"))
+    pc = s.query(Gasto).filter_by(numero="PC-1").one()
+    # Nota crédito del proveedor sobre el activo reduce la base depreciable
+    from ubl import contenedor, documento
+    nc = documento(tipo="CreditNote", numero="NC-PC", cufe="cude-pc", fecha="2026-03-15",
+                   emisor=("800000009", "1", "TIENDA PC"), receptor=EMPRESA, base=1_000_000, iva=190_000,
+                   descripcion="Computador portatil", referencia=("PC-1", "cufe-pc-1"))
+    assert importar(s, "nc.xml", nc)[0].ok
+    assert planeacion.costo_activo(s, pc) == D("2380000")
+    # Cambiar la vida útil después de causar cuotas no descuadra el total
+    planeacion.causar_depreciaciones(s, date(2026, 6, 30))
+    pc.vida_util_meses = 12
+    s.commit()
+    planeacion.causar_depreciaciones(s, date(2027, 12, 31))
+    assert planeacion.depreciacion_acumulada(s, pc) == D("2380000")
+    assert s.query(Asiento).filter(Asiento.origen.like(f"depre:{pc.id}:%")).count() == 12
+    # Pago del 2593 del bimestre 6 en enero bloquea 2026; el cierre causa igual las depreciaciones
+    cliente_web.post("/impuestos/pago", data={"formulario": "2593", "anio": "2026", "bimestre": "6",
+                                              "fecha": "2027-01-21", "valor_simple": "1000", "valor_iva": "0",
+                                              "banco_id": "1"})
+    assert contab.periodo_bloqueado_hasta(s) == date(2026, 12, 31)
+    # Un asiento manual dentro del periodo bloqueado no se puede borrar
+    a = contab.guardar_asiento(s, origen=None, tipo="AJ", fecha=date(2027, 2, 1), descripcion="x", tercero_id=None,
+                               lineas=[("11200501", 100, 0, None, None), ("310505", 0, 100, None, None)])
+    s.commit()
+    contab.set_config(s, "periodo_bloqueado_hasta", "2027-02-28")
+    s.commit()
+    assert cliente_web.post(f"/contabilidad/asiento/{a.id}", data={"accion": "eliminar"}).status_code == 302
+    assert s.get(Asiento, a.id) is not None
+    contab.set_config(s, "periodo_bloqueado_hasta", "2026-12-31")
+    s.commit()
+    # Marcar certificado recibido y una reteIVA posterior sobre una factura del periodo bloqueado sí se permite
+    from app.models import DocumentoVenta
+    doc = s.query(DocumentoVenta).filter_by(numero="ALC-1").one()  # 15/09/2026 sin reteIVA
+    r = cliente_web.post(f"/ventas/{doc.id}", data={"accion": "guardar", "reteiva_aplica": "on",
+                                                    "reteiva_valor": "285000", "reteiva_fecha": "2027-01-10",
+                                                    "cert_recibido": "on", "vencimiento": "2026-10-15"})
+    assert r.status_code == 302
+    s.expire_all()
+    doc = s.get(DocumentoVenta, doc.id)
+    assert doc.cert_recibido and doc.reteiva_valor == D("285000")
+    # Eliminar un recaudo del periodo bloqueado responde con mensaje, no con error 500
+    cliente_web.post(f"/ventas/{doc.id}/pagar", data={"banco_id": "1", "fecha": "2027-01-15"})
+    contab.set_config(s, "periodo_bloqueado_hasta", "2027-01-31")
+    s.commit()
+    from app.models import Recaudo
+    rec = s.query(Recaudo).first()
+    assert cliente_web.post(f"/recaudos/{rec.id}/eliminar").status_code == 302
+    assert s.query(Recaudo).count() == 1
+    contab.set_config(s, "periodo_bloqueado_hasta", "2026-12-31")
+    s.commit()
+    # Cierre: los ingresos del SIMPLE no se alteran por el asiento de cierre; recalcular F260 queda bloqueado
+    ingresos_antes = impuestos.ingresos_brutos(s, date(2026, 1, 1), date(2026, 12, 31))
+    assert cliente_web.post("/contabilidad/cierre", data={"anio": "2026", "accion": "cerrar"}).status_code == 302
+    assert planeacion.anio_cerrado(s, 2026)
+    assert impuestos.ingresos_brutos(s, date(2026, 1, 1), date(2026, 12, 31)) == ingresos_antes
+    assert impuestos.declaracion_simple(s, 2026).impuesto > 0
+    simple = s.query(Asiento).filter_by(origen="simple:2026").one()
+    assert cliente_web.post("/impuestos/f260?anio=2026").status_code == 302
+    assert s.query(Asiento).filter_by(origen="simple:2026").one().id == simple.id
+    assert reportes.saldo_cuenta(s, "540505", date(2026, 12, 31)) == 0  # cerrado contra 370505
+    assert reportes.saldo_cuenta(s, "370505") < 0 and reportes.saldo_cuenta(s, "360505") == 0
+    assert reportes.balance_general(s, date(2027, 3, 31))["cuadre"] == 0
+    # Cerrar un año sin movimientos avisa y no bloquea
+    r = cliente_web.post("/contabilidad/cierre", data={"anio": "2024", "accion": "cerrar"}, follow_redirects=True)
+    assert "nada que cerrar" in r.data.decode() and contab.periodo_bloqueado_hasta(s) == date(2026, 12, 31)
+    # Eliminar el activo (tras reabrir) borra sus depreciaciones
+    cliente_web.post("/contabilidad/cierre", data={"anio": "2026", "accion": "reabrir"})
+    contab.set_config(s, "periodo_bloqueado_hasta", "")
+    s.commit()
+    assert cliente_web.post(f"/gastos/{pc.id}", data={"accion": "eliminar"}).status_code == 302
+    assert s.query(Asiento).filter(Asiento.origen.like(f"depre:{pc.id}:%")).count() == 0
+    # Bitácora no guarda claves en claro
+    contab.set_config(s, "clave_acceso", "SecretaUno")
+    s.commit()
+    contab.set_config(s, "clave_acceso", "SecretaDos")
+    s.commit()
+    textos = " ".join((b.detalle or "") + b.descripcion for b in s.query(Bitacora))
+    assert "SecretaDos" not in textos and "SecretaUno" not in textos
+    # Flujo de caja incluye obligaciones vencidas; fecha de bloqueo con formato colombiano
+    filas, _ = planeacion.flujo_de_caja(s, 3, date(2026, 12, 3))
+    assert any("VENCIDO" in o for o, _, _ in filas[0].detalle_impuestos)
+    cliente_web.post("/configuracion/", data={"accion": "empresa", "periodo_bloqueado_hasta": "31/12/2026"})
+    assert contab.periodo_bloqueado_hasta(s) == date(2026, 12, 31)
+    # Lote de revisión no permite pasar a contado un gasto con pagos
+    g = s.query(Gasto).filter_by(numero="INM-50").one()
+    cliente_web.post(f"/gastos/{g.id}", data={"accion": "pago", "pago_fecha": "2027-03-01", "pago_cuenta": "11200501",
+                                              "pago_valor": "1000"})
+    g.revisado = False
+    s.commit()
+    cliente_web.post("/gastos/revisar", data={"id": [str(g.id)], f"ok_{g.id}": "on", f"categoria_{g.id}": str(g.categoria_id),
+                                              f"forma_{g.id}": "contado", f"cuenta_{g.id}": "11200501"})
+    s.expire_all()
+    assert s.get(Gasto, g.id).forma_pago == "credito"
+
+
+
+def test_segunda_auditoria_bancos_y_sistema(cliente_web, s):
+    from app import bancos, contab, reportes
+    from app.models import Banco, CategoriaGasto, Gasto, MovimientoBanco
+    # Montos en formato estadounidense y colombiano
+    assert bancos._numero("1,234,567.89") == D("1234567.89")
+    assert bancos._numero("-6,000.00") == D("-6000.00")
+    assert bancos._numero("1.234.567,89") == D("1234567.89")
+    assert bancos._numero("250.000") == D("250000")
+    assert bancos._numero("(1.500)") == D("-1500")
+    # La huella no depende del orden ni de líneas nuevas; dos pagos iguales el mismo día se conservan
+    banco = s.get(Banco, 1)
+    base = "Fecha;Descripcion;Valor\n20/09/2026;PAGO A;-1.000\n20/09/2026;PAGO A;-1.000\n21/09/2026;ABONO;500\n"
+    assert bancos.importar_extracto(s, banco, "e.csv", base.encode())[:2] == (3, 0)
+    invertido = "Fecha;Descripcion;Valor\n21/09/2026;ABONO;500\n20/09/2026;PAGO A;-1.000\n20/09/2026;PAGO A;-1.000\n"
+    assert bancos.importar_extracto(s, banco, "e.csv", invertido.encode())[:2] == (0, 3)
+    con_nueva = "Fecha;Descripcion;Valor\n19/09/2026;NUEVO;-7\n2026-09-22T10:00:00;ISO;9\n30/09/2026;SALDO FINAL;999\n" + base[len("Fecha;Descripcion;Valor\n"):]
+    assert bancos.importar_extracto(s, banco, "e.csv", con_nueva.encode()) == (2, 3, 1)
+    # Vincular a algo inválido o ya usado se rechaza; deshacer borra lo creado por la conciliación
+    movs = {m.descripcion + str(m.valor): m for m in s.query(MovimientoBanco)}
+    m = movs["NUEVO-7.00"]
+    cliente_web.post(f"/bancos/movimiento/{m.id}", data={"accion": "vincular", "origen": "loquesea:999"})
+    assert s.get(MovimientoBanco, m.id).estado == "pendiente"
+    cat = s.query(CategoriaGasto).filter_by(nombre="Gastos bancarios").one()
+    cliente_web.post(f"/bancos/movimiento/{m.id}", data={"accion": "gasto", "categoria_id": cat.id})
+    s.expire_all()
+    m = s.get(MovimientoBanco, m.id)
+    assert m.estado == "conciliado" and m.creado_aqui and s.query(Gasto).count() == 1
+    cliente_web.post(f"/bancos/movimiento/{m.id}", data={"accion": "gasto", "categoria_id": cat.id})  # ya conciliado
+    assert s.query(Gasto).count() == 1
+    cliente_web.post(f"/bancos/movimiento/{m.id}", data={"accion": "pendiente"})
+    s.expire_all()
+    assert s.query(Gasto).count() == 0 and s.get(MovimientoBanco, m.id).estado == "pendiente"
+    assert reportes.saldo_cuenta(s, "530505") == 0
+    # Borrar un gasto conciliado libera la línea del extracto
+    cliente_web.post(f"/bancos/movimiento/{m.id}", data={"accion": "gasto", "categoria_id": cat.id})
+    g = s.query(Gasto).one()
+    cliente_web.post(f"/gastos/{g.id}", data={"accion": "eliminar"})
+    s.expire_all()
+    assert s.get(MovimientoBanco, m.id).estado == "pendiente"
+    # Botones de Configuración que comparten formulario con el campo oculto accion=empresa
+    from werkzeug.datastructures import MultiDict
+    r = cliente_web.post("/configuracion/", data=MultiDict([("accion", "empresa"), ("accion", "revisar_carpeta")]),
+                         follow_redirects=True)
+    assert "carpeta vigilada" in r.data.decode()
+    # Open redirect y CSRF
+    contab.set_config(s, "acceso_red", "si")
+    contab.set_config(s, "clave_acceso", "x")
+    s.commit()
+    remoto = {"REMOTE_ADDR": "192.168.1.9"}
+    r = cliente_web.post("/acceso", data={"clave": "x", "siguiente": "//evil.example/"}, environ_base=remoto)
+    assert r.headers["Location"] in ("/", "http://localhost/")
+    r = cliente_web.post("/configuracion/", data={"accion": "empresa", "empresa_ciiu": "9999"},
+                         headers={"Origin": "http://atacante.example"})
+    assert r.status_code == 403 and contab.config(s, "empresa_ciiu") != "9999"
+    assert cliente_web.post("/configuracion/", data={"accion": "empresa", "empresa_ciiu": "6910"},
+                            headers={"Origin": "http://localhost"}).status_code == 302

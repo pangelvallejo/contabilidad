@@ -38,13 +38,25 @@ def _numero(v):
         return CERO
     if isinstance(v, (int, float, Decimal)):
         return Decimal(str(v))
-    t = str(v).strip().replace("$", "").replace(" ", "")
+    t = str(v).strip().replace("$", "").replace(" ", "").replace("COP", "")
     neg = t.startswith("-") or t.startswith("(") or t.endswith("-")
-    t = t.strip("()-")
-    try:
-        return -contab.d(t) if neg else contab.d(t)
-    except (InvalidOperation, ValueError):
+    t = t.strip("()-+")
+    if not t:
         return CERO
+    # El separador decimal es el ÚLTIMO que aparece (1.234.567,89 ó 1,234,567.89 ó 6,000.00 ó 250.000)
+    ultimo_punto, ultima_coma = t.rfind("."), t.rfind(",")
+    if ultimo_punto > ultima_coma:
+        decimal_ok = len(t) - ultimo_punto - 1 != 3 or "," in t  # "250.000" sin coma = miles
+        t = t.replace(",", "")
+        if not decimal_ok:
+            t = t.replace(".", "")
+    elif ultima_coma > ultimo_punto:
+        t = t.replace(".", "").replace(",", ".")
+    try:
+        valor = Decimal(t)
+    except InvalidOperation:
+        return CERO
+    return -valor if neg else valor
 
 
 def _fecha(v):
@@ -54,7 +66,7 @@ def _fecha(v):
         return v
     t = str(v or "").strip()[:19]
     for fmt in ("%d/%m/%Y", "%Y-%m-%d", "%d-%m-%Y", "%Y/%m/%d", "%d/%m/%y", "%d.%m.%Y", "%Y%m%d", "%d/%m/%Y %H:%M",
-                "%Y-%m-%d %H:%M:%S", "%d/%m/%Y %H:%M:%S"):
+                "%Y-%m-%d %H:%M:%S", "%d/%m/%Y %H:%M:%S", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M", "%d-%m-%y"):
         try:
             return datetime.strptime(t, fmt).date()
         except ValueError:
@@ -107,7 +119,9 @@ class LineaExtracto:
 
 
 def extraer(filas, mapa, fila_encabezado):
+    """Devuelve (líneas, omitidas): filas sin fecha o sin valor reconocible, y filas de saldo, se omiten."""
     lineas = []
+    omitidas = 0
     inicio = fila_encabezado + 1 if fila_encabezado is not None else 0
     for fila in filas[inicio:]:
         if not fila or all(c in (None, "") for c in fila):
@@ -118,22 +132,24 @@ def extraer(filas, mapa, fila_encabezado):
             return fila[j] if j is not None and j < len(fila) else None
 
         f = _fecha(celda("fecha"))
-        if f is None:
+        desc = str(celda("descripcion") or "").strip()[:250] or "Movimiento"
+        if f is None or _norm(desc).startswith("saldo"):
+            omitidas += 1
             continue
         if "valor" in mapa:
             valor = _numero(celda("valor"))
         else:
             valor = _numero(celda("credito")) - abs(_numero(celda("debito")))
         if valor == 0:
+            omitidas += 1
             continue
-        desc = str(celda("descripcion") or "").strip()[:250] or "Movimiento"
         ref = str(celda("referencia") or "").strip()[:80] or None
         lineas.append(LineaExtracto(f, desc, contab.redondear(valor), ref))
-    return lineas
+    return lineas, omitidas
 
 
 def importar_extracto(session, banco: Banco, nombre: str, contenido: bytes, mapa_manual=None):
-    """Guarda las líneas nuevas del extracto. Devuelve (nuevas, repetidas, sin_reconocer)."""
+    """Guarda las líneas nuevas del extracto. Devuelve (nuevas, repetidas, omitidas)."""
     filas = leer_tabla(nombre, contenido)
     if mapa_manual:
         enc, mapa = mapa_manual.get("fila_encabezado"), mapa_manual
@@ -142,8 +158,14 @@ def importar_extracto(session, banco: Banco, nombre: str, contenido: bytes, mapa
     if not mapa:
         raise ValueError("No se reconocieron las columnas del extracto (se necesitan fecha y valor, o débito/crédito).")
     nuevas = repetidas = 0
-    for n, l in enumerate(extraer(filas, mapa, enc)):
-        huella = hashlib.sha1(f"{l.fecha}|{l.valor}|{_norm(l.descripcion)}|{l.referencia or ''}|{n}".encode()).hexdigest()
+    lineas, omitidas = extraer(filas, mapa, enc)
+    # La huella no depende del orden del archivo: dos movimientos idénticos el mismo día se numeran 1, 2…
+    # y solo se agregan los que superen a los ya guardados con esa misma huella base.
+    contador = {}
+    for l in lineas:
+        base = f"{l.fecha}|{l.valor}|{_norm(l.descripcion)}|{l.referencia or ''}"
+        contador[base] = contador.get(base, 0) + 1
+        huella = hashlib.sha1(f"{base}|#{contador[base]}".encode()).hexdigest()
         if session.query(MovimientoBanco).filter_by(banco_id=banco.id, huella=huella).first():
             repetidas += 1
             continue
@@ -151,7 +173,7 @@ def importar_extracto(session, banco: Banco, nombre: str, contenido: bytes, mapa
                                     referencia=l.referencia, huella=huella))
         nuevas += 1
     session.commit()
-    return nuevas, repetidas
+    return nuevas, repetidas, omitidas
 
 
 # ------------------------------------------------------------------ conciliación
@@ -227,3 +249,48 @@ def sugerir_categoria_bancaria(descripcion: str):
     if "interes" in d:
         return "Intereses"
     return None
+
+
+TIPOS_ORIGEN = {"recaudo", "pagogasto", "gasto", "impuesto", "asiento"}
+
+
+def origen_existe(session, tipo, oid) -> bool:
+    from .models import Gasto
+    modelo = {"recaudo": Recaudo, "pagogasto": PagoGasto, "gasto": Gasto, "impuesto": PagoImpuesto, "asiento": Asiento}
+    return tipo in modelo and session.get(modelo[tipo], oid) is not None
+
+
+def liberar(session, tipo, oid):
+    """Cuando se elimina un documento, sus líneas de extracto vuelven a 'pendiente'."""
+    for m in session.query(MovimientoBanco).filter_by(origen_tipo=tipo, origen_id=oid):
+        m.estado, m.origen_tipo, m.origen_id = "pendiente", None, None
+
+
+def deshacer(session, mov: MovimientoBanco):
+    """Devuelve la línea a pendiente; si el documento vinculado lo creó la conciliación, lo elimina también."""
+    from . import contab
+    from .models import Gasto
+    tipo, oid, creado = mov.origen_tipo, mov.origen_id, mov.creado_aqui
+    mov.estado, mov.origen_tipo, mov.origen_id, mov.creado_aqui = "pendiente", None, None, False
+    if not creado:
+        return
+    if tipo == "gasto":
+        g = session.get(Gasto, oid)
+        if g is not None:
+            contab.borrar_asientos(session, f"gasto:{g.id}")
+            session.delete(g)
+    elif tipo == "recaudo":
+        r = session.get(Recaudo, oid)
+        if r is not None:
+            contab.borrar_asientos(session, f"recaudo:{r.id}")
+            session.delete(r)
+    elif tipo == "pagogasto":
+        p = session.get(PagoGasto, oid)
+        if p is not None:
+            contab.borrar_asientos(session, f"pagogasto:{p.id}")
+            session.delete(p)
+    elif tipo == "asiento":
+        a = session.get(Asiento, oid)
+        if a is not None:
+            contab.verificar_periodo(session, a.fecha)
+            session.delete(a)

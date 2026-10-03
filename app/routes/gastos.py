@@ -3,7 +3,7 @@ from datetime import date
 
 from flask import Blueprint, abort, flash, redirect, render_template, request, url_for
 
-from .. import archivos, contab, exportar, importacion
+from .. import archivos, bancos, contab, exportar, importacion, planeacion
 from ..db import Session
 from ..models import (CERO, TIPOS_SOPORTE, Asiento, Banco, CategoriaGasto, Gasto, PagoGasto,
                       Tercero)
@@ -167,9 +167,17 @@ def revisar():
             if g is None or not request.form.get(f"ok_{gid}"):
                 continue
             try:
-                g.categoria_id = int(request.form[f"categoria_{gid}"])
-                g.iva_descontable = request.form.get(f"iva_{gid}") == "on"
-                g.forma_pago = request.form.get(f"forma_{gid}", g.forma_pago)
+                categoria = s.get(CategoriaGasto, int(request.form[f"categoria_{gid}"]))
+                if categoria is None:
+                    raise ValueError("Categoría no válida.")
+                if g.categoria.cuenta.startswith("15") and not categoria.cuenta.startswith("15"):
+                    planeacion.borrar_depreciaciones(s, g.id)
+                g.categoria_id = categoria.id
+                g.iva_descontable = request.form.get(f"iva_{gid}") == "on" and g.tipo_soporte in ("FE", "DS", "NC")
+                forma = request.form.get(f"forma_{gid}", g.forma_pago)
+                if forma == "contado" and g.pagos:
+                    raise ValueError("tiene pagos registrados; elimínelos antes de marcarlo de contado")
+                g.forma_pago = forma
                 g.cuenta_pago = request.form.get(f"cuenta_{gid}") if g.forma_pago == "contado" else None
                 g.recurrente = request.form.get(f"rec_{gid}") == "on"
                 g.revisado = True
@@ -197,6 +205,10 @@ def detalle(id):
         accion = request.form.get("accion")
         try:
             if accion == "eliminar":
+                planeacion.borrar_depreciaciones(s, g.id)
+                bancos.liberar(s, "gasto", g.id)
+                for p in g.pagos:
+                    bancos.liberar(s, "pagogasto", p.id)
                 contab.borrar_asientos(s, f"gasto:{g.id}")
                 for p in g.pagos:
                     contab.borrar_asientos(s, f"pagogasto:{p.id}")
@@ -219,11 +231,15 @@ def detalle(id):
                 return redirect(url_for("gastos.detalle", id=id))
             if accion == "borrar_pago":
                 p = s.get(PagoGasto, int(request.form["pago_id"]))
+                bancos.liberar(s, "pagogasto", p.id)
                 contab.borrar_asientos(s, f"pagogasto:{p.id}")
                 s.delete(p)
                 s.commit()
                 return redirect(url_for("gastos.detalle", id=id))
+            categoria_anterior = g.categoria.cuenta
             _llenar_gasto(s, g)
+            if categoria_anterior.startswith("15") and not s.get(CategoriaGasto, g.categoria_id).cuenta.startswith("15"):
+                planeacion.borrar_depreciaciones(s, g.id)  # dejó de ser activo
             if g.forma_pago == "contado" and g.pagos:
                 raise ValueError("El gasto tiene pagos registrados; elimínelos antes de marcarlo de contado.")
             if g.forma_pago == "credito" and g.pagos and g.total < sum((p.valor for p in g.pagos), CERO):

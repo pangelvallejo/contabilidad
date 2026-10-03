@@ -107,6 +107,11 @@ def guardar_asiento(session, *, origen, tipo, fecha, descripcion, tercero_id, li
               if redondear(db) != 0 or redondear(cr) != 0]
     if asiento is None and origen is not None:
         asiento = session.query(Asiento).filter_by(origen=origen, tipo=tipo).one_or_none()
+    if asiento is not None and asiento.fecha == fecha and asiento.tercero_id == tercero_id:
+        actuales = [(l.cuenta, l.debito, l.credito, l.tercero_id, l.descripcion or None) for l in asiento.lineas]
+        if actuales == [(c, db, cr, t, det or None) for c, db, cr, t, det in lineas]:
+            asiento.descripcion = descripcion[:250]
+            return asiento  # nada cambió en la contabilidad: no cuenta como modificación del periodo
     verificar_periodo(session, fecha, forzar)
     if asiento is not None:
         verificar_periodo(session, asiento.fecha, forzar)

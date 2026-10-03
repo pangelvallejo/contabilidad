@@ -33,6 +33,7 @@
     <tr><td>IVA neto proyectado del año</td><td class="n">{{ proyeccion.iva_neto_proyectado|pesos }}</td></tr>
     <tr class="res"><td>Carga tributaria total estimada (SIMPLE + IVA)</td><td class="n">{{ proyeccion.carga_total|pesos }}</td></tr>
   </table>
+  {% if not proyeccion.confiable %}<p class="nota">Con menos de 30 días de datos del año no se extrapola: se muestran los valores a la fecha.</p>{% endif %}
   {% if proyeccion.supera_limite %}<p class="mensaje critico">A este ritmo los ingresos superarían las 12.000 UVT del año: revise la permanencia en el SIMPLE.</p>{% endif %}
 </div>
 {% endblock %}

@@ -123,8 +123,11 @@ def resumen_iva_bimestre(session, anio, bim) -> ResumenIVA:
     r = resumen_iva(session, *rango_bimestre(anio, bim))
     r.pagado = sum((p.valor_iva for p in session.query(PagoImpuesto)
                     .filter_by(formulario="2593", anio=anio, bimestre=bim)), CERO)
-    if bim > 1 and contab.config(session, "iva_arrastre_saldo_favor", "no") == "si":
-        r.saldo_favor_anterior = resumen_iva_bimestre(session, anio, bim - 1).saldo_favor_siguiente
+    if contab.config(session, "iva_arrastre_saldo_favor", "no") == "si":
+        if bim > 1:
+            r.saldo_favor_anterior = resumen_iva_bimestre(session, anio, bim - 1).saldo_favor_siguiente
+        elif session.query(DocumentoVenta).filter(DocumentoVenta.fecha < date(anio, 1, 1)).first() is not None:
+            r.saldo_favor_anterior = resumen_iva_bimestre(session, anio - 1, 6).saldo_favor_siguiente
     return r
 
 
@@ -140,6 +143,11 @@ class ProyeccionAnual:
     iva_neto_a_la_fecha: Decimal
     iva_neto_proyectado: Decimal
     supera_limite: bool
+    dias: int = 0
+
+    @property
+    def confiable(self):
+        return self.dias >= 30  # con menos de un mes de datos la extrapolación no dice nada
 
     @property
     def simple_pendiente(self):
@@ -159,14 +167,14 @@ def proyeccion_anual(session, anio, corte: date | None = None) -> ProyeccionAnua
     ingresos = ingresos_brutos(session, inicio, corte)
     dias = (corte - inicio).days + 1
     dias_anio = (fin - inicio).days + 1
-    factor = Decimal(dias_anio) / Decimal(dias) if corte < fin else Decimal(1)
+    factor = Decimal(dias_anio) / Decimal(dias) if corte < fin and dias >= 30 else Decimal(1)
     proyectados = contab.redondear(ingresos * factor, "1")
     t = tarifa(proyectados, anio, cfg.SIMPLE_TARIFA_ANUAL, session)
     anticipos = sum((p.valor_simple for p in session.query(PagoImpuesto).filter_by(formulario="2593", anio=anio)), CERO)
     iva = resumen_iva(session, inicio, corte)
     return ProyeccionAnual(anio, corte, ingresos, proyectados, t, redondeo_dian(max(proyectados, CERO) * t), anticipos,
                            iva.neto, contab.redondear(iva.neto * factor, "1"),
-                           proyectados > uvt(anio, session) * cfg.SIMPLE_LIMITE_UVT_PROFESIONALES)
+                           proyectados > uvt(anio, session) * cfg.SIMPLE_LIMITE_UVT_PROFESIONALES, dias)
 
 
 # ---------------------------------------------------------------------- SIMPLE
@@ -190,7 +198,8 @@ def ingresos_brutos(session, inicio: date, fin: date, base: str | None = None) -
 
 def _saldo_clase(session, inicio, fin, prefijo):
     q = (session.query(func.coalesce(func.sum(Movimiento.credito - Movimiento.debito), 0))
-         .join(Asiento).filter(Asiento.fecha.between(inicio, fin), Movimiento.cuenta.like(f"{prefijo}%")))
+         .join(Asiento).filter(Asiento.fecha.between(inicio, fin), Movimiento.cuenta.like(f"{prefijo}%"),
+                               Asiento.tipo != "CI"))  # el asiento de cierre no es un ingreso del periodo
     return contab.redondear(q.scalar() or 0)
 
 
@@ -283,6 +292,8 @@ def causar_simple_anual(session, anio):
     Solo se cruzan los anticipos pagados hasta el 31 de diciembre; el del bimestre 6 (que se paga
     en enero) y el saldo de la declaración quedan como pasivo al cierre.
     """
+    if session.query(Asiento).filter_by(origen=f"cierre:{anio}").first() is not None:
+        raise contab.ErrorContable(f"El año {anio} ya está cerrado. Reábralo antes de recalcular el impuesto.")
     dec = declaracion_simple(session, anio)
     pagados_en_el_anio = sum((p.valor_simple for p in session.query(PagoImpuesto)
                               .filter(PagoImpuesto.formulario == "2593", PagoImpuesto.anio == anio,

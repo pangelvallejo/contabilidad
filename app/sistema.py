@@ -4,6 +4,7 @@ import json
 import os
 import secrets
 import socket
+import sqlite3
 import subprocess
 import sys
 import zipfile
@@ -45,14 +46,20 @@ def _peticion(url, session=None, aceptar="application/vnd.github+json"):
     return Request(url, headers=cab)
 
 
+def instalacion_portable() -> bool:
+    return (RAIZ / "python" / "python.exe").exists()
+
+
 def verificar_actualizacion(session):
     """Consulta el último lanzamiento en GitHub. Devuelve dict con version, hay_nueva, url_zip, notas."""
     url = f"https://api.github.com/repos/{_repo(session)}/releases/latest"
     with urlopen(_peticion(url, session), timeout=20) as r:
         datos = json.loads(r.read().decode("utf-8"))
     version = datos.get("tag_name", "")
-    # Preferir el paquete portable (lleva Python); si no hay, el código fuente del lanzamiento.
+    # Instalación portable: el paquete con Python. Instalación con iniciar.bat: solo el código fuente.
     activo = next((a for a in datos.get("assets", []) if a["name"].lower().endswith(".zip")), None)
+    if not instalacion_portable():
+        activo = None
     url_zip = activo["browser_download_url"] if activo else datos.get("zipball_url")
     return {"version": version, "hay_nueva": es_mas_nueva(version, version_actual()), "url_zip": url_zip,
             "notas": datos.get("body") or "", "portable": activo is not None, "nombre": activo["name"] if activo else ""}
@@ -74,25 +81,50 @@ def preparar_actualizacion(contenido_zip: bytes, destino: Path) -> Path:
     """Extrae el ZIP y localiza la carpeta que contiene `app/`. Devuelve la ruta del script de aplicación."""
     with zipfile.ZipFile(io.BytesIO(contenido_zip)) as z:
         z.extractall(destino)
-    origen = next((p.parent for p in destino.rglob("app/__init__.py")), None)
-    if origen is None:
+    inicio = next((p for p in destino.rglob("app/__init__.py")), None)
+    if inicio is None:
         raise ValueError("El paquete descargado no contiene el programa (carpeta app/).")
+    origen = inicio.parent.parent  # la carpeta que contiene app/, iniciar.bat, etc.
+    excluir = ["contabilidad.db"]
+    if not instalacion_portable():
+        excluir.append("Contabilidad.bat")  # ese iniciador solo sirve con el Python incluido
+    iniciador = "Contabilidad.bat" if instalacion_portable() else "iniciar.bat"
     script = destino / "aplicar_actualizacion.bat"
     # Copia todo menos los datos del usuario y el entorno de Python ya instalado; luego reinicia.
+    # chcp 65001: el archivo está en UTF-8 para que funcionen rutas con tildes (C:\Users\Ángel).
     script.write_text(
         "@echo off\r\n"
+        "chcp 65001 >nul\r\n"
         "timeout /t 3 /nobreak >nul\r\n"
-        f'robocopy "{origen}" "{RAIZ}" /E /XD .venv python __pycache__ .git /XF contabilidad.db /NFL /NDL /NJH /NJS >nul\r\n'
-        f'cd /d "{RAIZ}"\r\n'
-        'if exist Contabilidad.bat (start "" Contabilidad.bat) else (start "" iniciar.bat)\r\n',
+        f'robocopy "{origen}" "{RAIZ}" /E /XD .venv python __pycache__ .git /XF {" ".join(excluir)} /NFL /NDL /NJH /NJS >nul\r\n'
+        "if errorlevel 8 (\r\n"
+        "  echo No se pudieron copiar los archivos de la actualizacion. Cierre el programa y vuelva a intentarlo.\r\n"
+        "  pause\r\n"
+        ")\r\n"
+        f'start "" /d "{RAIZ}" "{RAIZ / iniciador}"\r\n',
         encoding="utf-8")
     return script
 
 
 # ------------------------------------------------------------------ reinicio
 
+def _cerrar_base():
+    """Vuelca el WAL y suelta las conexiones antes de salir, para no dejar la base a medio escribir."""
+    try:
+        from .db import Session, engine
+        Session.remove()
+        if engine is not None:
+            engine.dispose()
+        con = sqlite3.connect(config.DB_PATH)
+        con.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        con.close()
+    except Exception:  # noqa: BLE001
+        pass
+
+
 def reiniciar(script: Path | None = None):
     """Lanza el script indicado (o el iniciador) en una ventana nueva y cierra este proceso."""
+    _cerrar_base()
     if sys.platform == "win32":
         objetivo = script or next((RAIZ / n for n in ("Contabilidad.bat", "iniciar.bat") if (RAIZ / n).exists()), None)
         if objetivo is None:
@@ -133,6 +165,10 @@ def aplicar_restauracion_pendiente():
         return None
     marca = datetime.now().strftime("%Y%m%d_%H%M%S")
     if config.DB_PATH.exists():
+        # Integra el WAL en el archivo principal antes de apartarlo, para que la copia quede completa.
+        con = sqlite3.connect(config.DB_PATH)
+        con.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        con.close()
         config.DB_PATH.rename(config.DATOS_DIR / f"contabilidad_antes_de_restaurar_{marca}.db")
     for sufijo in ("-wal", "-shm"):
         extra = Path(str(config.DB_PATH) + sufijo)
@@ -174,3 +210,12 @@ def ip_local():
 
 def es_local(direccion: str) -> bool:
     return direccion in ("127.0.0.1", "::1", "localhost")
+
+
+def misma_origen(request) -> bool:
+    """Protección CSRF sin tokens: un formulario enviado desde otra página web trae Origin/Referer ajenos."""
+    origen = request.headers.get("Origin") or request.headers.get("Referer")
+    if not origen:
+        return True  # navegadores modernos siempre envían Origin en POST entre sitios
+    from urllib.parse import urlsplit
+    return urlsplit(origen).netloc == request.host

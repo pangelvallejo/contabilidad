@@ -3,7 +3,7 @@ from datetime import date, timedelta
 
 from flask import Blueprint, abort, flash, redirect, render_template, request, url_for
 
-from .. import archivos, cartera, contab, exportar, importacion
+from .. import archivos, bancos, cartera, contab, exportar, importacion
 from ..config import TARIFA_IVA, TARIFA_RETEIVA
 from ..db import Session
 from .. import formato
@@ -120,11 +120,16 @@ def detalle(id):
             if notas_asociadas:
                 flash("No se puede eliminar: tiene notas crédito asociadas. Elimine primero las notas.", "error")
                 return redirect(url_for("ventas.detalle", id=id))
-            contab.borrar_asientos(s, f"venta:{doc.id}")
-            s.delete(doc)
-            s.commit()
-            flash("Documento eliminado.", "ok")
-            return redirect(url_for("ventas.lista"))
+            try:
+                contab.borrar_asientos(s, f"venta:{doc.id}")
+                s.delete(doc)
+                s.commit()
+                flash("Documento eliminado.", "ok")
+                return redirect(url_for("ventas.lista"))
+            except Exception as e:  # noqa: BLE001
+                s.rollback()
+                flash(f"No se pudo eliminar: {e}", "error")
+                return redirect(url_for("ventas.detalle", id=id))
         try:
             _actualizar_venta(s, doc, notas_asociadas)
         except Exception as e:  # noqa: BLE001
@@ -287,10 +292,15 @@ def recibo_caja(id):
 def eliminar_recaudo(id):
     s = Session()
     rec = s.get(Recaudo, id) or _404()
-    contab.borrar_asientos(s, f"recaudo:{rec.id}")
-    s.delete(rec)
-    s.commit()
-    flash("Recaudo eliminado.", "ok")
+    try:
+        bancos.liberar(s, "recaudo", rec.id)
+        contab.borrar_asientos(s, f"recaudo:{rec.id}")
+        s.delete(rec)
+        s.commit()
+        flash("Recaudo eliminado.", "ok")
+    except Exception as e:  # noqa: BLE001
+        s.rollback()
+        flash(f"No se pudo eliminar: {e}", "error")
     return redirect(url_for("ventas.recaudos"))
 
 

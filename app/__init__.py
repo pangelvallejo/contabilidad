@@ -33,6 +33,8 @@ def create_app(datos_dir=None, respaldo_automatico=False):
     app.config["MAX_CONTENT_LENGTH"] = 200 * 1024 * 1024
     app.secret_key = clave_secreta()
     app.config["RESTAURADO"] = restaurado
+    app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+    app.config["SESSION_COOKIE_HTTPONLY"] = True
 
     app.jinja_env.filters["pesos"] = formato.pesos
     app.jinja_env.filters["numero"] = formato.numero
@@ -55,7 +57,9 @@ def create_app(datos_dir=None, respaldo_automatico=False):
     def _control_acceso():
         """Desde el propio computador no pide clave; desde otro equipo de la red, sí (si está activado)."""
         from flask import flash, redirect, render_template, request, session as sesion, url_for
-        from .sistema import acceso_red_activo, es_local
+        from .sistema import acceso_red_activo, es_local, misma_origen
+        if request.method == "POST" and not misma_origen(request):
+            abort(403)
         if request.endpoint == "static" or es_local(request.remote_addr or ""):
             return None
         s = Session()
@@ -70,8 +74,8 @@ def create_app(datos_dir=None, respaldo_automatico=False):
                 if hmac.compare_digest(request.form.get("clave", ""), cfg(s, "clave_acceso", "")):
                     sesion["autenticado"] = True
                     sesion.permanent = True
-                    destino = request.form.get("siguiente") or "/"
-                    return redirect(destino if destino.startswith("/") else "/")
+                    from .routes import destino_seguro
+                    return redirect(destino_seguro(request.form.get("siguiente"), "/"))
                 flash("Contraseña incorrecta.", "error")
             return render_template("acceso.html", siguiente=request.args.get("siguiente", "/"))
         return redirect(url_for("acceso", siguiente=request.path))
@@ -80,6 +84,12 @@ def create_app(datos_dir=None, respaldo_automatico=False):
     def acceso():
         from flask import redirect
         return redirect("/")  # el control real está en before_request; desde el PC local no aplica
+
+    @app.route("/salir")
+    def salir():
+        from flask import redirect, session as sesion
+        sesion.clear()
+        return redirect("/")
 
     @app.route("/archivo/<path:relativa>")
     def archivo(relativa):
@@ -107,7 +117,10 @@ def create_app(datos_dir=None, respaldo_automatico=False):
         finally:
             Session.remove()
         from sqlalchemy.orm import sessionmaker
+        from .bitacora import activar
         from .db import engine
         from .tareas import iniciar
-        iniciar(sessionmaker(bind=engine))
+        fabrica = sessionmaker(bind=engine)
+        activar(fabrica)  # lo que importan el correo y la carpeta vigilada también queda en el historial
+        iniciar(fabrica)
     return app

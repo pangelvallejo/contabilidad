@@ -29,9 +29,12 @@ def revisar(session):
         except OSError:
             continue  # todavía se está copiando
         res = importar_archivo(session, f.name, contenido, origen="carpeta")
-        exito = any(r.ok for r in res)
+        exito = any(r.ok or "Ya estaba registrado" in r.mensaje for r in res)
         destino = ok_dir if exito else err_dir
-        destino.mkdir(exist_ok=True)
+        try:
+            destino.mkdir(exist_ok=True)
+        except OSError:
+            continue
         final = destino / f.name
         n = 1
         while final.exists():

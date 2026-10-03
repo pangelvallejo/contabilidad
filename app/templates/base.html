@@ -50,6 +50,7 @@
     <a href="/terceros" class="{{ 'activo' if ruta.startswith('/terceros') }}">Clientes y proveedores</a>
     <a href="/historial" class="{{ 'activo' if ruta.startswith('/historial') }}">Historial de cambios</a>
     <a href="/configuracion/" class="{{ 'activo' if ruta.startswith('/configuracion') }}">Configuración</a>
+    {% if session.get('autenticado') %}<a href="/salir">Cerrar sesión</a>{% endif %}
   </nav>
   <main>
     {% with mensajes = get_flashed_messages(with_categories=true) %}

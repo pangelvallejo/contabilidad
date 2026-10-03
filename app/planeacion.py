@@ -73,7 +73,7 @@ def flujo_de_caja(session, meses=6, hoy: date | None = None):
             if f is not None:
                 f.pagos_proveedores += g.saldo
     # Impuestos: recibos 2593 pendientes (estimados) y vencimientos del calendario sin cumplir
-    for v in session.query(Vencimiento).filter(Vencimiento.cumplido.is_(False), Vencimiento.fecha >= primero):
+    for v in session.query(Vencimiento).filter(Vencimiento.cumplido.is_(False)):
         f = fila_para(v.fecha)
         if f is None:
             continue
@@ -87,7 +87,7 @@ def flujo_de_caja(session, meses=6, hoy: date | None = None):
             except (ValueError, IndexError):
                 valor = CERO
         f.impuestos += valor
-        f.detalle_impuestos.append((v.obligacion, v.periodo, valor))
+        f.detalle_impuestos.append((v.obligacion + (" (VENCIDO)" if v.fecha < hoy else ""), v.periodo, valor))
     # Gastos recurrentes: promedio mensual de los últimos 3 meses de gastos de contado (sin activos)
     desde = _sumar_mes(primero, -3)
     total3 = CERO
@@ -119,47 +119,76 @@ def activos(session):
             if g.categoria.cuenta.startswith("15") and g.tipo_soporte != "NC"]
 
 
-def causar_depreciaciones(session, hasta: date | None = None):
-    """Crea el asiento mensual de depreciación de cada activo hasta el mes indicado (línea recta)."""
+def costo_activo(session, g):
+    """Costo depreciable: valor sin IVA descontable, menos notas crédito del mismo proveedor y categoría."""
+    nc = sum((n.total - n.iva_desc_valor for n in session.query(Gasto)
+              .filter(Gasto.tipo_soporte == "NC", Gasto.proveedor_id == g.proveedor_id,
+                      Gasto.categoria_id == g.categoria_id, Gasto.fecha >= g.fecha)), CERO)
+    return g.total - g.iva_desc_valor - nc
+
+
+def depreciacion_acumulada(session, g):
+    return sum((m.credito for a in session.query(Asiento).filter(Asiento.origen.like(f"depre:{g.id}:%"))
+                for m in a.lineas if m.cuenta.startswith("1592")), CERO)
+
+
+def borrar_depreciaciones(session, gasto_id, forzar=False):
+    for a in session.query(Asiento).filter(Asiento.origen.like(f"depre:{gasto_id}:%")).all():
+        contab.verificar_periodo(session, a.fecha, forzar)
+        session.delete(a)
+    session.flush()
+
+
+def causar_depreciaciones(session, hasta: date | None = None, forzar=False):
+    """Crea el asiento mensual de depreciación de cada activo hasta el mes indicado (línea recta).
+
+    Cada cuota nueva reparte lo que falta por depreciar entre las cuotas que quedan, de modo que un
+    cambio de vida útil o una nota crédito posterior se absorben sin descuadrar el total.
+    Devuelve (creados, omitidos por periodo bloqueado).
+    """
     hasta = hasta or date.today()
-    creados = 0
+    creados = omitidos = 0
     for g in activos(session):
         grupo = g.categoria.cuenta[:4]
         if grupo not in CTA_DEPRECIACION_GASTO:
             continue
-        vida = g.vida_util_meses or VIDA_UTIL_DEFECTO[grupo]
-        costo = g.total - g.iva_desc_valor
-        cuota = contab.redondear(costo / vida)
+        vida = max(1, g.vida_util_meses or VIDA_UTIL_DEFECTO[grupo])
+        costo = costo_activo(session, g)
+        acumulado = depreciacion_acumulada(session, g)
+        existentes = {a.origen for a in session.query(Asiento).filter(Asiento.origen.like(f"depre:{g.id}:%"))}
         mes = _sumar_mes(g.fecha.replace(day=1), 1)  # se deprecia desde el mes siguiente a la compra
         n = 0
         while n < vida and _fin_mes(mes) <= hasta:
             n += 1
             origen = f"depre:{g.id}:{mes:%Y%m}"
-            if session.query(Asiento).filter_by(origen=origen).first() is None:
-                valor = costo - cuota * (vida - 1) if n == vida else cuota  # la última cuota ajusta el residuo
+            if origen not in existentes:
+                restante = costo - acumulado
+                valor = restante if n == vida else contab.redondear(restante / (vida - n + 1))
+                if valor <= 0:
+                    break
                 try:
                     contab.guardar_asiento(
                         session, origen=origen, tipo="AJ", fecha=_fin_mes(mes),
                         descripcion=f"Depreciación {mes:%m/%Y} {g.descripcion or g.categoria.nombre}"[:250],
-                        tercero_id=None,
+                        tercero_id=None, forzar=forzar,
                         lineas=[(CTA_DEPRECIACION_GASTO[grupo], valor, 0, None, None),
                                 (CTA_DEPRECIACION_ACUM[grupo], 0, valor, None, None)])
                     creados += 1
+                    acumulado += valor
                 except contab.ErrorContable:
-                    pass  # periodo bloqueado: se deja como está
+                    omitidos += 1  # periodo bloqueado: se deja como está
             mes = _sumar_mes(mes, 1)
     session.commit()
-    return creados
+    return creados, omitidos
 
 
 def resumen_activos(session):
     filas = []
     for g in activos(session):
         grupo = g.categoria.cuenta[:4]
-        vida = g.vida_util_meses or VIDA_UTIL_DEFECTO.get(grupo, 60)
-        costo = g.total - g.iva_desc_valor
-        depreciado = sum((m.credito for a in session.query(Asiento).filter(Asiento.origen.like(f"depre:{g.id}:%"))
-                          for m in a.lineas if m.cuenta.startswith("1592")), CERO)
+        vida = max(1, g.vida_util_meses or VIDA_UTIL_DEFECTO.get(grupo, 60))
+        costo = costo_activo(session, g)
+        depreciado = depreciacion_acumulada(session, g)
         filas.append({"gasto": g, "costo": costo, "vida": vida, "cuota": contab.redondear(costo / vida),
                       "depreciado": depreciado, "neto": costo - depreciado})
     return filas
@@ -183,9 +212,11 @@ def cerrar_anio(session, anio):
             lineas.append((cuenta, -saldo, 0, None, "Cierre"))
         resultado -= saldo
     if resultado > 0:
-        lineas.append(("360505", 0, resultado, None, "Utilidad del ejercicio"))
+        lineas.append(("370505", 0, resultado, None, "Utilidad del ejercicio trasladada a acumuladas"))
     elif resultado < 0:
-        lineas.append(("361005", -resultado, 0, None, "Pérdida del ejercicio"))
+        lineas.append(("371005", -resultado, 0, None, "Pérdida del ejercicio trasladada a acumuladas"))
+    if not lineas:
+        raise contab.ErrorContable(f"El año {anio} no tiene ingresos ni gastos registrados; no hay nada que cerrar.")
     contab.guardar_asiento(session, origen=f"cierre:{anio}", tipo="CI", fecha=fin,
                            descripcion=f"Cierre del ejercicio {anio}", tercero_id=None, lineas=lineas, forzar=True)
     tope = contab.periodo_bloqueado_hasta(session)
