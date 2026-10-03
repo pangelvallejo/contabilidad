@@ -6,6 +6,7 @@ from flask import Blueprint, abort, flash, redirect, render_template, request, u
 from .. import archivos, cartera, contab, exportar, importacion
 from ..config import TARIFA_IVA, TARIFA_RETEIVA
 from ..db import Session
+from .. import formato
 from ..formato import pesos
 from ..models import CERO, Asiento, Banco, DocumentoVenta, LineaVenta, Recaudo, Tercero
 from . import XLSX, anio_arg, check, descargar, dinero, fecha_arg
@@ -76,8 +77,13 @@ def nueva():
                                  fecha=fecha_arg("fecha"), cliente=cliente, subtotal=base, base_gravada=base,
                                  iva=iva, total=base + iva, notas=request.form.get("notas") or None)
             doc.vencimiento = fecha_arg("vencimiento") or doc.fecha + timedelta(days=cliente.plazo_dias or 0)
-            if doc.tipo == "NC" and request.form.get("referencia_id"):
+            if doc.tipo == "NC":
+                if not request.form.get("referencia_id"):
+                    raise ValueError("Una nota crédito debe indicar la factura que afecta.")
                 doc.referencia_id = int(request.form["referencia_id"])
+                ref = s.get(DocumentoVenta, doc.referencia_id)
+                if ref is None or ref.cliente_id != cliente.id:
+                    raise ValueError("La factura afectada debe ser del mismo cliente.")
             doc.lineas.append(LineaVenta(descripcion=request.form.get("descripcion") or "Honorarios", base=base,
                                          iva_pct=contab.d(TARIFA_IVA * 100) if iva else 0, iva=iva))
             if doc.tipo != "NC" and cliente.aplica_reteiva:
@@ -95,7 +101,8 @@ def nueva():
             s.rollback()
             flash(f"No se pudo registrar: {e}", "error")
     facturas = s.query(DocumentoVenta).filter_by(tipo="FV").order_by(DocumentoVenta.fecha.desc()).all()
-    return render_template("ventas/nueva.html", clientes=_clientes(s), facturas=facturas, tarifa_iva=TARIFA_IVA)
+    return render_template("ventas/nueva.html", clientes=_clientes(s), facturas=facturas, tarifa_iva=TARIFA_IVA,
+                           form=request.form)
 
 
 @bp.route("/ventas/<int:id>", methods=["GET", "POST"])
@@ -104,39 +111,53 @@ def detalle(id):
     doc = s.get(DocumentoVenta, id) or _404()
     if request.method == "POST":
         accion = request.form.get("accion")
+        notas_asociadas = s.query(DocumentoVenta).filter_by(referencia_id=doc.id).count()
         if accion == "eliminar":
             if doc.aplicaciones:
                 flash("No se puede eliminar: tiene recaudos aplicados. Elimine primero los recaudos.", "error")
+                return redirect(url_for("ventas.detalle", id=id))
+            if notas_asociadas:
+                flash("No se puede eliminar: tiene notas crédito asociadas. Elimine primero las notas.", "error")
                 return redirect(url_for("ventas.detalle", id=id))
             contab.borrar_asientos(s, f"venta:{doc.id}")
             s.delete(doc)
             s.commit()
             flash("Documento eliminado.", "ok")
             return redirect(url_for("ventas.lista"))
-        doc.vencimiento = fecha_arg("vencimiento", doc.vencimiento)
-        doc.reteiva_aplica = check("reteiva_aplica")
-        doc.reteiva_valor = dinero("reteiva_valor") if doc.reteiva_aplica else CERO
-        doc.reteiva_fecha = fecha_arg("reteiva_fecha", doc.fecha) if doc.reteiva_aplica else None
-        doc.cert_recibido = check("cert_recibido")
-        doc.anulada = check("anulada")
-        doc.notas = request.form.get("notas") or None
-        cert = archivos.guardar_upload("certificados", request.files.get("cert_archivo"))
-        if cert:
-            doc.cert_archivo, doc.cert_recibido = cert, True
-        pdf = archivos.guardar_upload("ventas", request.files.get("pdf"))
-        if pdf:
-            doc.pdf_archivo = pdf
-        if check("recordar_reteiva"):
-            doc.cliente.aplica_reteiva = doc.reteiva_aplica
-        contab.contabilizar_venta(s, doc)
-        s.commit()
-        flash("Cambios guardados.", "ok")
+        try:
+            _actualizar_venta(s, doc, notas_asociadas)
+        except Exception as e:  # noqa: BLE001
+            s.rollback()
+            flash(f"No se pudo guardar: {e}", "error")
         return redirect(url_for("ventas.detalle", id=id))
     notas = s.query(DocumentoVenta).filter_by(referencia_id=doc.id).all()
     asientos = s.query(Asiento).filter_by(origen=f"venta:{doc.id}").all()
     return render_template("ventas/detalle.html", doc=doc, saldo=cartera.saldo_documento(s, doc),
                            estado=cartera.estado_documento(s, doc), notas=notas, asientos=asientos,
                            reteiva_sugerida=contab.redondear(doc.iva * contab.d(TARIFA_RETEIVA), "1"))
+
+
+def _actualizar_venta(s, doc, notas_asociadas):
+    doc.vencimiento = fecha_arg("vencimiento", doc.vencimiento)
+    doc.reteiva_aplica = check("reteiva_aplica")
+    doc.reteiva_valor = dinero("reteiva_valor") if doc.reteiva_aplica else CERO
+    doc.reteiva_fecha = fecha_arg("reteiva_fecha", doc.fecha) if doc.reteiva_aplica else None
+    doc.cert_recibido = check("cert_recibido")
+    if check("anulada") and not doc.anulada and (doc.aplicaciones or notas_asociadas):
+        raise ValueError("No se puede anular: tiene recaudos o notas crédito asociados. Elimínelos primero.")
+    doc.anulada = check("anulada")
+    doc.notas = request.form.get("notas") or None
+    cert = archivos.guardar_upload("certificados", request.files.get("cert_archivo"))
+    if cert:
+        doc.cert_archivo, doc.cert_recibido = cert, True
+    pdf = archivos.guardar_upload("ventas", request.files.get("pdf"))
+    if pdf:
+        doc.pdf_archivo = pdf
+    if check("recordar_reteiva"):
+        doc.cliente.aplica_reteiva = doc.reteiva_aplica
+    contab.contabilizar_venta(s, doc)
+    s.commit()
+    flash("Cambios guardados.", "ok")
 
 
 def _404():
@@ -155,42 +176,76 @@ def recaudos():
                            total=sum((r.valor for r in recs), CERO))
 
 
+def _abiertos_para(s, cliente_id, rec=None):
+    """Facturas abiertas del cliente; si se edita un recaudo, sus propias aplicaciones vuelven a contar como saldo."""
+    propias = {a.documento_id: a.valor for a in rec.aplicaciones} if rec else {}
+    filas = []
+    q = s.query(DocumentoVenta).filter(DocumentoVenta.cliente_id == cliente_id, DocumentoVenta.tipo != "NC",
+                                       DocumentoVenta.anulada.is_(False)).order_by(DocumentoVenta.fecha, DocumentoVenta.id)
+    for doc in q:
+        saldo = cartera.saldo_documento(s, doc) + propias.get(doc.id, CERO)
+        if saldo > 0:
+            filas.append((doc, saldo))
+    return filas
+
+
+def _guardar_recaudo(s, rec, cliente_id):
+    rec.fecha = fecha_arg("fecha", date.today())
+    rec.cliente_id = cliente_id
+    rec.banco_id = int(request.form["banco_id"])
+    rec.valor = dinero("valor")
+    rec.medio_electronico = check("medio_electronico")
+    rec.referencia = request.form.get("referencia") or None
+    rec.notas = request.form.get("notas") or None
+    if rec.valor <= 0:
+        raise ValueError("El valor recibido debe ser mayor que cero.")
+    soporte = archivos.guardar_upload("recaudos", request.files.get("soporte"))
+    if soporte:
+        rec.soporte_archivo = soporte
+    abiertos = _abiertos_para(s, cliente_id, rec if rec.id else None)
+    s.add(rec)
+    valores = {}
+    for doc, saldo in abiertos:
+        v = dinero(f"aplicar_{doc.id}")
+        if v > saldo:
+            raise ValueError(f"El abono a {doc.numero} supera su saldo.")
+        valores[doc] = v
+    cartera.registrar_aplicaciones(rec, valores)
+    if rec.aplicado > rec.valor:
+        raise ValueError("Lo aplicado a facturas supera el valor recibido.")
+    s.flush()
+    contab.contabilizar_recaudo(s, rec)
+    s.commit()
+
+
 @bp.route("/recaudos/nuevo", methods=["GET", "POST"])
-def nuevo_recaudo():
+@bp.route("/recaudos/<int:id>", methods=["GET", "POST"])
+def nuevo_recaudo(id=None):
     s = Session()
-    cliente_id = request.values.get("cliente_id", type=int)
+    rec = s.get(Recaudo, id) if id else None
+    if id and rec is None:
+        _404()
+    cliente_id = rec.cliente_id if rec else request.values.get("cliente_id", type=int)
     if request.method == "POST" and request.form.get("guardar"):
         try:
-            rec = Recaudo(fecha=fecha_arg("fecha", date.today()), cliente_id=cliente_id,
-                          banco_id=int(request.form["banco_id"]), valor=dinero("valor"),
-                          medio_electronico=check("medio_electronico"),
-                          referencia=request.form.get("referencia") or None, notas=request.form.get("notas") or None)
-            if rec.valor <= 0:
-                raise ValueError("El valor recibido debe ser mayor que cero.")
-            rec.soporte_archivo = archivos.guardar_upload("recaudos", request.files.get("soporte"))
-            s.add(rec)
-            valores = {}
-            for doc, saldo in cartera.documentos_abiertos(s, cliente_id):
-                v = dinero(f"aplicar_{doc.id}")
-                if v > saldo:
-                    raise ValueError(f"El abono a {doc.numero} supera su saldo.")
-                valores[doc] = v
-            cartera.registrar_aplicaciones(rec, valores)
-            if rec.aplicado > rec.valor:
-                raise ValueError("Lo aplicado a facturas supera el valor recibido.")
-            s.flush()
-            contab.contabilizar_recaudo(s, rec)
-            s.commit()
-            flash("Recaudo registrado." + (f" Quedó un anticipo sin aplicar de {pesos(rec.sin_aplicar)}."
-                                           if rec.sin_aplicar > 0 else ""), "ok")
+            _guardar_recaudo(s, rec or Recaudo(), cliente_id)
+            rec = rec or s.query(Recaudo).order_by(Recaudo.id.desc()).first()
+            flash("Recaudo guardado." + (f" Quedó un anticipo sin aplicar de {pesos(rec.sin_aplicar)}."
+                                         if rec.sin_aplicar > 0 else ""), "ok")
             return redirect(url_for("ventas.recaudos"))
         except Exception as e:  # noqa: BLE001
             s.rollback()
-            flash(f"No se pudo registrar: {e}", "error")
-    abiertos = cartera.documentos_abiertos(s, cliente_id) if cliente_id else []
-    return render_template("ventas/recaudo_nuevo.html", clientes=_clientes(s), cliente_id=cliente_id,
-                           abiertos=abiertos, bancos=s.query(Banco).filter_by(activo=True).all(),
-                           form=request.form)
+            flash(f"No se pudo guardar: {e}", "error")
+            rec = s.get(Recaudo, id) if id else None
+    form = request.form
+    if rec and not form:
+        form = {"fecha": rec.fecha.isoformat(), "banco_id": str(rec.banco_id), "valor": formato.entrada(rec.valor),
+                "referencia": rec.referencia or "", "notas": rec.notas or "",
+                "medio_electronico": "on" if rec.medio_electronico else "",
+                **{f"aplicar_{a.documento_id}": formato.entrada(a.valor) for a in rec.aplicaciones}}
+    abiertos = _abiertos_para(s, cliente_id, rec) if cliente_id else []
+    return render_template("ventas/recaudo_nuevo.html", clientes=_clientes(s), cliente_id=cliente_id, rec=rec,
+                           abiertos=abiertos, bancos=s.query(Banco).filter_by(activo=True).all(), form=form)
 
 
 @bp.route("/recaudos/<int:id>/eliminar", methods=["POST"])

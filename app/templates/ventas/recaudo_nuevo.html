@@ -1,24 +1,26 @@
 {% extends "base.html" %}
 {% block titulo %}Registrar recaudo{% endblock %}
 {% block contenido %}
-<h1>Registrar recaudo</h1>
-<p class="sub">Un pago puede cubrir una o varias facturas, total o parcialmente. Lo que no se aplique queda como anticipo del cliente.</p>
+<h1>{{ 'Editar recaudo' if rec else 'Registrar recaudo' }}</h1>
+<p class="sub">Un pago puede cubrir una o varias facturas, total o parcialmente. Lo que no se aplique queda como anticipo del cliente{{ ', que puede aplicar después editando el recaudo' if not rec }}.</p>
+{% if rec %}<p class="sub">Cliente: <b>{{ rec.cliente.nombre }}</b></p>{% else %}
 <form class="tarjeta" method="get">
   <div class="campos"><div class="campo ancho"><label>Cliente</label>
     <select name="cliente_id" onchange="this.form.submit()"><option value="">Seleccione…</option>
       {% for c in clientes %}<option value="{{ c.id }}" {{ 'selected' if c.id == cliente_id }}>{{ c.nombre }} — {{ c.nit }}</option>{% endfor %}</select></div></div>
-</form>
+</form>{% endif %}
 
 {% if cliente_id %}
 <form class="tarjeta" method="post" enctype="multipart/form-data">
   <input type="hidden" name="cliente_id" value="{{ cliente_id }}">
   <div class="campos">
     <div><label>Fecha del pago</label><input type="date" name="fecha" value="{{ form.get('fecha') or hoy.isoformat() }}" required></div>
-    <div><label>Cuenta donde entró</label><select name="banco_id">{% for b in bancos %}<option value="{{ b.id }}">{{ b.nombre }}</option>{% endfor %}</select></div>
+    <div><label>Cuenta donde entró</label><select name="banco_id">{% for b in bancos %}<option value="{{ b.id }}" {{ 'selected' if form.get('banco_id') == b.id|string }}>{{ b.nombre }}</option>{% endfor %}</select></div>
     <div><label>Valor recibido</label><input class="n" name="valor" id="valor" value="{{ form.get('valor', '') }}" required inputmode="decimal"></div>
     <div><label>Referencia</label><input name="referencia" value="{{ form.get('referencia', '') }}"></div>
-    <div class="campo ancho"><label class="check"><input type="checkbox" name="medio_electronico"> Recibido con tarjeta o pasarela de pagos (Bold, PSE con tarjeta, etc.). Da derecho al descuento del 0,5% en el SIMPLE (art. 912 E.T.).</label></div>
-    <div><label>Soporte (opcional)</label><input type="file" name="soporte"></div>
+    <div class="campo ancho"><label class="check"><input type="checkbox" name="medio_electronico" {{ 'checked' if form.get('medio_electronico') }}> Recibido con tarjeta o pasarela de pagos (Bold, PSE con tarjeta, etc.). Da derecho al descuento del 0,5% en el SIMPLE (art. 912 E.T.).</label></div>
+    <div><label>Soporte (opcional)</label><input type="file" name="soporte">{% if rec and rec.soporte_archivo %}<a href="/archivo/{{ rec.soporte_archivo }}" target="_blank">ver actual</a>{% endif %}</div>
+    <div class="campo ancho"><label>Notas</label><input name="notas" value="{{ form.get('notas', '') }}"></div>
   </div>
 
   <h2>Facturas pendientes</h2>
@@ -36,7 +38,7 @@
   <p class="nota">Si el cliente le retuvo IVA y aún no lo ha marcado, hágalo en la factura antes de registrar el pago para que el saldo cuadre.</p>
   <button type="button" id="auto">Repartir automáticamente (más antiguas primero)</button>
   {% else %}<p class="vacio">Este cliente no tiene facturas pendientes; el valor quedará como anticipo.</p>{% endif %}
-  <div style="margin-top:14px"><button class="primario" name="guardar" value="1">Guardar recaudo</button></div>
+  <div style="margin-top:14px"><button class="primario" name="guardar" value="1">Guardar recaudo</button>{% if rec %} <a class="btn" href="/recaudos">Cancelar</a>{% endif %}</div>
 </form>
 {% endif %}
 {% endblock %}

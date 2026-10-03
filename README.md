@@ -10,7 +10,7 @@ del equipo, salvo las copias de seguridad en OneDrive.
 |---|---|
 | **Facturas de venta** | Importa el XML (o ZIP con XML y PDF) del sistema gratuito de facturación de la DIAN: CUFE, cliente, base, IVA y total. Crea el cliente automáticamente. Facturas, notas crédito y notas débito. Registro manual si no hay XML. |
 | **ReteIVA 15%** | Por factura se marca si el cliente practicó o no la retención (si viene en el XML se toma de ahí). Se puede recordar por cliente. Control de certificados con adjunto y alerta de pendientes. |
-| **Recaudos y cartera** | Pagos totales, abonos parciales y un pago aplicado a varias facturas (reparto automático por antigüedad). Cartera por edades, estado de cuenta en PDF por cliente. Marca de pagos con tarjeta/pasarela para el descuento del art. 912 E.T. |
+| **Recaudos y cartera** | Pagos totales, abonos parciales y un pago aplicado a varias facturas (reparto automático por antigüedad); un anticipo se aplica después editando el recaudo. Cartera por edades, estado de cuenta en PDF por cliente. Marca de pagos con tarjeta/pasarela para el descuento del art. 912 E.T. |
 | **Gastos** | Importa XML/ZIP de proveedores y propone la categoría (aprende de la última usada por el proveedor). Registro manual con foto o PDF del soporte. IVA descontable o no, contado o crédito, pagos a proveedores, reembolsos al socio. |
 | **IVA** | Liquidación por bimestre: IVA generado − IVA descontable − reteIVA, con detalle exportable. |
 | **SIMPLE** | Recibo 2593 por bimestre (anticipo SIMPLE + IVA) con las tarifas de actividades profesionales y de consultoría, registro de pagos, borrador de la declaración anual (F260) con descuento por medios electrónicos y causación del impuesto. Borrador de la declaración anual de IVA (F300). |
@@ -30,7 +30,7 @@ del equipo, salvo las copias de seguridad en OneDrive.
 4. Opcional: clic derecho en `crear_acceso_directo.ps1` → *Ejecutar con PowerShell* para tener un
    acceso directo en el escritorio.
 
-Mientras use el programa, deje abierta la ventana negra; ciérrela para salir.
+Mientras use el programa, deje abierta la ventana negra (puede minimizarla); ciérrela para salir.
 
 ### Dónde quedan los datos
 
@@ -62,7 +62,7 @@ campos nuevos se agregan solos a la base de datos existente.
 
 Están en `app/config.py` y se actualizan con nuevas versiones del programa:
 
-- UVT 2026: $52.374.
+- UVT 2026: $52.374. La UVT de años siguientes se registra en *Configuración* sin cambiar el programa.
 - SIMPLE, actividades profesionales y de consultoría (art. 908 E.T., Ley 2277 de 2022): tarifas anuales
   5,9% / 7,3% / 12% / 14,5% y bimestrales 5,9% hasta 1.000 UVT, 7,3% hasta 2.500, 12% hasta 5.000 y
   14,5% hasta 16.666. Límite de 12.000 UVT para profesiones liberales.

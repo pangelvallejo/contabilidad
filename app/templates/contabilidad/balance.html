@@ -16,6 +16,7 @@
     {{ detalle(bg.det_pasivo) }}
     <tr class="grupo"><td>PATRIMONIO</td><td class="n">{{ bg.total_patrimonio|pesos }}</td></tr>
     {{ detalle(bg.det_patrimonio) }}
+    {% if bg.anteriores %}<tr><td style="padding-left:24px">Resultados de ejercicios anteriores</td><td class="n">{{ bg.anteriores|pesos }}</td></tr>{% endif %}
     <tr><td style="padding-left:24px">Resultado del ejercicio</td><td class="n">{{ bg.resultado|pesos }}</td></tr>
     <tr class="res"><td>Total pasivo y patrimonio</td><td class="n">{{ (bg.pasivo + bg.total_patrimonio)|pesos }}</td></tr>
   </table></div>

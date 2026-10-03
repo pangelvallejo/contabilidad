@@ -26,13 +26,18 @@ def periodo():
 
 def anio_arg():
     try:
-        return int(request.args.get("anio") or date.today().year)
+        anio = int(request.args.get("anio") or date.today().year)
     except ValueError:
         return date.today().year
+    return anio if 2000 <= anio <= 2100 else date.today().year
 
 
 def dinero(nombre):
-    return d(request.form.get(nombre) or "0")
+    texto = (request.form.get(nombre) or "0").strip()
+    try:
+        return d(texto)
+    except Exception as e:  # noqa: BLE001 — Decimal lanza InvalidOperation
+        raise ValueError(f"El valor '{texto}' no es un número válido (use 1.234.567,89).") from e
 
 
 def check(nombre):

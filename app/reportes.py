@@ -39,10 +39,25 @@ class FilaBalance:
         return len(self.cuenta.codigo)
 
 
+CTA_RESULTADOS_ANTERIORES = "370505"
+
+
+def resultado_acumulado(session, hasta: date) -> Decimal:
+    """Utilidad (+) o pérdida (−) de los años cerrados antes de la fecha: clases 4 − 5 − 6 hasta el 31-12 anterior."""
+    s = _sumas_por_cuenta(session, hasta=hasta)
+    return _saldo_prefijo(s, "4", "C") - _saldo_prefijo(s, "5", "D") - _saldo_prefijo(s, "6", "D")
+
+
 def balance_de_prueba(session, desde: date, hasta: date, nivel_max=8):
     cuentas = {c.codigo: c for c in session.query(Cuenta)}
     previas = _sumas_por_cuenta(session, hasta=date.fromordinal(desde.toordinal() - 1))
     periodo = _sumas_por_cuenta(session, desde, hasta)
+    # Cierre implícito: el resultado de los años anteriores se presenta en 370505 (utilidades acumuladas).
+    anteriores = resultado_acumulado(session, date(desde.year - 1, 12, 31))
+    if anteriores:
+        previas = dict(previas)
+        dp, cp = previas.get(CTA_RESULTADOS_ANTERIORES, (CERO, CERO))
+        previas[CTA_RESULTADOS_ANTERIORES] = (dp + max(-anteriores, CERO), cp + max(anteriores, CERO))
     agregados = defaultdict(lambda: [CERO, CERO, CERO, CERO])  # deb_prev, cre_prev, deb, cre
     for origen, idx in ((previas, 0), (periodo, 2)):
         for codigo, (dbt, cr) in origen.items():
@@ -127,15 +142,17 @@ def balance_general(session, corte: date):
     activo = _saldo_prefijo(s, "1", "D")
     pasivo = _saldo_prefijo(s, "2", "C")
     patrimonio = _saldo_prefijo(s, "3", "C")
-    # Resultado del ejercicio en curso y de años anteriores aún no trasladados a patrimonio
-    resultado = (_saldo_prefijo(s, "4", "C") - _saldo_prefijo(s, "5", "D") - _saldo_prefijo(s, "6", "D"))
+    anteriores = resultado_acumulado(session, date(corte.year - 1, 12, 31))
+    # Resultado del ejercicio en curso (del 1 de enero al corte)
+    resultado = (_saldo_prefijo(s, "4", "C") - _saldo_prefijo(s, "5", "D") - _saldo_prefijo(s, "6", "D")) - anteriores
     return {
         "activo": activo, "det_activo": _detalle(session, s, ["1"]),
         "pasivo": pasivo, "det_pasivo": _detalle(session, s, ["2"]),
         "patrimonio": patrimonio, "det_patrimonio": _detalle(session, s, ["3"]),
+        "anteriores": anteriores,
         "resultado": resultado,
-        "total_patrimonio": patrimonio + resultado,
-        "cuadre": activo - pasivo - patrimonio - resultado,
+        "total_patrimonio": patrimonio + anteriores + resultado,
+        "cuadre": activo - pasivo - patrimonio - anteriores - resultado,
     }
 
 

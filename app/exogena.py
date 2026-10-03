@@ -71,6 +71,7 @@ def generar(session, anio):
         saldo = g.total - pagado if g.tipo_soporte != "NC" else -g.total
         if saldo:
             f1009[g.proveedor_id] += saldo
+    f1009 = {t: v for t, v in f1009.items() if v > 0}  # un saldo a favor con el proveedor no es cuenta por pagar
 
     terceros = {t.id: t for t in session.query(Tercero)}
     hojas = {

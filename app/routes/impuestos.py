@@ -23,7 +23,7 @@ def iva():
 
 @bp.route("/iva/<int:anio>/<int:bim>")
 def iva_detalle(anio, bim):
-    if bim not in BIMESTRES:
+    if bim not in BIMESTRES or not 2000 <= anio <= 2100:
         abort(404)
     s = Session()
     r = impuestos.resumen_iva_bimestre(s, anio, bim)
@@ -52,7 +52,7 @@ def simple():
     recibos = [impuestos.recibo_2593(s, anio, b) for b in BIMESTRES]
     return render_template("impuestos/simple.html", recibos=recibos, anio=anio, nombres=impuestos.nombre_bimestre,
                            bancos=s.query(Banco).filter_by(activo=True).all(),
-                           tabla=SIMPLE_TARIFA_BIMESTRAL, uvt=impuestos.uvt(anio),
+                           tabla=SIMPLE_TARIFA_BIMESTRAL, uvt=impuestos.uvt(anio, s),
                            base=contab.config(s, "simple_base", "causacion"))
 
 
@@ -108,7 +108,7 @@ def f260():
     dec = impuestos.declaracion_simple(s, anio)
     pagos = s.query(PagoImpuesto).filter_by(formulario="260", anio=anio).all()
     return render_template("impuestos/f260.html", dec=dec, anio=anio, tabla=SIMPLE_TARIFA_ANUAL,
-                           uvt=impuestos.uvt(anio), pagos=pagos, bancos=s.query(Banco).filter_by(activo=True).all())
+                           uvt=impuestos.uvt(anio, s), pagos=pagos, bancos=s.query(Banco).filter_by(activo=True).all())
 
 
 @bp.route("/f300")
@@ -127,10 +127,15 @@ def calendario():
     s = Session()
     if request.method == "POST":
         if request.form.get("accion") == "agregar":
-            s.add(Vencimiento(obligacion=request.form["obligacion"], periodo=request.form.get("periodo"),
+            if not request.form.get("obligacion", "").strip() or fecha_arg("fecha") is None:
+                flash("Indique la obligación y una fecha válida.", "error")
+                return redirect(url_for("impuestos.calendario"))
+            s.add(Vencimiento(obligacion=request.form["obligacion"].strip(), periodo=request.form.get("periodo"),
                               fecha=fecha_arg("fecha"), notas=request.form.get("notas") or None))
         elif request.form.get("eliminar"):
-            s.delete(s.get(Vencimiento, int(request.form["eliminar"])))
+            v = s.get(Vencimiento, request.form.get("eliminar", type=int) or 0)
+            if v is not None:
+                s.delete(v)
         else:
             for v in s.query(Vencimiento):
                 v.fecha = fecha_arg(f"fecha_{v.id}", v.fecha)

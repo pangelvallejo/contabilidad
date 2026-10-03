@@ -166,7 +166,7 @@ CATEGORIAS = [
     ("Taxis y transporte urbano", "519545", "5016", "uber,taxi,cabify,didi,indriver,transporte", True),
     ("Parqueaderos", "519565", "5016", "parqueadero,parking,city parking", True),
     ("Mensajería", "513540", "5004",
-     "mensajeria,servientrega,envia,interrapidisimo,4-72,coordinadora,deprisa,domicilio", True),
+     "mensajeria,servientrega,envia colvanes,interrapidisimo,4-72,coordinadora,deprisa,domicilio", True),
     ("Viajes: tiquetes", "515515", "5016", "avianca,latam,tiquete,vuelo,aerolinea,jetsmart,wingo,satena", True),
     ("Viajes: hoteles y viáticos", "515505", "5016", "hotel,alojamiento,airbnb,hospedaje", True),
     ("Publicidad y página web", "523560", "5004", "publicidad,marketing,linkedin,dominio,hosting,pagina web", True),

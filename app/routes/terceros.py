@@ -36,6 +36,9 @@ def editar(id=None):
     if id and t is None:
         abort(404)
     if request.method == "POST":
+        if not request.form.get("nit", "").strip() or not request.form.get("nombre", "").strip():
+            flash("NIT/cédula y nombre son obligatorios.", "error")
+            return render_template("terceros/form.html", t=t)
         for campo in ("tipo_doc", "nit", "dv", "nombre", "primer_apellido", "segundo_apellido", "primer_nombre",
                       "otros_nombres", "email", "telefono", "direccion", "ciudad", "cod_municipio", "pais", "notas"):
             setattr(t, campo, (request.form.get(campo) or "").strip() or None)
@@ -44,10 +47,10 @@ def editar(id=None):
         t.es_cliente = check("es_cliente")
         t.es_proveedor = check("es_proveedor")
         t.aplica_reteiva = check("aplica_reteiva")
-        t.plazo_dias = int(request.form.get("plazo_dias") or 0)
-        if not t.nit or not t.nombre:
-            flash("NIT/cédula y nombre son obligatorios.", "error")
-            return render_template("terceros/form.html", t=t)
+        try:
+            t.plazo_dias = max(0, int(request.form.get("plazo_dias") or 0))
+        except ValueError:
+            t.plazo_dias = 30
         with s.no_autoflush:
             otro = s.query(Tercero).filter(Tercero.nit == t.nit, Tercero.id != (t.id or 0)).first()
         if otro:

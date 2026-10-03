@@ -258,8 +258,8 @@ def test_tarifa_bimestral_por_tramos():
     from app import impuestos
     from app.config import SIMPLE_TARIFA_BIMESTRAL
     uvt = impuestos.uvt(2026)
-    assert impuestos.tarifa(uvt * 1000, 2026, SIMPLE_TARIFA_BIMESTRAL) == D("0.059")
-    assert impuestos.tarifa(uvt * 1001, 2026, SIMPLE_TARIFA_BIMESTRAL) == D("0.073")
+    assert impuestos.tarifa(uvt * 999, 2026, SIMPLE_TARIFA_BIMESTRAL) == D("0.059")
+    assert impuestos.tarifa(uvt * 1000, 2026, SIMPLE_TARIFA_BIMESTRAL) == D("0.073")  # límite inclusive
     assert impuestos.tarifa(uvt * 3000, 2026, SIMPLE_TARIFA_BIMESTRAL) == D("0.12")
 
 
@@ -371,3 +371,191 @@ def test_flujo_web_completo(cliente_web, s):
         assert r.status_code == 200 and r.data[:2] == b"PK", ruta
     from app import reportes
     assert reportes.balance_general(s, date(2026, 12, 31))["cuadre"] == 0
+
+
+def test_cierre_implicito_anio_siguiente(s):
+    from app import reportes
+    _escenario(s)  # ingresos 15M, gastos 2M en 2026
+    filas, td, tc = reportes.balance_de_prueba(s, date(2027, 1, 1), date(2027, 12, 31))
+    saldos = {f.cuenta.codigo: f for f in filas}
+    assert saldos["370505"].saldo_inicial == D("13000000")
+    assert "4" not in saldos and "5" not in saldos
+    activo = saldos["1"].saldo_inicial
+    assert activo == saldos["2"].saldo_inicial + saldos["3"].saldo_inicial
+    bg = reportes.balance_general(s, date(2027, 6, 30))
+    assert bg["anteriores"] == D("13000000") and bg["resultado"] == 0 and bg["cuadre"] == 0
+
+
+def test_causacion_simple_no_cruza_anticipo_de_enero(s):
+    from app import contab, impuestos, reportes
+    from app.models import Banco, PagoImpuesto
+    importar(s, "1.xml", factura_venta("ALC-1", "2026-11-15", CLIENTE, 10_000_000))
+    p = PagoImpuesto(formulario="2593", anio=2026, bimestre=6, fecha=date(2027, 1, 21), valor_simple=D("590000"),
+                     valor_iva=D("1900000"), banco=s.query(Banco).first())
+    s.add(p)
+    s.flush()
+    impuestos.causar_simple_anual(s, 2026)
+    s.commit()
+    contab.contabilizar_pago_impuesto(s, p)
+    s.commit()
+    assert reportes.saldo_cuenta(s, "135595", date(2026, 12, 31)) == 0
+    assert reportes.saldo_cuenta(s, "240405", date(2026, 12, 31)) == D("-590000")  # pasivo al cierre
+    assert reportes.saldo_cuenta(s, "240405") == 0  # cancelado con el pago de enero
+
+
+def test_nc_sin_factura_registrada_se_rechaza(s):
+    nc = documento(tipo="CreditNote", numero="NC-9", cufe="cude-nc9", fecha="2026-09-30", emisor=EMPRESA,
+                   receptor=CLIENTE, base=1_000_000, iva=190_000, referencia=("ALC-404", "cufe-404"))
+    r = importar(s, "nc.xml", nc)
+    assert not r[0].ok and "ALC-404" in r[0].mensaje
+
+
+def test_no_anular_factura_con_recaudo(cliente_web, s):
+    from app import cartera, contab
+    from app.models import Banco, DocumentoVenta, Recaudo
+    importar(s, "1.xml", factura_venta("ALC-1", "2026-09-01", CLIENTE, 1_000_000))
+    doc = s.query(DocumentoVenta).one()
+    rec = Recaudo(fecha=date(2026, 9, 20), cliente_id=doc.cliente_id, banco=s.query(Banco).first(), valor=D("1190000"))
+    s.add(rec)
+    cartera.registrar_aplicaciones(rec, {doc: D("1190000")})
+    s.flush()
+    contab.contabilizar_recaudo(s, rec)
+    s.commit()
+    r = cliente_web.post(f"/ventas/{doc.id}", data={"accion": "guardar", "anulada": "on"})
+    assert r.status_code == 302
+    from app.db import Session
+    Session.remove()
+    assert not Session().query(DocumentoVenta).one().anulada
+
+
+def test_nit_con_formato_y_encoding_interno(s):
+    from app import contab
+    from app.dian_xml import leer_xml, nit_limpio
+    from app.models import Gasto, Tercero
+    assert nit_limpio("901.913.577-4", "4") == "901913577"
+    assert nit_limpio("9019135774", "4") == "901913577"
+    assert nit_limpio("800 123 456") == "800123456"
+    contab.set_config(s, "empresa_nit", "901.913.577-4")
+    s.commit()
+    r = importar(s, "g.xml", factura_compra("P-7", "2026-09-01", ("800 123 456", "1", "PAÑALERA LÓPEZ"), 100_000, 19_000))
+    assert r[0].ok, r[0].mensaje
+    assert s.query(Tercero).filter_by(nit="800123456").one().nombre == "PAÑALERA LÓPEZ"
+    # XML interno declarado en ISO-8859-1 dentro de un contenedor UTF-8
+    from ubl import contenedor, documento
+    interno = documento(numero="P-8", cufe="c8", fecha="2026-09-02", emisor=("800000009", "1", "PAÑALERA LÓPEZ"),
+                        receptor=EMPRESA, base=100, iva=19).replace('encoding="utf-8"', 'encoding="ISO-8859-1"')
+    doc = leer_xml(contenedor(interno, "P-8", "c8", "2026-09-02", ("800000009", "1", "X"), EMPRESA))
+    assert doc.emisor.nombre == "PAÑALERA LÓPEZ"
+    # duplicado sin CUFE
+    sin = documento(numero="SC-1", cufe="", fecha="2026-09-03", emisor=("800000009", "1", "X"), receptor=EMPRESA,
+                    base=100, iva=0)
+    assert importar(s, "a.xml", sin)[0].ok
+    assert not importar(s, "a.xml", sin)[0].ok
+    assert s.query(Gasto).filter_by(numero="SC-1").count() == 1
+
+
+def test_zip_dian_varios_documentos():
+    from app.dian_xml import leer_archivo
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as z:
+        z.writestr("ad0901913577001.xml", factura_venta("ALC-1", "2026-09-01", CLIENTE, 100))
+        z.writestr("fv0901913577001.pdf", b"%PDF-1")
+        z.writestr("ad0901913577002.xml", factura_venta("ALC-2", "2026-09-01", CLIENTE, 100))
+        z.writestr("fv0901913577002.pdf", b"%PDF-2")
+        z.writestr("__MACOSX/._ad0901913577001.xml", b"basura")
+        z.writestr("carpeta/__MACOSX/._x.xml", b"basura")
+    leidos = leer_archivo("lote.zip", buf.getvalue())
+    assert [l.documento.numero for l in leidos] == ["ALC-1", "ALC-2"]
+    assert [l.pdf for l in leidos] == [b"%PDF-1", b"%PDF-2"]
+    anidado = io.BytesIO()
+    with zipfile.ZipFile(anidado, "w") as z:
+        z.writestr("interno.zip", buf.getvalue())
+    assert len(leer_archivo("lote2.zip", anidado.getvalue())) == 2
+
+
+def test_categoria_plural_y_proveedor(s):
+    from app.importacion import sugerir_categoria
+    from app.models import Tercero
+    assert sugerir_categoria(s, None, "INTERESES DE MORA")[0].nombre == "Intereses"
+    assert sugerir_categoria(s, None, "Se envia certificado de tradicion")[0].nombre == "Otros gastos"
+    prov = Tercero(nit="1", nombre="MICROSOFT COLOMBIA", es_proveedor=True)
+    s.add(prov)
+    s.flush()
+    assert sugerir_categoria(s, prov, "Licencia de construccion")[0].nombre == "Software y nube"
+
+
+def test_nombre_seguro_conserva_extension():
+    from app.archivos import nombre_seguro
+    assert nombre_seguro("факту́ра.xml") == "archivo.xml"
+    assert nombre_seguro("..xml") == "archivo.xml"
+    assert nombre_seguro("C:\\Users\\x\\factura 電子.pdf") == "factura.pdf"
+    assert nombre_seguro("../../etc/passwd") == "passwd"
+
+
+def test_editar_recaudo_aplica_anticipo(cliente_web, s):
+    from app import cartera, reportes
+    from app.models import DocumentoVenta, Recaudo
+    importar(s, "1.xml", factura_venta("ALC-1", "2026-09-01", CLIENTE, 1_000_000))
+    doc = s.query(DocumentoVenta).one()
+    r = cliente_web.post("/recaudos/nuevo", data={"cliente_id": doc.cliente_id, "guardar": "1", "fecha": "2026-08-20",
+                                                  "banco_id": "1", "valor": "1190000"})  # anticipo sin aplicar
+    assert r.status_code == 302
+    rec = s.query(Recaudo).one()
+    assert rec.sin_aplicar == D("1190000") and reportes.saldo_cuenta(s, "280505") == D("-1190000")
+    assert cliente_web.get(f"/recaudos/{rec.id}").status_code == 200
+    r = cliente_web.post(f"/recaudos/{rec.id}", data={"guardar": "1", "fecha": "2026-08-20", "banco_id": "1",
+                                                      "valor": "1190000", f"aplicar_{doc.id}": "1190000"})
+    assert r.status_code == 302
+    s.expire_all()
+    doc = s.get(DocumentoVenta, doc.id)
+    assert cartera.saldo_documento(s, doc) == 0
+    assert reportes.saldo_cuenta(s, "280505") == 0
+    assert reportes.saldo_cuenta(s, "130505") == 0
+
+
+def test_formularios_no_fallan_con_datos_invalidos(cliente_web, s):
+    """Casos que antes producían error 500; ahora responden con mensaje y redirección."""
+    importar(s, "1.xml", factura_venta("ALC-1", "2026-09-01", CLIENTE, 1_000_000))
+    from app.models import Banco, CategoriaGasto, DocumentoVenta, Tercero
+    doc = s.query(DocumentoVenta).one()
+    # banco nuevo en configuración
+    assert cliente_web.post("/configuracion/", data={"accion": "banco", "nombre": "Davivienda"}).status_code == 302
+    assert s.query(Banco).filter_by(nombre="Davivienda").one().cuenta == "11200503"
+    # categoría duplicada
+    n = s.query(CategoriaGasto).count()
+    assert cliente_web.post("/configuracion/", data={"accion": "categoria", "nombre": "Energía",
+                                                     "cuenta": "519595"}).status_code == 302
+    assert s.query(CategoriaGasto).count() == n
+    # reteIVA con texto, adjunto no permitido, nota crédito que impide eliminar
+    r = cliente_web.post(f"/ventas/{doc.id}", data={"accion": "guardar", "reteiva_aplica": "on",
+                                                    "reteiva_valor": "abc"})
+    assert r.status_code == 302
+    r = cliente_web.post(f"/ventas/{doc.id}", data={"accion": "guardar", "cert_archivo": (io.BytesIO(b"x"), "c.docx")},
+                         content_type="multipart/form-data")
+    assert r.status_code == 302
+    r = cliente_web.post("/ventas/nueva", data={"tipo": "NC", "numero": "NC-1", "fecha": "2026-09-02",
+                                                "cliente_id": doc.cliente_id, "referencia_id": doc.id,
+                                                "base": "100.000", "iva": "19.000"})
+    assert r.status_code == 302
+    assert cliente_web.post(f"/ventas/{doc.id}", data={"accion": "eliminar"}).status_code == 302
+    assert s.query(DocumentoVenta).filter_by(id=doc.id).count() == 1
+    # asiento manual con montos mal escritos
+    r = cliente_web.post("/contabilidad/asiento/nuevo", data={"fecha": "2026-01-02", "descripcion": "x",
+                                                              "cuenta": ["11200501", "310505"], "tercero": ["x", ""],
+                                                              "detalle": ["", ""], "debito": ["abc", ""],
+                                                              "credito": ["", "1"]})
+    assert r.status_code == 200 and "No se pudo guardar" in r.data.decode()
+    # tercero con NIT en blanco
+    t = s.query(Tercero).first()
+    assert cliente_web.post(f"/terceros/{t.id}", data={"nit": "  ", "nombre": "", "plazo_dias": "abc"}).status_code == 200
+    assert cliente_web.get("/").status_code == 200
+    # años fuera de rango y calendario
+    for ruta in ["/ventas?anio=0", "/recaudos?anio=20226", "/impuestos/iva?anio=99999", "/impuestos/simple?anio=0"]:
+        assert cliente_web.get(ruta).status_code == 200, ruta
+    assert cliente_web.get("/impuestos/iva/0/1").status_code == 404
+    assert cliente_web.post("/impuestos/calendario", data={"accion": "agregar", "obligacion": "x", "fecha": ""}).status_code == 302
+    assert cliente_web.post("/impuestos/calendario", data={"eliminar": "9999"}).status_code == 302
+    # formulario de gasto con monto inválido conserva lo escrito
+    r = cliente_web.post("/gastos/nuevo", data={"tipo_soporte": "FE", "fecha": "2026-09-12", "proveedor_id": "",
+                                                "categoria_id": "1", "subtotal": "abc", "forma_pago": "credito"})
+    assert r.status_code == 200 and 'value="credito" selected' in r.data.decode()

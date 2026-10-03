@@ -33,14 +33,20 @@ def nombre_bimestre(bim):
     return f"{a}-{b}"
 
 
-def uvt(anio):
+def uvt(anio, session=None):
+    """UVT del año: la configurada por el usuario (clave uvt_<año>) o la fija en config.py."""
+    if session is not None:
+        valor = contab.config(session, f"uvt_{anio}")
+        if valor:
+            return contab.d(valor)
     return Decimal(cfg.UVT.get(anio) or cfg.UVT[max(cfg.UVT)])
 
 
-def tarifa(ingresos: Decimal, anio: int, tabla) -> Decimal:
-    en_uvt = ingresos / uvt(anio)
+def tarifa(ingresos: Decimal, anio: int, tabla, session=None) -> Decimal:
+    """Art. 908 E.T.: cada tramo va desde el límite anterior (inclusive) hasta el siguiente (exclusive)."""
+    en_uvt = ingresos / uvt(anio, session)
     for hasta, t in tabla:
-        if en_uvt <= hasta:
+        if en_uvt < hasta:
             return Decimal(str(t))
     return Decimal(str(tabla[-1][1]))
 
@@ -166,7 +172,7 @@ def recibo_2593(session, anio, bim) -> Recibo2593:
     from .models import Vencimiento
     inicio, fin = rango_bimestre(anio, bim)
     ingresos = ingresos_brutos(session, inicio, fin)
-    t = tarifa(ingresos, anio, cfg.SIMPLE_TARIFA_BIMESTRAL)
+    t = tarifa(ingresos, anio, cfg.SIMPLE_TARIFA_BIMESTRAL, session)
     anticipo = redondeo_dian(max(ingresos, CERO) * t)
     pagos = session.query(PagoImpuesto).filter_by(formulario="2593", anio=anio, bimestre=bim).all()
     venc = (session.query(Vencimiento).filter(Vencimiento.obligacion.like("Recibo 2593%"),
@@ -200,7 +206,7 @@ class DeclaracionSimple:
 def declaracion_simple(session, anio) -> DeclaracionSimple:
     inicio, fin = date(anio, 1, 1), date(anio, 12, 31)
     ingresos = ingresos_brutos(session, inicio, fin)
-    t = tarifa(ingresos, anio, cfg.SIMPLE_TARIFA_ANUAL)
+    t = tarifa(ingresos, anio, cfg.SIMPLE_TARIFA_ANUAL, session)
     impuesto = redondeo_dian(max(ingresos, CERO) * t)
     # Ingresos recibidos por tarjetas y medios electrónicos (art. 912 E.T.), sin IVA.
     electronicos = CERO
@@ -214,16 +220,23 @@ def declaracion_simple(session, anio) -> DeclaracionSimple:
     descuento = min(descuento, impuesto)
     anticipos = sum((p.valor_simple for p in session.query(PagoImpuesto).filter_by(formulario="2593", anio=anio)),
                     CERO)
-    return DeclaracionSimple(anio, ingresos, contab.redondear(ingresos / uvt(anio)), t, impuesto,
+    return DeclaracionSimple(anio, ingresos, contab.redondear(ingresos / uvt(anio, session)), t, impuesto,
                              contab.redondear(electronicos), descuento, anticipos,
-                             ingresos > uvt(anio) * cfg.SIMPLE_LIMITE_UVT_PROFESIONALES)
+                             ingresos > uvt(anio, session) * cfg.SIMPLE_LIMITE_UVT_PROFESIONALES)
 
 
 def causar_simple_anual(session, anio):
-    """Registra el gasto del impuesto SIMPLE del año contra los anticipos y el saldo por pagar."""
+    """Registra el gasto del impuesto SIMPLE del año contra los anticipos y el saldo por pagar.
+
+    Solo se cruzan los anticipos pagados hasta el 31 de diciembre; el del bimestre 6 (que se paga
+    en enero) y el saldo de la declaración quedan como pasivo al cierre.
+    """
     dec = declaracion_simple(session, anio)
-    contra_anticipos = min(dec.anticipos, dec.impuesto_neto)
-    por_pagar = max(dec.impuesto_neto - dec.anticipos, CERO)
+    pagados_en_el_anio = sum((p.valor_simple for p in session.query(PagoImpuesto)
+                              .filter(PagoImpuesto.formulario == "2593", PagoImpuesto.anio == anio,
+                                      PagoImpuesto.fecha <= date(anio, 12, 31))), CERO)
+    contra_anticipos = min(pagados_en_el_anio, dec.impuesto_neto)
+    por_pagar = max(dec.impuesto_neto - contra_anticipos, CERO)
     contab.guardar_asiento(
         session, origen=f"simple:{anio}", tipo="AJ", fecha=date(anio, 12, 31),
         descripcion=f"Impuesto unificado SIMPLE año gravable {anio}", tercero_id=None,

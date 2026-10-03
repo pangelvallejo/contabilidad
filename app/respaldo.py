@@ -32,6 +32,10 @@ def crear_respaldo(session) -> Path:
     from .contab import config as cfg, set_config
     with _lock:
         destino = carpeta_destino(session)
+        try:
+            conservar = max(1, int(cfg(session, "respaldos_a_conservar", "30")))
+        except ValueError:
+            conservar = 30
         destino.mkdir(parents=True, exist_ok=True)
         nombre = destino / f"respaldo_{datetime.now():%Y%m%d_%H%M%S}.zip"
         with tempfile.TemporaryDirectory() as tmp:
@@ -48,7 +52,6 @@ def crear_respaldo(session) -> Path:
                     for f in config.ADJUNTOS_DIR.rglob("*"):
                         if f.is_file():
                             z.write(f, Path("adjuntos") / f.relative_to(config.ADJUNTOS_DIR))
-        conservar = int(cfg(session, "respaldos_a_conservar", "30"))
         for viejo in sorted(destino.glob("respaldo_*.zip"))[:-conservar]:
             viejo.unlink(missing_ok=True)
         set_config(session, "ultimo_respaldo", datetime.now().isoformat(timespec="seconds"))

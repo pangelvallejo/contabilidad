@@ -108,8 +108,10 @@ def _llenar_gasto(s, g):
     g.notas = request.form.get("notas") or None
     g.revisado = True
     if g.iva and g.iva_descontable and g.tipo_soporte not in ("FE", "DS", "NC"):
-        flash("Ojo: el IVA solo es descontable si está soportado en factura electrónica o documento soporte.",
-              "advertencia")
+        # Art. 771-2 E.T.: sin factura electrónica o documento soporte no hay derecho al descontable.
+        g.iva_descontable = False
+        flash("El IVA se registró como NO descontable: solo es descontable con factura electrónica o "
+              "documento soporte. Cambie el tipo de soporte si tiene la factura.", "advertencia")
     soporte = archivos.guardar_upload("gastos", request.files.get("soporte"))
     if soporte:
         g.soporte_archivo = soporte
@@ -174,6 +176,8 @@ def detalle(id):
             _llenar_gasto(s, g)
             if g.forma_pago == "contado" and g.pagos:
                 raise ValueError("El gasto tiene pagos registrados; elimínelos antes de marcarlo de contado.")
+            if g.forma_pago == "credito" and g.pagos and g.total < sum((p.valor for p in g.pagos), CERO):
+                raise ValueError("El total no puede ser menor que lo ya pagado; ajuste primero los pagos.")
             s.flush()
             s.refresh(g)
             contab.contabilizar_gasto(s, g)

@@ -95,27 +95,38 @@ def asiento(id=None):
             s.commit()
             flash("Asiento eliminado.", "ok")
             return redirect(url_for("contabilidad.diario"))
-        lineas = []
-        cuentas = request.form.getlist("cuenta")
-        for i, cta in enumerate(cuentas):
-            if not cta:
-                continue
-            tercero = request.form.getlist("tercero")[i]
-            lineas.append((cta, contab.d(request.form.getlist("debito")[i] or 0),
-                           contab.d(request.form.getlist("credito")[i] or 0), int(tercero) if tercero else None,
-                           request.form.getlist("detalle")[i]))
         try:
-            if not lineas:
+            lineas = []
+            cuentas = request.form.getlist("cuenta")
+            terceros = request.form.getlist("tercero")
+            debitos, creditos, detalles = (request.form.getlist(k) for k in ("debito", "credito", "detalle"))
+            for i, cta in enumerate(cuentas):
+                if not cta:
+                    continue
+                tercero = terceros[i] if i < len(terceros) else ""
+                try:
+                    debito = contab.d(debitos[i] if i < len(debitos) else 0)
+                    credito = contab.d(creditos[i] if i < len(creditos) else 0)
+                except Exception as e:  # noqa: BLE001
+                    raise contab.ErrorContable(f"Monto no válido en la línea {i + 1} (use 1.234.567,89).") from e
+                lineas.append((cta, debito, credito, int(tercero) if tercero.isdigit() else None,
+                               detalles[i] if i < len(detalles) else ""))
+            if len(lineas) < 2:
                 raise contab.ErrorContable("Agregue al menos dos líneas.")
+            validas = {c.codigo for c in _cuentas_movimiento(s)}
+            for cta, *_ in lineas:
+                if cta not in validas:
+                    raise contab.ErrorContable(f"La cuenta {cta} no existe o no recibe movimientos.")
             nuevo = contab.guardar_asiento(s, origen=None, tipo="AJ", fecha=fecha_arg("fecha", date.today()),
                                            descripcion=request.form.get("descripcion") or "Asiento manual",
                                            tercero_id=None, lineas=lineas, asiento=a)
             s.commit()
             flash("Asiento guardado.", "ok")
             return redirect(url_for("contabilidad.asiento", id=nuevo.id))
-        except contab.ErrorContable as e:
+        except Exception as e:  # noqa: BLE001
             s.rollback()
-            flash(str(e), "error")
+            flash(f"No se pudo guardar: {e}", "error")
+            a = s.get(Asiento, id) if id else None
     return render_template("contabilidad/asiento.html", a=a, cuentas=_cuentas_movimiento(s),
                            terceros=s.query(Tercero).order_by(Tercero.nombre).all())
 

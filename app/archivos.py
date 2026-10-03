@@ -9,10 +9,17 @@ from . import config
 EXTENSIONES_PERMITIDAS = {".xml", ".pdf", ".png", ".jpg", ".jpeg", ".heic", ".webp", ".zip"}
 
 
+def _ascii(texto: str) -> str:
+    texto = unicodedata.normalize("NFKD", texto).encode("ascii", "ignore").decode()
+    return re.sub(r"[^A-Za-z0-9._-]+", "_", texto).strip("._")
+
+
 def nombre_seguro(nombre: str) -> str:
-    nombre = unicodedata.normalize("NFKD", nombre).encode("ascii", "ignore").decode()
-    nombre = re.sub(r"[^A-Za-z0-9._-]+", "_", nombre).strip("._")
-    return nombre[-120:] or "archivo"
+    """Nombre de archivo ASCII sin rutas; conserva la extensión aunque el nombre tenga otros alfabetos."""
+    p = Path(nombre.replace("\\", "/"))
+    ext = p.suffix.lower() if re.fullmatch(r"\.[A-Za-z0-9]{1,5}", p.suffix) else ""
+    base = _ascii(p.stem) or "archivo"
+    return (base[-110:] + ext) or "archivo"
 
 
 def guardar(carpeta: str, nombre: str, contenido: bytes) -> str:

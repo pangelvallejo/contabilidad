@@ -10,7 +10,7 @@ from openpyxl.utils import get_column_letter
 
 from .formato import fecha, pesos
 
-FORMATO_PESOS = '#,##0;[Red]-#,##0'
+FORMATO_PESOS = '#,##0.00;[Red]-#,##0.00'
 
 
 def excel(hojas: dict) -> bytes:

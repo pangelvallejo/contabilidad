@@ -4,6 +4,7 @@ Acepta el contenedor `AttachedDocument` que entrega el software gratuito de la D
 proveedores, o el `Invoice` / `CreditNote` / `DebitNote` directo. También archivos ZIP.
 """
 import io
+import re
 import xml.etree.ElementTree as ET
 import zipfile
 from dataclasses import dataclass, field
@@ -111,6 +112,14 @@ def _fecha(t):
         return None
 
 
+def nit_limpio(texto: str, dv: str = "") -> str:
+    """Deja solo dígitos; si viene el DV pegado (10 dígitos terminados en el DV conocido) lo quita."""
+    digitos = re.sub(r"\D", "", texto or "")
+    if dv and len(digitos) == 10 and digitos[-1] == dv:
+        digitos = digitos[:-1]
+    return digitos
+
+
 def _local(tag):
     return tag.rsplit("}", 1)[-1]
 
@@ -123,8 +132,8 @@ def _parte(party):
                  "cac:PartyIdentification/cbc:ID"):
         n = party.find(_p(ruta))
         if n is not None and n.text and n.text.strip():
-            p.nit = n.text.strip()
             p.dv = n.get("schemeID", "") if len(n.get("schemeID", "")) == 1 else ""
+            p.nit = nit_limpio(n.text, p.dv) or n.text.strip()
             p.tipo_doc = n.get("schemeName", "31") or "31"
             break
     p.nombre = (_txt(party, "cac:PartyTaxScheme/cbc:RegistrationName")
@@ -178,7 +187,10 @@ def _documento_ubl(raiz) -> DocumentoDIAN:
                 pct = _dec(sub, "cac:TaxCategory/cbc:Percent") or pct
         lineas.append(Linea(desc, cantidad, _dec(ln, "cbc:LineExtensionAmount"), pct, iva))
 
-    vencimiento = _fecha(_txt(raiz, "cac:PaymentMeans/cbc:PaymentDueDate")) or _fecha(_txt(raiz, "cbc:DueDate"))
+    medios = raiz.findall(_p("cac:PaymentMeans"))
+    medio = next((m for m in medios if _txt(m, "cbc:ID") == "2"), None) or next(
+        (m for m in medios if _fecha(_txt(m, "cbc:PaymentDueDate"))), None) or (medios[0] if medios else None)
+    vencimiento = _fecha(_txt(medio, "cbc:PaymentDueDate")) or _fecha(_txt(raiz, "cbc:DueDate"))
     return DocumentoDIAN(
         tipo=tipo,
         numero=_txt(raiz, "cbc:ID"),
@@ -199,15 +211,17 @@ def _documento_ubl(raiz) -> DocumentoDIAN:
         notas=[n.text.strip() for n in raiz.findall("{*}Note") if n.text and n.text.strip()],
         referencia_numero=_txt(raiz, "cac:BillingReference/cac:InvoiceDocumentReference/cbc:ID"),
         referencia_cufe=_txt(raiz, "cac:BillingReference/cac:InvoiceDocumentReference/cbc:UUID"),
-        forma_pago=_txt(raiz, "cac:PaymentMeans/cbc:ID"),
+        forma_pago=_txt(medio, "cbc:ID"),
     )
 
 
 def leer_xml(contenido: bytes | str) -> DocumentoDIAN:
-    if isinstance(contenido, str):
-        contenido = contenido.encode("utf-8")
     try:
-        raiz = ET.fromstring(contenido.lstrip(b"\xef\xbb\xbf \r\n\t"))
+        if isinstance(contenido, str):
+            # Texto ya decodificado (CDATA): se ignora la declaración encoding interna.
+            raiz = ET.fromstring(contenido.lstrip("\ufeff \r\n\t"))
+        else:
+            raiz = ET.fromstring(contenido.lstrip(b"\xef\xbb\xbf \r\n\t"))
     except ET.ParseError as e:
         raise ErrorXML(f"El archivo no es un XML válido: {e}") from e
     nombre = _local(raiz.tag)
@@ -238,25 +252,42 @@ class ArchivoLeido:
     error: str | None = None
 
 
-def leer_archivo(nombre: str, contenido: bytes) -> list[ArchivoLeido]:
-    """Lee un .xml o un .zip (con uno o varios XML y sus PDF)."""
+def _base_documento(ruta: str) -> str:
+    """'carpeta/ad09001234.xml' -> '09001234': sin carpeta, extensión ni prefijo ad/fv/fe/nc/nd de la DIAN."""
+    base = ruta.rsplit("/", 1)[-1].rsplit(".", 1)[0].lower()
+    return re.sub(r"^(ad|fv|fe|nc|nd|ar)", "", base)
+
+
+def _util(ruta: str) -> bool:
+    partes = ruta.replace("\\", "/").split("/")
+    return "__MACOSX" not in partes and not partes[-1].startswith("._")
+
+
+def leer_archivo(nombre: str, contenido: bytes, _nivel=0) -> list[ArchivoLeido]:
+    """Lee un .xml o un .zip (con uno o varios XML y sus PDF; admite ZIP dentro de ZIP)."""
     if nombre.lower().endswith(".zip") or contenido[:2] == b"PK":
+        if _nivel > 2:
+            return [ArchivoLeido(nombre, None, None, None, None, "ZIP con demasiados niveles anidados")]
         try:
             z = zipfile.ZipFile(io.BytesIO(contenido))
         except zipfile.BadZipFile:
             return [ArchivoLeido(nombre, None, None, None, None, "ZIP dañado o no válido")]
-        xmls = [n for n in z.namelist() if n.lower().endswith(".xml") and not n.startswith("__MACOSX")]
-        pdfs = [n for n in z.namelist() if n.lower().endswith(".pdf") and not n.startswith("__MACOSX")]
+        entradas = [n for n in z.namelist() if _util(n) and not n.endswith("/")]
+        xmls = [n for n in entradas if n.lower().endswith(".xml")]
+        pdfs = [n for n in entradas if n.lower().endswith(".pdf")]
         res = []
         for x in xmls:
             r = leer_archivo(x, z.read(x))[0]
-            base = x.rsplit(".", 1)[0]
-            pdf = next((p for p in pdfs if p.rsplit(".", 1)[0] == base), None)
+            pdf = next((p for p in pdfs if _base_documento(p) == _base_documento(x)), None)
+            if pdf is None and r.documento is not None and r.documento.numero:
+                pdf = next((p for p in pdfs if r.documento.numero.lower() in p.lower()), None)
             if pdf is None and len(xmls) == 1 and len(pdfs) == 1:
                 pdf = pdfs[0]
             if pdf:
                 r.pdf, r.pdf_nombre = z.read(pdf), pdf.rsplit("/", 1)[-1]
             res.append(r)
+        for interno in (n for n in entradas if n.lower().endswith(".zip")):
+            res.extend(leer_archivo(interno, z.read(interno), _nivel + 1))
         if not res:
             res.append(ArchivoLeido(nombre, None, None, None, None, "El ZIP no contiene archivos XML"))
         return res

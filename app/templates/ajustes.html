@@ -25,6 +25,8 @@
         <option value="causacion" {{ 'selected' if v.simple_base != 'caja' }}>Causación: según la fecha de la factura</option>
         <option value="caja" {{ 'selected' if v.simple_base == 'caja' }}>Caja: según la fecha en que se recibe el pago</option>
       </select></div>
+    <div><label>UVT: año</label><select name="uvt_anio">{% for a, v, propio in uvts %}<option value="{{ a }}">{{ a }} (actual {{ v|pesos }}{{ ', fija del programa' if not propio }})</option>{% endfor %}</select></div>
+    <div><label>UVT: valor</label><input name="uvt_valor" placeholder="Solo si cambia; p. ej. la UVT 2027"></div>
   </div>
   <button class="primario">Guardar</button>
 </form>
