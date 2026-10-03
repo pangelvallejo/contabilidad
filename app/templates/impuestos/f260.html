@@ -14,14 +14,11 @@
       <tr><td>Equivalente en UVT (UVT {{ uvt|pesos }})</td><td class="n">{{ dec.ingresos_uvt|numero }}</td></tr>
       <tr><td>Tarifa consolidada</td><td class="n">{{ dec.tarifa|pct }}</td></tr>
       <tr class="res"><td>Impuesto SIMPLE consolidado</td><td class="n">{{ dec.impuesto|pesos }}</td></tr>
-      <tr><td>&nbsp;&nbsp;Componente ICA consolidado ({{ dec.ica_tarifa_por_mil|numero }} por mil)</td><td class="n">{{ dec.componente_ica|pesos }}</td></tr>
-      <tr><td>&nbsp;&nbsp;Componente nacional</td><td class="n">{{ dec.componente_nacional|pesos }}</td></tr>
       <tr><td>(−) Descuento por ventas con tarjetas y medios electrónicos (0,5% de {{ dec.ingresos_medios_electronicos|pesos }})</td><td class="n">{{ dec.descuento_medios_electronicos|pesos }}</td></tr>
       <tr><td>Impuesto neto</td><td class="n">{{ dec.impuesto_neto|pesos }}</td></tr>
       <tr><td>(−) Anticipos pagados en recibos 2593</td><td class="n">{{ dec.anticipos|pesos }}</td></tr>
       <tr class="res"><td>{{ 'Saldo a pagar' if dec.saldo >= 0 else 'Saldo a favor' }}</td><td class="n">{{ (dec.saldo if dec.saldo >= 0 else -dec.saldo)|pesos }}</td></tr>
     </table>
-    {% if not dec.ica_tarifa_por_mil %}<p class="nota">Para separar el componente ICA, registre la tarifa ICA consolidada de su municipio en Configuración.</p>{% endif %}
   </div>
   <div class="tarjeta">
     <h2>Contabilizar y pagar</h2>

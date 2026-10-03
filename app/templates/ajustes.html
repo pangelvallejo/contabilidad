@@ -25,7 +25,6 @@
         <option value="causacion" {{ 'selected' if v.simple_base != 'caja' }}>Causación: según la fecha de la factura</option>
         <option value="caja" {{ 'selected' if v.simple_base == 'caja' }}>Caja: según la fecha en que se recibe el pago</option>
       </select></div>
-    <div><label>Tarifa ICA consolidada (por mil)</label><input name="ica_tarifa_por_mil" value="{{ v.ica_tarifa_por_mil }}" placeholder="Solo informativa en el F260"></div>
   </div>
   <button class="primario">Guardar</button>
 </form>

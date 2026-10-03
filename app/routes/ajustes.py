@@ -11,7 +11,7 @@ bp = Blueprint("ajustes", __name__, url_prefix="/configuracion")
 
 CAMPOS_EMPRESA = ["empresa_nombre", "empresa_nit", "empresa_dv", "empresa_direccion", "empresa_ciudad",
                   "empresa_cod_municipio", "empresa_email", "empresa_telefono", "empresa_ciiu", "simple_base",
-                  "ica_tarifa_por_mil", "carpeta_respaldo", "respaldos_a_conservar"]
+                  "carpeta_respaldo", "respaldos_a_conservar"]
 
 
 @bp.route("/", methods=["GET", "POST"])

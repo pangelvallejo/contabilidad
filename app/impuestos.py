@@ -182,16 +182,10 @@ class DeclaracionSimple:
     ingresos_uvt: Decimal
     tarifa: Decimal
     impuesto: Decimal
-    ica_tarifa_por_mil: Decimal
-    componente_ica: Decimal
     ingresos_medios_electronicos: Decimal
     descuento_medios_electronicos: Decimal
     anticipos: Decimal
     supera_limite: bool
-
-    @property
-    def componente_nacional(self):
-        return self.impuesto - self.componente_ica
 
     @property
     def impuesto_neto(self):
@@ -208,8 +202,6 @@ def declaracion_simple(session, anio) -> DeclaracionSimple:
     ingresos = ingresos_brutos(session, inicio, fin)
     t = tarifa(ingresos, anio, cfg.SIMPLE_TARIFA_ANUAL)
     impuesto = redondeo_dian(max(ingresos, CERO) * t)
-    ica = contab.d(contab.config(session, "ica_tarifa_por_mil", "0"))
-    componente_ica = redondeo_dian(max(ingresos, CERO) * ica / MIL)
     # Ingresos recibidos por tarjetas y medios electrónicos (art. 912 E.T.), sin IVA.
     electronicos = CERO
     for rec in session.query(Recaudo).filter(Recaudo.fecha.between(inicio, fin), Recaudo.medio_electronico.is_(True)):
@@ -219,11 +211,11 @@ def declaracion_simple(session, anio) -> DeclaracionSimple:
             if cobrable > 0:
                 electronicos += ap.valor * doc.ingreso / cobrable
     descuento = redondeo_dian(electronicos * contab.d(cfg.SIMPLE_DESCUENTO_MEDIOS_ELECTRONICOS))
-    descuento = min(descuento, max(impuesto - componente_ica, CERO))
+    descuento = min(descuento, impuesto)
     anticipos = sum((p.valor_simple for p in session.query(PagoImpuesto).filter_by(formulario="2593", anio=anio)),
                     CERO)
-    return DeclaracionSimple(anio, ingresos, contab.redondear(ingresos / uvt(anio)), t, impuesto, ica,
-                             componente_ica, contab.redondear(electronicos), descuento, anticipos,
+    return DeclaracionSimple(anio, ingresos, contab.redondear(ingresos / uvt(anio)), t, impuesto,
+                             contab.redondear(electronicos), descuento, anticipos,
                              ingresos > uvt(anio) * cfg.SIMPLE_LIMITE_UVT_PROFESIONALES)
 
 
