@@ -109,7 +109,7 @@ pruebas, construye el paquete portable con Windows y lo adjunta al lanzamiento
 - **Presupuesto vs. real**: defina el ingreso anual esperado y el gasto por categoría; el informe prorratea el
   presupuesto a los meses transcurridos y muestra la ejecución.
 - **SIMPLE vs. ordinario**: con las cifras proyectadas del año estima cuánto pagaría en cada régimen (renta del 35 %
-  sobre la utilidad más ICA, tomado como descuento) para decidir en enero si conviene permanecer en el SIMPLE.
+  sobre la utilidad, con el ICA deducible, más el ICA) para decidir en enero si conviene permanecer en el SIMPLE.
 - **Informe de conciliación bancaria**: escriba el saldo del extracto y el informe explica la diferencia con libros
   (partidas en libros sin extracto y partidas del extracto sin registrar).
 - **Correo saliente**: con la misma cuenta del buzón (Configuración → Correo) se envían estados de cuenta,

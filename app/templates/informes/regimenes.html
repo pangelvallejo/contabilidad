@@ -18,10 +18,10 @@
     <table class="liquidacion">
       <tr><td>Ingresos proyectados</td><td class="n">{{ c.ingresos|pesos }}</td></tr>
       <tr><td>(−) Gastos deducibles proyectados</td><td class="n">{{ c.gastos|pesos }}</td></tr>
-      <tr class="res"><td>Utilidad (renta líquida)</td><td class="n">{{ c.utilidad|pesos }} <span class="nota">({{ c.margen|pct1 }})</span></td></tr>
+      <tr><td>(−) ICA ({{ c.ica_por_mil }} por mil sobre ingresos), deducible</td><td class="n">{{ c.ica|pesos }}</td></tr>
+      <tr class="res"><td>Renta líquida</td><td class="n">{{ c.utilidad|pesos }} <span class="nota">({{ c.margen|pct1 }})</span></td></tr>
       <tr><td>Impuesto de renta {{ (c.tarifa_renta * 100)|pct1 }}</td><td class="n">{{ c.renta|pesos }}</td></tr>
-      <tr><td>ICA ({{ c.ica_por_mil }} por mil sobre ingresos)</td><td class="n">{{ c.ica|pesos }}</td></tr>
-      <tr><td>(−) ICA tomado como descuento tributario (art. 115 E.T.)</td><td class="n">−{{ (c.renta - c.renta_neta)|pesos }}</td></tr>
+      <tr><td>(+) ICA a pagar</td><td class="n">{{ c.ica|pesos }}</td></tr>
       <tr class="res"><td>Total renta + ICA</td><td class="n">{{ c.ordinario|pesos }}</td></tr>
     </table>
     <form method="post" class="filtros" style="margin-top:8px"><div><label>Tarifa ICA (por mil)</label><input class="n" name="ica_por_mil" value="{{ c.ica_por_mil }}" style="width:100px"></div><button class="peq">Guardar</button></form>

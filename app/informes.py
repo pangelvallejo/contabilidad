@@ -481,12 +481,12 @@ def comparar_regimenes(session, anio: int, corte: date | None = None):
     ingresos = proy.ingresos_proyectados
     ica_por_mil = contab.d(contab.config(session, "ica_por_mil", str(ICA_BOGOTA_POR_MIL)))
     ica = contab.redondear(ingresos * ica_por_mil / 1000, "1")
-    # En el ordinario el ICA es deducible (o descontable al 100 % desde 2022: art. 115 E.T. permite tomarlo como
-    # descuento tributario). Se toma como descuento del impuesto de renta, que es lo más favorable.
-    utilidad_fiscal = max(ingresos - gastos_proy, CERO)
+    # En el ordinario el ICA pagado es deducible de la renta (art. 115 E.T.; el descuento tributario del 50 %
+    # fue eliminado por la Ley 2277 de 2022 a partir de 2023).
+    utilidad_fiscal = max(ingresos - gastos_proy - ica, CERO)
     renta = contab.redondear(utilidad_fiscal * TARIFA_RENTA_ORDINARIA, "1")
-    renta_neta = max(renta - ica, CERO)
-    ordinario = renta_neta + ica
+    renta_neta = renta
+    ordinario = renta + ica
     simple = proy.simple_proyectado
     return {"proyeccion": proy, "ingresos": ingresos, "gastos": gastos_proy, "utilidad": utilidad_fiscal,
             "renta": renta, "ica": ica, "ica_por_mil": ica_por_mil, "renta_neta": renta_neta, "ordinario": ordinario,
