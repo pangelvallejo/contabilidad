@@ -9,7 +9,7 @@ from ..db import Session
 from .. import formato
 from ..formato import pesos
 from ..models import CERO, Asiento, Banco, DocumentoVenta, LineaVenta, Recaudo, Tercero
-from . import XLSX, anio_arg, check, descargar, dinero, fecha_arg
+from . import XLSX, anio_arg, check, descargar, dinero, fecha_arg, paginar, paginar_lista
 
 bp = Blueprint("ventas", __name__)
 
@@ -46,8 +46,9 @@ def lista():
         "reteiva": sum((d.reteiva_valor for d, _, e in filas if d.reteiva_aplica and e != "Anulada"), CERO),
         "saldo": sum((sal for _, sal, _ in filas), CERO),
     }
+    filas, pagina, paginas = paginar_lista(filas)
     return render_template("ventas/lista.html", filas=filas, totales=totales, anio=anio, clientes=_clientes(s),
-                           cliente_id=cliente_id, estado=estado)
+                           cliente_id=cliente_id, estado=estado, pagina=pagina, paginas=paginas)
 
 
 @bp.route("/ventas/importar", methods=["GET", "POST"])
@@ -134,7 +135,8 @@ def detalle(id):
     asientos = s.query(Asiento).filter_by(origen=f"venta:{doc.id}").all()
     return render_template("ventas/detalle.html", doc=doc, saldo=cartera.saldo_documento(s, doc),
                            estado=cartera.estado_documento(s, doc), notas=notas, asientos=asientos,
-                           reteiva_sugerida=contab.redondear(doc.iva * contab.d(TARIFA_RETEIVA), "1"))
+                           reteiva_sugerida=contab.redondear(doc.iva * contab.d(TARIFA_RETEIVA), "1"),
+                           bancos=s.query(Banco).filter_by(activo=True).all())
 
 
 def _actualizar_venta(s, doc, notas_asociadas):
@@ -166,14 +168,39 @@ def _404():
 
 # ------------------------------------------------------------------ recaudos
 
+@bp.route("/ventas/<int:id>/pagar", methods=["POST"])
+def pago_rapido(id):
+    """Registra en un clic el pago total de la factura (saldo de hoy) desde el banco elegido."""
+    s = Session()
+    doc = s.get(DocumentoVenta, id) or _404()
+    try:
+        saldo = cartera.saldo_documento(s, doc)
+        if saldo <= 0:
+            raise ValueError("La factura no tiene saldo pendiente.")
+        rec = Recaudo(fecha=fecha_arg("fecha", date.today()), cliente_id=doc.cliente_id,
+                      banco_id=int(request.form["banco_id"]), valor=saldo,
+                      medio_electronico=check("medio_electronico"), referencia=f"Pago {doc.numero}")
+        s.add(rec)
+        cartera.registrar_aplicaciones(rec, {doc: saldo})
+        s.flush()
+        contab.contabilizar_recaudo(s, rec)
+        s.commit()
+        flash(f"Pago de {pesos(saldo)} registrado.", "ok")
+    except Exception as e:  # noqa: BLE001
+        s.rollback()
+        flash(f"No se pudo registrar el pago: {e}", "error")
+    return redirect(url_for("ventas.detalle", id=id))
+
+
 @bp.route("/recaudos")
 def recaudos():
     s = Session()
     anio = anio_arg()
-    recs = (s.query(Recaudo).filter(Recaudo.fecha.between(date(anio, 1, 1), date(anio, 12, 31)))
-            .order_by(Recaudo.fecha.desc(), Recaudo.id.desc()).all())
-    return render_template("ventas/recaudos.html", recaudos=recs, anio=anio,
-                           total=sum((r.valor for r in recs), CERO))
+    q = s.query(Recaudo).filter(Recaudo.fecha.between(date(anio, 1, 1), date(anio, 12, 31)))
+    total = sum((r.valor for r in q), CERO)
+    recs, pagina, paginas = paginar(q.order_by(Recaudo.fecha.desc(), Recaudo.id.desc()))
+    return render_template("ventas/recaudos.html", recaudos=recs, anio=anio, total=total, pagina=pagina,
+                           paginas=paginas)
 
 
 def _abiertos_para(s, cliente_id, rec=None):
@@ -248,6 +275,14 @@ def nuevo_recaudo(id=None):
                            abiertos=abiertos, bancos=s.query(Banco).filter_by(activo=True).all(), form=form)
 
 
+@bp.route("/recaudos/<int:id>/pdf")
+def recibo_caja(id):
+    s = Session()
+    rec = s.get(Recaudo, id) or _404()
+    pdf = exportar.recibo_de_caja_pdf(exportar._empresa_dict(s), rec)
+    return descargar(pdf, f"recibo_caja_{rec.id}.pdf", "application/pdf")
+
+
 @bp.route("/recaudos/<int:id>/eliminar", methods=["POST"])
 def eliminar_recaudo(id):
     s = Session()
@@ -298,8 +333,17 @@ def estado_cuenta(cliente_id):
         pdf = exportar.estado_de_cuenta_pdf(emp, cliente, filas, total, corte)
         nombre = f"estado_cuenta_{archivos.nombre_seguro(cliente.nombre)}_{corte}.pdf"
         return descargar(pdf, nombre, "application/pdf")
+    from urllib.parse import quote
+    emp = contab.config(s, "empresa_nombre", "")
+    cuerpo = (f"Estimados señores {cliente.nombre}:\n\nAdjunto el estado de cuenta de {emp} con corte al "
+              f"{corte:%d/%m/%Y}. El saldo pendiente es de {pesos(total)}.\n\n"
+              + "\n".join(f"- {f['numero']} del {f['fecha']:%d/%m/%Y}: {pesos(f['saldo'])}" for f in filas)
+              + "\n\nSi ya realizó el pago, agradezco enviarnos el soporte. Si nos practicó retención de IVA, "
+                "le agradezco remitir el certificado.\n\nCordialmente,\n" + emp)
+    mailto = (f"mailto:{cliente.email or ''}?subject={quote(f'Estado de cuenta {emp} al {corte:%d/%m/%Y}')}"
+              f"&body={quote(cuerpo)}")
     return render_template("ventas/estado_cuenta.html", cliente=cliente, filas=filas, total=total, corte=corte,
-                           anticipo=anticipo)
+                           anticipo=anticipo, mailto=mailto)
 
 
 @bp.route("/certificados")

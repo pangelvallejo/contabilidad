@@ -8,9 +8,18 @@
   <div class="acciones">
     {% if doc.pdf_archivo %}<a class="btn" href="/archivo/{{ doc.pdf_archivo }}" target="_blank">Ver PDF</a>{% endif %}
     {% if doc.xml_archivo %}<a class="btn" href="/archivo/{{ doc.xml_archivo }}" target="_blank">Ver XML</a>{% endif %}
-    {% if saldo > 0 %}<a class="btn primario" href="/recaudos/nuevo?cliente_id={{ doc.cliente_id }}">Registrar pago</a>{% endif %}
+    {% if saldo > 0 %}<a class="btn" href="/recaudos/nuevo?cliente_id={{ doc.cliente_id }}">Pago parcial o de varias facturas</a>{% endif %}
   </div>
 </div>
+{% if saldo > 0 %}
+<form class="tarjeta filtros" method="post" action="/ventas/{{ doc.id }}/pagar" style="align-items:flex-end">
+  <div><b>Pago rápido del saldo ({{ saldo|pesos }})</b></div>
+  <div><label>Fecha</label><input type="date" name="fecha" value="{{ hoy.isoformat() }}"></div>
+  <div><label>Entró a</label><select name="banco_id">{% for b in bancos %}<option value="{{ b.id }}">{{ b.nombre }}</option>{% endfor %}</select></div>
+  <label class="check"><input type="checkbox" name="medio_electronico"> Con tarjeta / pasarela</label>
+  <button class="primario">Marcar como pagada</button>
+</form>
+{% endif %}
 
 <div class="rejilla k2">
   <div class="tarjeta">

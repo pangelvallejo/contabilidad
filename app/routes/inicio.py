@@ -5,7 +5,7 @@ from flask import Blueprint, render_template
 
 from .. import cartera, impuestos, reportes
 from ..db import Session
-from ..models import CERO, DocumentoVenta, Gasto, Recaudo, Vencimiento
+from ..models import CERO, DocumentoVenta, Gasto, Recaudo, Tercero, Vencimiento
 
 bp = Blueprint("inicio", __name__)
 
@@ -30,6 +30,31 @@ def alertas(s, hoy):
     sin_soporte = s.query(Gasto).filter(Gasto.soporte_archivo.is_(None), Gasto.xml_archivo.is_(None)).count()
     if sin_soporte:
         res.append(("info", f"{sin_soporte} gasto(s) sin soporte adjunto", None, "/gastos?sin_soporte=1"))
+    # Gastos mensuales recurrentes que no se han registrado este mes
+    inicio_mes = hoy.replace(day=1)
+    recurrentes = (s.query(Gasto).filter(Gasto.recurrente.is_(True), Gasto.fecha < inicio_mes)
+                   .order_by(Gasto.fecha.desc()).all())
+    vistos, faltan = set(), []
+    for g in recurrentes:
+        clave = (g.proveedor_id, g.categoria_id)
+        if clave in vistos:
+            continue
+        vistos.add(clave)
+        existe = (s.query(Gasto).filter(Gasto.fecha >= inicio_mes, Gasto.proveedor_id == g.proveedor_id,
+                                        Gasto.categoria_id == g.categoria_id).first())
+        if existe is None:
+            faltan.append(g)
+    for g in faltan:
+        nombre = g.proveedor.nombre if g.proveedor else g.categoria.nombre
+        res.append(("info", f"Gasto mensual sin registrar: {nombre} ({g.categoria.nombre})", g.total,
+                    f"/gastos/nuevo?copiar={g.id}"))
+    # Clientes con honorarios mensuales a los que no se les ha facturado este mes
+    for t in s.query(Tercero).filter(Tercero.retainer_mensual.isnot(None), Tercero.retainer_mensual > 0):
+        facturado = (s.query(DocumentoVenta).filter(DocumentoVenta.cliente_id == t.id, DocumentoVenta.tipo == "FV",
+                                                    DocumentoVenta.fecha >= inicio_mes).first())
+        if facturado is None:
+            res.append(("info", f"Honorarios mensuales sin facturar este mes: {t.nombre}", t.retainer_mensual,
+                        f"/ventas?cliente={t.id}"))
     for v in (s.query(Vencimiento).filter(Vencimiento.cumplido.is_(False), Vencimiento.fecha <= hoy + timedelta(days=30))
               .order_by(Vencimiento.fecha)):
         nivel = "critico" if v.fecha < hoy else "advertencia"
@@ -59,4 +84,5 @@ def tablero():
         "tablero.html", ventas_mes=ventas_mes, ventas_anio=ventas_anio, recaudado_mes=recaudado_mes,
         filas_cartera=filas_cartera[:5], tot_cartera=tot_cartera, edades=cartera.EDADES, recibo=recibo,
         serie=[x for x in serie if x[0] <= hoy.month], por_categoria=por_categoria[:8], gastos_mes=gastos_mes,
-        alertas=alertas(s, hoy), nombre_bimestre=impuestos.nombre_bimestre(bim))
+        alertas=alertas(s, hoy), nombre_bimestre=impuestos.nombre_bimestre(bim),
+        proyeccion=impuestos.proyeccion_anual(s, hoy.year, hoy))

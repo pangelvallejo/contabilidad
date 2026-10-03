@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block titulo %}Cierre del año{% endblock %}
+{% block contenido %}
+<h1>Cierre del ejercicio {{ anio }}</h1>
+<p class="sub">El cierre causa las depreciaciones pendientes y el impuesto SIMPLE del año, traslada ingresos y gastos al resultado del ejercicio (cuenta 3605/3610) y bloquea la contabilidad hasta el 31 de diciembre. Hágalo cuando tenga todas las facturas y gastos del año registrados.</p>
+<form class="filtros"><div><label>Año</label><input type="number" name="anio" value="{{ anio }}" style="width:90px"></div><button>Ver</button></form>
+<div class="rejilla k2">
+  <div class="tarjeta"><h2>Resumen del año</h2>
+    <table class="liquidacion">
+      <tr><td>Ingresos operacionales</td><td class="n">{{ er.ingresos_op|pesos }}</td></tr>
+      <tr><td>Gastos</td><td class="n">{{ (er.gastos_admin + er.gastos_ventas + er.gastos_no_op)|pesos }}</td></tr>
+      <tr><td>Impuesto SIMPLE (causado hasta ahora)</td><td class="n">{{ er.impuesto|pesos }}</td></tr>
+      <tr><td>Impuesto SIMPLE según borrador F260</td><td class="n">{{ dec.impuesto_neto|pesos }}</td></tr>
+      <tr class="res"><td>Utilidad neta</td><td class="n">{{ er.utilidad_neta|pesos }}</td></tr>
+    </table></div>
+  <div class="tarjeta">
+    {% if cerrado %}
+      <p class="mensaje ok">El año {{ anio }} está cerrado.</p>
+      <form method="post"><input type="hidden" name="anio" value="{{ anio }}">
+        <button class="peligro" name="accion" value="reabrir" data-confirmar="¿Reabrir el año {{ anio }}? Se eliminará el asiento de cierre.">Reabrir año</button></form>
+    {% else %}
+      <p>Antes de cerrar, verifique:</p>
+      <ul><li>Todas las facturas emitidas y los gastos del año están registrados.</li>
+        <li>Los recaudos y pagos están aplicados y la <a href="/cartera">cartera</a> es correcta.</li>
+        <li>El <a href="/impuestos/f260?anio={{ anio }}">borrador del F260</a> coincide con lo que va a declarar.</li></ul>
+      <form method="post"><input type="hidden" name="anio" value="{{ anio }}">
+        <button class="primario" name="accion" value="cerrar" data-confirmar="¿Cerrar el año {{ anio }}? La contabilidad quedará bloqueada hasta el 31/12/{{ anio }}.">Cerrar el año {{ anio }}</button></form>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

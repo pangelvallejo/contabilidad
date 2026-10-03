@@ -559,3 +559,242 @@ def test_formularios_no_fallan_con_datos_invalidos(cliente_web, s):
     r = cliente_web.post("/gastos/nuevo", data={"tipo_soporte": "FE", "fecha": "2026-09-12", "proveedor_id": "",
                                                 "categoria_id": "1", "subtotal": "abc", "forma_pago": "credito"})
     assert r.status_code == 200 and 'value="credito" selected' in r.data.decode()
+
+
+def test_bloqueo_de_periodo_e_historial(cliente_web, s):
+    from app import contab
+    from app.models import Bitacora, DocumentoVenta, Gasto
+    importar(s, "1.xml", factura_venta("ALC-1", "2026-09-01", CLIENTE, 1_000_000))
+    importar(s, "g.xml", factura_compra("P-1", "2026-09-05", ARRENDADOR, 100_000, 19_000, descripcion="ARRIENDO"))
+    # al pagar el 2593 del bimestre 5 queda bloqueado hasta el 31-10-2026
+    r = cliente_web.post("/impuestos/pago", data={"formulario": "2593", "anio": "2026", "bimestre": "5",
+                                                  "fecha": "2026-11-15", "valor_simple": "100.000",
+                                                  "valor_iva": "0", "banco_id": "1"})
+    assert r.status_code == 302
+    assert contab.periodo_bloqueado_hasta(s) == date(2026, 10, 31)
+    # no se puede borrar ni editar un gasto de septiembre, ni importar documentos de esas fechas
+    g = s.query(Gasto).one()
+    cliente_web.post(f"/gastos/{g.id}", data={"accion": "eliminar"})
+    assert s.query(Gasto).count() == 1
+    r = importar(s, "2.xml", factura_venta("ALC-2", "2026-10-15", CLIENTE, 1_000_000))
+    assert not r[0].ok and "bloqueado" in r[0].mensaje
+    assert importar(s, "3.xml", factura_venta("ALC-3", "2026-11-02", CLIENTE, 1_000_000))[0].ok
+    # el historial registra creación y pago
+    entidades = {(b.accion, b.entidad) for b in s.query(Bitacora)}
+    assert ("crear", "Factura de venta") in entidades and ("crear", "Pago de impuesto") in entidades
+    assert cliente_web.get("/historial").status_code == 200
+    assert cliente_web.get("/buscar?q=ALC-1").data.decode().count("ALC-1") >= 1
+
+
+def test_correo_imap_simulado(s, monkeypatch):
+    """Lee un mensaje con ZIP adjunto desde un buzón IMAP simulado y registra el gasto una sola vez."""
+    from email.message import EmailMessage
+    from app import correo
+    from app.models import CorreoProcesado, Gasto
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as z:
+        z.writestr("ad123.xml", factura_compra("MAIL-1", "2026-09-07", ARRENDADOR, 500_000, 95_000,
+                                               descripcion="ARRENDAMIENTO"))
+    msg = EmailMessage()
+    msg["Subject"] = "Factura electrónica CCI"
+    msg["Message-ID"] = "<abc@proveedor>"
+    msg.set_content("Adjunto")
+    msg.add_attachment(buf.getvalue(), maintype="application", subtype="zip", filename="factura.zip")
+    crudo = msg.as_bytes()
+
+    class Imap:
+        def select(self, *a, **k): return "OK", [b"1"]
+        def search(self, *a): return "OK", [b"1"]
+        def fetch(self, uid, que):
+            if "HEADER" in que:
+                return "OK", [(b"1", b"Message-ID: <abc@proveedor>\r\nSubject: Factura\r\n\r\n")]
+            return "OK", [(b"1", crudo)]
+        def logout(self): pass
+
+    monkeypatch.setattr(correo, "conectar", lambda session: (Imap(), {"correo_carpeta": "INBOX", "correo_dias": "30",
+                                                                       "correo_filtro": ""}))
+    r = correo.revisar(s)
+    assert r.error is None and r.importados == 1 and r.revisados == 1
+    assert s.query(Gasto).filter_by(numero="MAIL-1").one().origen == "correo"
+    r2 = correo.revisar(s)
+    assert r2.revisados == 0 and s.query(CorreoProcesado).count() == 1
+
+
+def test_carpeta_vigilada_duplicar_y_lote(cliente_web, s, tmp_path):
+    from app import contab, vigilancia
+    from app.models import Gasto
+    carpeta = tmp_path / "vigilada"
+    carpeta.mkdir()
+    contab.set_config(s, "carpeta_vigilada", str(carpeta))
+    s.commit()
+    (carpeta / "a.xml").write_text(factura_compra("V-1", "2026-09-06", ARRENDADOR, 100_000, 19_000,
+                                                  descripcion="ARRENDAMIENTO"))
+    (carpeta / "malo.xml").write_text("no es xml")
+    res = vigilancia.revisar(s)
+    assert [ok for _, ok, _ in res] == [True, False]
+    assert (carpeta / "importados" / "a.xml").exists() and (carpeta / "errores" / "malo.xml.txt").exists()
+    g = s.query(Gasto).one()
+    # duplicar prellena el formulario; revisión en lote marca como revisado
+    assert 'value="100000"' in cliente_web.get(f"/gastos/nuevo?copiar={g.id}").data.decode()
+    assert not g.revisado
+    r = cliente_web.post("/gastos/revisar", data={"id": [str(g.id)], f"ok_{g.id}": "on", f"categoria_{g.id}": "1",
+                                                  f"iva_{g.id}": "on", f"forma_{g.id}": "contado",
+                                                  f"cuenta_{g.id}": "11200501", f"rec_{g.id}": "on"})
+    assert r.status_code == 302
+    s.expire_all()
+    g = s.get(Gasto, g.id)
+    assert g.revisado and g.recurrente and g.forma_pago == "contado"
+
+
+def test_pago_rapido_y_retainer(cliente_web, s):
+    from app import cartera
+    from app.models import DocumentoVenta, Tercero
+    importar(s, "1.xml", factura_venta("ALC-1", "2026-09-01", CLIENTE, 1_000_000))
+    doc = s.query(DocumentoVenta).one()
+    r = cliente_web.post(f"/ventas/{doc.id}/pagar", data={"banco_id": "1", "fecha": "2026-09-20"})
+    assert r.status_code == 302
+    s.expire_all()
+    assert cartera.saldo_documento(s, s.get(DocumentoVenta, doc.id)) == 0
+    t = s.query(Tercero).one()
+    t.retainer_mensual = D("2000000")
+    s.commit()
+    assert "Honorarios mensuales sin facturar" in cliente_web.get("/").data.decode()
+
+
+def test_depreciacion_flujo_y_cierre(cliente_web, s):
+    from app import contab, impuestos, planeacion, reportes
+    from app.models import Gasto
+    _escenario(s)
+    importar(s, "pc.xml", factura_compra("PC-1", "2026-03-10", ("800000009", "1", "TIENDA PC"), 3_000_000, 570_000,
+                                         descripcion="Computador portatil"))
+    g = s.query(Gasto).filter_by(numero="PC-1").one()
+    assert g.categoria.cuenta == "152805" and not g.iva_descontable
+    assert planeacion.causar_depreciaciones(s, date(2026, 10, 31)) == 7
+    assert planeacion.causar_depreciaciones(s, date(2026, 10, 31)) == 0  # idempotente
+    assert reportes.saldo_cuenta(s, "159220") == -D("59500") * 7
+    filas, promedio = planeacion.flujo_de_caja(s, 6, date(2026, 10, 3))
+    assert filas[0].cobros_vencidos + filas[0].cobros > 0 and filas[1].impuestos > 0
+    assert cliente_web.get("/flujo-caja").status_code == 200
+    proy = impuestos.proyeccion_anual(s, 2026, date(2026, 10, 3))
+    assert proy.ingresos_proyectados > proy.ingresos_a_la_fecha and proy.simple_proyectado > 0
+    # arrastre de saldo a favor de IVA
+    contab.set_config(s, "iva_arrastre_saldo_favor", "si")
+    s.commit()
+    assert impuestos.resumen_iva_bimestre(s, 2026, 3).saldo_favor_siguiente == D("570000") * 0  # IVA del PC no descontable
+    # cierre del año
+    r = cliente_web.post("/contabilidad/cierre", data={"anio": "2026", "accion": "cerrar"})
+    assert r.status_code == 302 and planeacion.anio_cerrado(s, 2026)
+    assert contab.periodo_bloqueado_hasta(s) == date(2026, 12, 31)
+    er = reportes.estado_resultados(s, date(2026, 1, 1), date(2026, 12, 31))
+    assert er["ingresos_op"] == D("15000000")  # el cierre no altera el estado de resultados
+    assert reportes.balance_general(s, date(2026, 12, 31))["cuadre"] == 0
+    filas, _, _ = reportes.balance_de_prueba(s, date(2027, 1, 1), date(2027, 12, 31))
+    clases = {f.cuenta.codigo: f.saldo_inicial for f in filas if len(f.cuenta.codigo) == 1}
+    assert clases["1"] == clases["2"] + clases["3"] and "4" not in clases
+    assert reportes.balance_general(s, date(2027, 6, 30))["cuadre"] == 0
+    assert cliente_web.post("/contabilidad/cierre", data={"anio": "2026", "accion": "reabrir"}).status_code == 302
+    assert not planeacion.anio_cerrado(s, 2026)
+
+
+def test_conciliacion_bancaria(cliente_web, s):
+    from app import bancos, reportes
+    from app.models import Banco, DocumentoVenta, Gasto, MovimientoBanco, Recaudo
+    importar(s, "1.xml", factura_venta("ALC-1", "2026-09-01", CLIENTE, 1_000_000))
+    importar(s, "g.xml", factura_compra("INM-50", "2026-09-11", ARRENDADOR, 2_000_000, 380_000, vence="2026-10-02",
+                                        descripcion="ARRENDAMIENTO"))
+    doc = s.query(DocumentoVenta).one()
+    cliente_web.post(f"/ventas/{doc.id}/pagar", data={"banco_id": "1", "fecha": "2026-09-20"})
+    extracto = ("Fecha;Descripción;Valor;Referencia\n"
+                "20/09/2026;TRANSFERENCIA CLIENTE DEMO;1.190.000,00;123\n"
+                "21/09/2026;GMF 4X1000;-4.760,00;\n"
+                "22/09/2026;COMISION TRANSFERENCIA;-6.000,00;\n"
+                "25/09/2026;PAGO PSE INMOBILIARIA;-2.380.000,00;\n"
+                "26/09/2026;ABONO INTERESES;15.000,00;\n"
+                "27/09/2026;CONSIGNACION NUEVO CLIENTE;500.000,00;\n").encode("latin-1")
+    banco = s.get(Banco, 1)
+    nuevas, repetidas = bancos.importar_extracto(s, banco, "extracto.csv", extracto)
+    assert (nuevas, repetidas) == (6, 0)
+    assert bancos.importar_extracto(s, banco, "extracto.csv", extracto) == (0, 6)
+    assert bancos.conciliar_automatico(s, 1) == 1  # el recaudo de 1.190.000
+    movs = {m.descripcion: m for m in s.query(MovimientoBanco)}
+    assert movs["TRANSFERENCIA CLIENTE DEMO"].estado == "conciliado"
+    # 4x1000 → gasto sugerido automáticamente
+    m = movs["GMF 4X1000"]
+    assert bancos.sugerir_categoria_bancaria(m.descripcion) == "Gravamen 4x1000"
+    cat = [c for c in s.query(__import__("app.models", fromlist=["CategoriaGasto"]).CategoriaGasto)
+           if c.nombre == "Gravamen 4x1000"][0]
+    r = cliente_web.post(f"/bancos/movimiento/{m.id}", data={"accion": "gasto", "categoria_id": cat.id})
+    assert r.status_code == 302
+    s.expire_all()
+    assert s.get(MovimientoBanco, m.id).estado == "conciliado"
+    assert reportes.saldo_cuenta(s, "511595") == D("4760")
+    # pago de la factura del arrendador
+    g = s.query(Gasto).filter_by(numero="INM-50").one()
+    m = movs["PAGO PSE INMOBILIARIA"]
+    r = cliente_web.post(f"/bancos/movimiento/{m.id}", data={"accion": "pago_proveedor", "gasto_id": g.id})
+    assert r.status_code == 302
+    s.expire_all()
+    assert s.get(Gasto, g.id).saldo == 0
+    # recaudo de un cliente (anticipo, no hay facturas) y rendimientos
+    m = movs["CONSIGNACION NUEVO CLIENTE"]
+    r = cliente_web.post(f"/bancos/movimiento/{m.id}", data={"accion": "recaudo", "cliente_id": doc.cliente_id})
+    assert r.status_code == 302 and s.query(Recaudo).count() == 2
+    m = movs["ABONO INTERESES"]
+    assert cliente_web.post(f"/bancos/movimiento/{m.id}", data={"accion": "ingreso", "cuenta": "421005"}).status_code == 302
+    assert reportes.saldo_cuenta(s, "421005") == D("-15000")
+    assert cliente_web.post(f"/bancos/movimiento/{movs['COMISION TRANSFERENCIA'].id}", data={"accion": "ignorar"}).status_code == 302
+    assert s.query(MovimientoBanco).filter_by(estado="pendiente").count() == 0
+    assert cliente_web.get("/bancos/conciliacion?estado=todos").status_code == 200
+    # extracto con débito/crédito en columnas separadas, formato Excel
+    from openpyxl import Workbook
+    wb = Workbook()
+    ws = wb.active
+    ws.append(["Extracto Banco Caja Social"])
+    ws.append(["FECHA", "CONCEPTO", "DEBITOS", "CREDITOS"])
+    ws.append([date(2026, 9, 28), "Pago nómina", 100000, None])
+    ws.append([date(2026, 9, 29), "Consignación", None, 250000])
+    buf = io.BytesIO()
+    wb.save(buf)
+    assert bancos.importar_extracto(s, s.get(Banco, 2), "e.xlsx", buf.getvalue()) == (2, 0)
+    vals = sorted(m.valor for m in s.query(MovimientoBanco).filter_by(banco_id=2))
+    assert vals == [D("-100000"), D("250000")]
+
+
+def test_acceso_red_actualizacion_y_restauracion(cliente_web, s, tmp_path):
+    from pathlib import Path
+    from app import config, contab, respaldo, sistema
+    from app.db import Session, engine
+    from app.models import DocumentoVenta
+    # Desde el PC local nunca pide clave; desde la red solo si está activado
+    assert cliente_web.get("/").status_code == 200
+    remoto = {"REMOTE_ADDR": "192.168.1.20"}
+    assert cliente_web.get("/", environ_base=remoto).status_code == 403
+    contab.set_config(s, "acceso_red", "si")
+    contab.set_config(s, "clave_acceso", "secreta")
+    s.commit()
+    assert cliente_web.get("/", environ_base=remoto).status_code == 302
+    assert "incorrecta" in cliente_web.post("/acceso", data={"clave": "x"}, environ_base=remoto).data.decode()
+    assert cliente_web.post("/acceso", data={"clave": "secreta"}, environ_base=remoto).status_code == 302
+    assert cliente_web.get("/ventas", environ_base=remoto).status_code == 200
+    # Versiones y preparación de una actualización descargada
+    assert sistema.es_mas_nueva("v1.10.0", "1.9.9") and not sistema.es_mas_nueva("1.2.0", "1.2.0")
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as z:
+        z.writestr("repo-abc/app/__init__.py", "VERSION = '9'")
+    script = sistema.preparar_actualizacion(buf.getvalue(), tmp_path / "act")
+    assert script.exists() and "robocopy" in script.read_text()
+    # Restauración de un respaldo al reiniciar
+    importar(s, "1.xml", factura_venta("ALC-1", "2026-09-01", CLIENTE, 1_000_000))
+    contab.set_config(s, "carpeta_respaldo", str(tmp_path / "resp"))
+    s.commit()
+    z = respaldo.crear_respaldo(s)
+    s.query(DocumentoVenta).delete()
+    s.commit()
+    r = cliente_web.post("/configuracion/", data={"accion": "restaurar", "respaldo_existente": z.name})
+    assert r.status_code == 302 and (config.DATOS_DIR / "restaurar.zip").exists()
+    Session.remove()
+    engine.dispose()
+    from app import create_app
+    app2 = create_app(config.DATOS_DIR)
+    assert app2.config["RESTAURADO"] and Session().query(DocumentoVenta).count() == 1
+    assert list(Path(config.DATOS_DIR).glob("contabilidad_antes_de_restaurar_*.db"))

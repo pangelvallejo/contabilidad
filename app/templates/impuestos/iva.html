@@ -22,6 +22,6 @@
       <td class="n">{{ anual.resumen.iva_descontable|pesos }}</td><td class="n">{{ anual.resumen.reteiva|pesos }}</td>
       <td class="n">{{ anual.resumen.neto|pesos }}</td><td></td><td class="n">{{ anual.pagos_bimestrales|pesos }}</td><td></td></tr>
   </table>
-  <p class="nota">Un neto negativo es saldo a favor del bimestre: no se paga en el 2593 y se compensa en la declaración anual.</p>
+  <p class="nota">Un neto negativo es saldo a favor del bimestre: no se paga en el 2593 y se compensa en el bimestre siguiente o en la declaración anual, según lo configurado.</p>
 </div>
 {% endblock %}

@@ -12,9 +12,11 @@ from .models import CERO, Asiento, Cuenta, Gasto, Movimiento
 NIVELES = (1, 2, 4, 6, 8)
 
 
-def _sumas_por_cuenta(session, desde=None, hasta=None):
+def _sumas_por_cuenta(session, desde=None, hasta=None, incluir_cierre=True):
     q = (session.query(Movimiento.cuenta, func.sum(Movimiento.debito), func.sum(Movimiento.credito))
          .join(Asiento))
+    if not incluir_cierre:  # el asiento de cierre (tipo CI) no es un movimiento del periodo
+        q = q.filter(Asiento.tipo != "CI")
     if desde:
         q = q.filter(Asiento.fecha >= desde)
     if hasta:
@@ -115,7 +117,7 @@ def _detalle(session, sumas, prefijos, nivel=4):
 
 
 def estado_resultados(session, desde: date, hasta: date):
-    s = _sumas_por_cuenta(session, desde, hasta)
+    s = _sumas_por_cuenta(session, desde, hasta, incluir_cierre=False)
     ingresos_op = _saldo_prefijo(s, "41", "C")
     ingresos_no_op = _saldo_prefijo(s, "42", "C")
     gastos_admin = _saldo_prefijo(s, "51", "D")
@@ -143,8 +145,13 @@ def balance_general(session, corte: date):
     pasivo = _saldo_prefijo(s, "2", "C")
     patrimonio = _saldo_prefijo(s, "3", "C")
     anteriores = resultado_acumulado(session, date(corte.year - 1, 12, 31))
-    # Resultado del ejercicio en curso (del 1 de enero al corte)
-    resultado = (_saldo_prefijo(s, "4", "C") - _saldo_prefijo(s, "5", "D") - _saldo_prefijo(s, "6", "D")) - anteriores
+    # Resultado del ejercicio en curso (del 1 de enero al corte), sin el asiento de cierre del propio año
+    sp = _sumas_por_cuenta(session, date(corte.year, 1, 1), corte, incluir_cierre=False)
+    resultado = _saldo_prefijo(sp, "4", "C") - _saldo_prefijo(sp, "5", "D") - _saldo_prefijo(sp, "6", "D")
+    cerrado = (session.query(Asiento).filter(Asiento.origen == f"cierre:{corte.year}", Asiento.fecha <= corte)
+               .first() is not None)
+    if cerrado:  # el resultado ya quedó en 3605/3610 con el asiento de cierre
+        resultado = CERO
     return {
         "activo": activo, "det_activo": _detalle(session, s, ["1"]),
         "pasivo": pasivo, "det_pasivo": _detalle(session, s, ["2"]),
@@ -199,7 +206,7 @@ def serie_mensual(session, anio):
     for mes in range(1, 13):
         inicio = date(anio, mes, 1)
         fin = date(anio + (mes == 12), (mes % 12) + 1, 1)
-        s = _sumas_por_cuenta(session, inicio, date.fromordinal(fin.toordinal() - 1))
+        s = _sumas_por_cuenta(session, inicio, date.fromordinal(fin.toordinal() - 1), incluir_cierre=False)
         ingresos = _saldo_prefijo(s, "4", "C")
         gastos = sum((_saldo_prefijo(s, p, "D") for p in ("51", "52", "53")), CERO)
         filas.append((mes, ingresos, gastos))

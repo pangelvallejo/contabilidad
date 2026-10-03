@@ -2,10 +2,13 @@
 import re
 from datetime import date
 
-from flask import Blueprint, flash, redirect, render_template, request, url_for
+from flask import Blueprint, current_app, flash, redirect, render_template, request, url_for
 from sqlalchemy import or_
 
-from .. import config, contab, impuestos, respaldo
+from pathlib import Path
+
+from .. import config, contab, correo, impuestos, respaldo, sistema, vigilancia
+from ..tareas import ESTADO
 from ..db import Session
 from ..models import Banco, CategoriaGasto, Cuenta
 from . import check
@@ -14,7 +17,9 @@ bp = Blueprint("ajustes", __name__, url_prefix="/configuracion")
 
 CAMPOS_EMPRESA = ["empresa_nombre", "empresa_nit", "empresa_dv", "empresa_direccion", "empresa_ciudad",
                   "empresa_cod_municipio", "empresa_email", "empresa_telefono", "empresa_ciiu", "simple_base",
-                  "carpeta_respaldo", "respaldos_a_conservar"]
+                  "carpeta_respaldo", "respaldos_a_conservar", "periodo_bloqueado_hasta", "carpeta_vigilada",
+                  "correo_servidor", "correo_usuario", "correo_clave", "correo_carpeta", "correo_dias", "correo_filtro",
+                  "iva_arrastre_saldo_favor", "acceso_red", "clave_acceso", "actualizaciones_repo", "github_token"]
 
 
 @bp.route("/", methods=["GET", "POST"])
@@ -76,6 +81,66 @@ def inicio():
             c.activa = check("activa") if cid else True
             s.add(c)
             flash("Categoría guardada.", "ok")
+        elif accion == "probar_correo":
+            try:
+                flash(correo.probar(s), "ok")
+            except Exception as e:  # noqa: BLE001
+                flash(f"No se pudo conectar: {e}", "error")
+        elif accion == "revisar_correo":
+            res = correo.revisar(s)
+            if res.error:
+                flash(res.error, "error")
+            else:
+                flash(f"Correo revisado: {res.revisados} mensaje(s) nuevo(s), {res.importados} documento(s) importado(s).", "ok")
+                for asunto, lineas in res.mensajes:
+                    flash(f"{asunto}: " + " | ".join(lineas), "info")
+        elif accion == "revisar_carpeta":
+            res = vigilancia.revisar(s)
+            if not res:
+                flash("No había archivos nuevos en la carpeta vigilada (o la carpeta no existe).", "info")
+            for archivo, ok, msg in res:
+                flash(f"{archivo}: {msg}", "ok" if ok else "error")
+        elif accion == "restaurar":
+            try:
+                archivo = request.files.get("archivo_respaldo")
+                if archivo is not None and archivo.filename:
+                    contenido = archivo.read()
+                else:
+                    elegido = Path(request.form.get("respaldo_existente", ""))
+                    if elegido.name not in {p.name for p in sistema.respaldos_disponibles(s)}:
+                        raise ValueError("Seleccione un respaldo.")
+                    contenido = (respaldo.carpeta_destino(s) / elegido.name).read_bytes()
+                sistema.programar_restauracion(contenido)
+                flash("Respaldo listo para restaurar. Reinicie el programa para aplicarlo (botón de abajo).", "ok")
+            except Exception as e:  # noqa: BLE001
+                flash(f"No se pudo preparar la restauración: {e}", "error")
+        elif accion == "reiniciar":
+            s.commit()
+            flash("Reiniciando…", "info")
+            sistema.reiniciar()
+        elif accion == "buscar_actualizacion":
+            try:
+                info = sistema.verificar_actualizacion(s)
+                if info["hay_nueva"]:
+                    flash(f"Hay una versión nueva: {info['version']} (actual {sistema.version_actual()}). "
+                          f"{info['notas'][:400]}", "info")
+                    contab.set_config(s, "actualizacion_disponible", info["version"])
+                else:
+                    flash(f"El programa está al día (versión {sistema.version_actual()}).", "ok")
+                    contab.set_config(s, "actualizacion_disponible", "")
+            except Exception as e:  # noqa: BLE001
+                flash(f"No se pudo consultar: {e}", "error")
+        elif accion == "aplicar_actualizacion":
+            try:
+                info = sistema.verificar_actualizacion(s)
+                if not info["hay_nueva"]:
+                    raise ValueError("No hay una versión nueva.")
+                script = sistema.descargar_actualizacion(s, info)
+                respaldo.crear_respaldo(s)
+                s.commit()
+                sistema.reiniciar(script)
+            except Exception as e:  # noqa: BLE001
+                flash(f"No se pudo actualizar: {e}", "error")
         elif accion == "respaldo":
             try:
                 ruta = respaldo.crear_respaldo(s)
@@ -96,7 +161,11 @@ def inicio():
                            cuentas_gasto=s.query(Cuenta).filter(Cuenta.movimiento.is_(True),
                                                                  or_(Cuenta.codigo.like("5%"),
                                                                      Cuenta.codigo.like("15%"))).order_by(Cuenta.codigo).all(),
-                           carpeta_respaldo=respaldo.carpeta_destino(s), datos_dir=config.DATOS_DIR, uvts=uvts)
+                           carpeta_respaldo=respaldo.carpeta_destino(s), datos_dir=config.DATOS_DIR, uvts=uvts,
+                           estado_tareas=ESTADO, version=sistema.version_actual(), ip_local=sistema.ip_local(),
+                           puerto=config.PUERTO, respaldos=sistema.respaldos_disponibles(s),
+                           actualizacion=contab.config(s, "actualizacion_disponible", ""),
+                           restaurado=current_app.config.get("RESTAURADO"))
 
 
 def _nueva_subcuenta(s, padre):

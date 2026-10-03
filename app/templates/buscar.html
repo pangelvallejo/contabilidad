@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block titulo %}Buscar{% endblock %}
+{% block contenido %}
+<h1>Buscar</h1>
+<form class="filtros"><div style="flex:1;max-width:520px"><label>Número, cliente, NIT, CUFE, descripción o valor</label><input name="q" value="{{ q }}" autofocus></div><button class="primario">Buscar</button></form>
+{% if q %}
+<div class="tarjeta"><h2>Facturas de venta ({{ ventas|length }})</h2>
+  {% if ventas %}<table><tr><th>Número</th><th>Fecha</th><th>Cliente</th><th class="n">Total</th></tr>
+  {% for d in ventas %}<tr><td><a href="/ventas/{{ d.id }}">{{ d.tipo if d.tipo != 'FV' }} {{ d.numero }}</a></td><td>{{ d.fecha|fecha }}</td><td>{{ d.cliente.nombre }}</td><td class="n">{{ d.total|pesos }}</td></tr>{% endfor %}</table>
+  {% else %}<p class="vacio">Sin resultados.</p>{% endif %}</div>
+<div class="tarjeta"><h2>Gastos ({{ gastos|length }})</h2>
+  {% if gastos %}<table><tr><th>Número</th><th>Fecha</th><th>Proveedor</th><th>Descripción</th><th class="n">Total</th></tr>
+  {% for g in gastos %}<tr><td><a href="/gastos/{{ g.id }}">{{ g.numero or '—' }}</a></td><td>{{ g.fecha|fecha }}</td><td>{{ g.proveedor.nombre if g.proveedor else '' }}</td><td>{{ (g.descripcion or '')[:80] }}</td><td class="n">{{ g.total|pesos }}</td></tr>{% endfor %}</table>
+  {% else %}<p class="vacio">Sin resultados.</p>{% endif %}</div>
+<div class="tarjeta"><h2>Recaudos ({{ recaudos|length }})</h2>
+  {% if recaudos %}<table><tr><th>Fecha</th><th>Cliente</th><th>Referencia</th><th class="n">Valor</th></tr>
+  {% for r in recaudos %}<tr><td><a href="/recaudos/{{ r.id }}">{{ r.fecha|fecha }}</a></td><td>{{ r.cliente.nombre }}</td><td>{{ r.referencia or '' }}</td><td class="n">{{ r.valor|pesos }}</td></tr>{% endfor %}</table>
+  {% else %}<p class="vacio">Sin resultados.</p>{% endif %}</div>
+<div class="tarjeta"><h2>Clientes y proveedores ({{ terceros|length }})</h2>
+  {% if terceros %}<table><tr><th>Nombre</th><th>NIT</th><th>Email</th></tr>
+  {% for t in terceros %}<tr><td><a href="/terceros/{{ t.id }}">{{ t.nombre }}</a></td><td>{{ t.nit_completo }}</td><td>{{ t.email or '' }}</td></tr>{% endfor %}</table>
+  {% else %}<p class="vacio">Sin resultados.</p>{% endif %}</div>
+{% endif %}
+{% endblock %}

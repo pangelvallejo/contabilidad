@@ -47,11 +47,14 @@
       <option value="credito" {{ 'selected' if fp == 'credito' }}>Por pagar (crédito)</option></select></div>
     <div id="cuenta-pago"><label>Pagado desde</label><select name="cuenta_pago">
       {% set cp = form.get('cuenta_pago') or (g.cuenta_pago if g else '') %}{% for cta, nombre in opciones_pago %}<option value="{{ cta }}" {{ 'selected' if cp == cta }}>{{ nombre }}</option>{% endfor %}</select></div>
+    <div class="campo ancho"><label class="check"><input type="checkbox" name="recurrente" {{ 'checked' if (form.get('recurrente') if form else (g.recurrente if g else false)) }}> Gasto mensual recurrente (arriendo, internet, software…): el tablero avisará si en un mes no se ha registrado</label></div>
+    <div id="vida-util"><label>Vida útil en meses (solo activos fijos)</label><input type="number" name="vida_util_meses" value="{{ form.get('vida_util_meses') or (g.vida_util_meses if g else '') or '' }}" placeholder="60 equipos, 120 muebles"></div>
     <div><label>Soporte (PDF o foto)</label><input type="file" name="soporte" accept=".pdf,.png,.jpg,.jpeg,.heic,.webp,.xml"></div>
     <div><label>CUFE (opcional)</label><input name="cufe" value="{{ val('cufe') }}"></div>
     <div class="campo ancho"><label>Notas</label><textarea name="notas" rows="2">{{ val('notas') }}</textarea></div>
   </div>
   <button class="primario" name="accion" value="guardar">Guardar</button>
+  {% if g %}<a class="btn" href="/gastos/nuevo?copiar={{ g.id }}">Duplicar</a>{% endif %}
   {% if not g %}<button name="otro" value="1">Guardar y registrar otro</button>{% endif %}
   {% if g %}<button class="peligro" name="accion" value="eliminar" data-confirmar="¿Eliminar este gasto y su contabilidad?">Eliminar</button>{% endif %}
 </form>
@@ -85,12 +88,13 @@ const calc = () => total.value = (num(ids[0].value) + num(ids[1].value) + num(id
 ids.forEach(i => i.addEventListener('input', calc)); calc();
 const forma = document.getElementById('forma'), cp = document.getElementById('cuenta-pago');
 const act = () => cp.style.display = forma.value === 'contado' ? '' : 'none'; forma.addEventListener('change', act); act();
+const vida = document.getElementById('vida-util');
+const actVida = () => vida.style.display = cat.selectedOptions[0].text.includes('(activo)') ? '' : 'none';
 const prov = document.getElementById('proveedor'), np = document.getElementById('nuevo-prov');
 const mostrarNuevo = () => np.style.display = prov.value === 'nuevo' ? '' : 'none';
 prov.addEventListener('change', mostrarNuevo); mostrarNuevo();
-{% if not g %}
 const cat = document.getElementById('categoria'), desc = document.getElementById('desc');
-cat.addEventListener('change', () => desc.checked = cat.selectedOptions[0].dataset.desc === '1');
-{% endif %}
+cat.addEventListener('change', () => { actVida(); {% if not g %}desc.checked = cat.selectedOptions[0].dataset.desc === '1';{% endif %} });
+actVida();
 </script>
 {% endblock %}

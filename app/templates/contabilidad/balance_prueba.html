@@ -4,7 +4,7 @@
 <div class="encabezado">
   <div><h1>Balance de prueba</h1><p class="sub">{{ desde|fecha }} a {{ hasta|fecha }}.
     {% if tot_d == tot_c %}<span class="etiqueta ok">Cuadrado</span>{% else %}<span class="etiqueta crit">Descuadre {{ (tot_d - tot_c)|pesos }}</span>{% endif %}</p></div>
-  <div class="acciones"><a class="btn" href="?{{ request.query_string.decode() }}&xlsx=1">Exportar a Excel</a></div>
+  <div class="acciones"><a class="btn" href="?{{ request.query_string.decode() }}&xlsx=1">Exportar a Excel</a><a class="btn" href="?{{ request.query_string.decode() }}&pdf=1">PDF</a></div>
 </div>
 <form class="filtros">{% include "contabilidad/_periodo.html" %}
   <div><label>Nivel</label><select name="nivel">{% for n, t in [(1,'Clase'),(2,'Grupo'),(4,'Cuenta'),(6,'Subcuenta'),(8,'Auxiliar')] %}<option value="{{ n }}" {{ 'selected' if n == nivel }}>{{ t }}</option>{% endfor %}</select></div>

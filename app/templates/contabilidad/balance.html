@@ -4,6 +4,7 @@
 <h1>Estado de situación financiera</h1>
 <p class="sub">Al {{ corte|fecha_larga }}
   {% if bg.cuadre == 0 %}<span class="etiqueta ok">Cuadrado</span>{% else %}<span class="etiqueta crit">Descuadre {{ bg.cuadre|pesos }}</span>{% endif %}</p>
+<div class="acciones"><a class="btn" href="?corte={{ corte.isoformat() }}&pdf=1">Descargar PDF</a></div>
 <form class="filtros"><div><label>Fecha de corte</label><input type="date" name="corte" value="{{ corte.isoformat() }}"></div><button>Ver</button></form>
 {% macro detalle(filas) %}{% for c, v in filas %}<tr><td style="padding-left:24px"><a href="/contabilidad/mayor?cuenta={{ c.codigo }}&hasta={{ corte.isoformat() }}">{{ c.codigo }}</a> {{ c.nombre }}</td><td class="n">{{ v|pesos }}</td></tr>{% endfor %}{% endmacro %}
 <div class="rejilla k2">

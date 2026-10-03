@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block titulo %}Depreciaciones{% endblock %}
+{% block contenido %}
+<div class="encabezado"><div><h1>Activos fijos y depreciación</h1>
+  <p class="sub">Los gastos registrados en categorías de activo (cuentas 15xx) se deprecian en línea recta desde el mes siguiente a la compra: equipos de cómputo 60 meses, muebles 120, salvo que indique otra vida útil en el gasto. El programa crea los asientos solo al abrir; aquí puede forzarlo.</p></div>
+  <form method="post"><button class="primario">Causar depreciaciones hasta hoy</button></form></div>
+<div class="tarjeta tabla-scroll">
+  {% if filas %}<table>
+    <tr><th>Fecha compra</th><th>Activo</th><th>Cuenta</th><th class="n">Costo</th><th class="n">Vida (meses)</th><th class="n">Cuota mensual</th><th class="n">Depreciado</th><th class="n">Valor neto</th></tr>
+    {% for f in filas %}<tr><td>{{ f.gasto.fecha|fecha }}</td><td><a href="/gastos/{{ f.gasto.id }}">{{ f.gasto.descripcion or f.gasto.numero or f.gasto.categoria.nombre }}</a></td>
+      <td>{{ f.gasto.categoria.cuenta }}</td><td class="n">{{ f.costo|pesos }}</td><td class="n">{{ f.vida }}</td><td class="n">{{ f.cuota|pesos }}</td>
+      <td class="n">{{ f.depreciado|pesos }}</td><td class="n">{{ f.neto|pesos }}</td></tr>{% endfor %}
+  </table>{% else %}<p class="vacio">No hay activos fijos registrados. Para registrar uno, use la categoría "Equipo de cómputo (activo)" o "Muebles y enseres (activo)" en el gasto.</p>{% endif %}
+</div>
+{% endblock %}

@@ -3,6 +3,7 @@
 Cada documento (factura, recaudo, gasto, pago) es dueño de sus asientos, identificados por
 `origen`. Al crear o editar un documento se regeneran; al borrarlo, se eliminan.
 """
+from datetime import date
 from decimal import Decimal, ROUND_HALF_UP
 
 from sqlalchemy import func
@@ -35,6 +36,7 @@ TIPOS_ASIENTO = {
     "CE": "Comprobante de egreso",
     "IM": "Pago de impuestos",
     "AJ": "Ajuste / manual",
+    "CI": "Cierre de ejercicio",
 }
 
 
@@ -74,19 +76,40 @@ def set_config(session, clave, valor):
     c.valor = valor
 
 
+def periodo_bloqueado_hasta(session):
+    """Fecha hasta la cual la contabilidad está cerrada (se fija al pagar el 2593 o al cerrar el año)."""
+    valor = config(session, "periodo_bloqueado_hasta")
+    try:
+        return date.fromisoformat(valor) if valor else None
+    except ValueError:
+        return None
+
+
+def verificar_periodo(session, fecha, forzar=False):
+    tope = periodo_bloqueado_hasta(session)
+    if not forzar and tope and fecha and fecha <= tope:
+        raise ErrorContable(
+            f"El periodo hasta el {tope:%d/%m/%Y} está bloqueado porque ya se declaró. "
+            "Para corregirlo cambie la fecha de bloqueo en Configuración.")
+
+
 def _siguiente_numero(session, tipo):
     return (session.query(func.max(Asiento.numero)).filter(Asiento.tipo == tipo).scalar() or 0) + 1
 
 
-def guardar_asiento(session, *, origen, tipo, fecha, descripcion, tercero_id, lineas, asiento=None):
+def guardar_asiento(session, *, origen, tipo, fecha, descripcion, tercero_id, lineas, asiento=None, forzar=False):
     """Crea o reemplaza el asiento (origen, tipo). `lineas`: (cuenta, débito, crédito, tercero_id, detalle).
 
     Las líneas con valor cero se omiten; si no queda ninguna, el asiento se elimina.
+    Rechaza fechas dentro de un periodo bloqueado, salvo `forzar` (cierres y causaciones).
     """
     lineas = [(c, redondear(db), redondear(cr), t, det) for c, db, cr, t, det in lineas
               if redondear(db) != 0 or redondear(cr) != 0]
     if asiento is None and origen is not None:
         asiento = session.query(Asiento).filter_by(origen=origen, tipo=tipo).one_or_none()
+    verificar_periodo(session, fecha, forzar)
+    if asiento is not None:
+        verificar_periodo(session, asiento.fecha, forzar)
     if not lineas:
         if asiento is not None:
             session.delete(asiento)
@@ -110,8 +133,9 @@ def guardar_asiento(session, *, origen, tipo, fecha, descripcion, tercero_id, li
     return asiento
 
 
-def borrar_asientos(session, origen):
+def borrar_asientos(session, origen, forzar=False):
     for a in session.query(Asiento).filter_by(origen=origen).all():
+        verificar_periodo(session, a.fecha, forzar)
         session.delete(a)
     session.flush()
 

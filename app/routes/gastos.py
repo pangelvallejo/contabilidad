@@ -7,7 +7,7 @@ from .. import archivos, contab, exportar, importacion
 from ..db import Session
 from ..models import (CERO, TIPOS_SOPORTE, Asiento, Banco, CategoriaGasto, Gasto, PagoGasto,
                       Tercero)
-from . import XLSX, anio_arg, check, descargar, dinero, fecha_arg
+from . import XLSX, anio_arg, check, descargar, dinero, fecha_arg, paginar_lista
 
 bp = Blueprint("gastos", __name__)
 
@@ -53,7 +53,8 @@ def lista():
         return descargar(exportar.excel({"Gastos": (enc, datos)}), f"gastos_{anio}.xlsx", XLSX)
     totales = {k: sum((g.signo * getattr(g, k) for g in gastos), CERO)
                for k in ("subtotal", "iva", "iva_desc_valor", "total")}
-    return render_template("gastos/lista.html", gastos=gastos, totales=totales, anio=anio,
+    gastos, pagina, paginas = paginar_lista(gastos)
+    return render_template("gastos/lista.html", gastos=gastos, totales=totales, anio=anio, pagina=pagina, paginas=paginas,
                            categorias=s.query(CategoriaGasto).order_by(CategoriaGasto.nombre).all(),
                            categoria_id=categoria_id, tipos=TIPOS_SOPORTE)
 
@@ -106,6 +107,8 @@ def _llenar_gasto(s, g):
     g.forma_pago = request.form.get("forma_pago", "contado")
     g.cuenta_pago = request.form.get("cuenta_pago") if g.forma_pago == "contado" else None
     g.notas = request.form.get("notas") or None
+    g.recurrente = check("recurrente")
+    g.vida_util_meses = request.form.get("vida_util_meses", type=int) or None
     g.revisado = True
     if g.iva and g.iva_descontable and g.tipo_soporte not in ("FE", "DS", "NC"):
         # Art. 771-2 E.T.: sin factura electrónica o documento soporte no hay derecho al descontable.
@@ -136,7 +139,54 @@ def nuevo():
         except Exception as e:  # noqa: BLE001
             s.rollback()
             flash(f"No se pudo registrar: {e}", "error")
-    return render_template("gastos/form.html", g=None, form=request.form, **_contexto_form(s))
+    form = request.form
+    copiar = request.args.get("copiar", type=int)
+    if request.method == "GET" and copiar:
+        base = s.get(Gasto, copiar)
+        if base is not None:
+            # Duplicar: mismos datos, fecha de hoy, sin número ni CUFE (son del documento original).
+            from ..formato import entrada
+            form = {"tipo_soporte": base.tipo_soporte, "proveedor_id": str(base.proveedor_id or ""),
+                    "categoria_id": str(base.categoria_id), "descripcion": base.descripcion or "",
+                    "subtotal": entrada(base.subtotal), "iva": entrada(base.iva), "otros_impuestos": entrada(base.otros_impuestos),
+                    "iva_descontable": "on" if base.iva_descontable else "", "forma_pago": base.forma_pago,
+                    "cuenta_pago": base.cuenta_pago or "", "recurrente": "on" if base.recurrente else "",
+                    "fecha": date.today().isoformat(), "notas": ""}
+    return render_template("gastos/form.html", g=None, form=form, **_contexto_form(s))
+
+
+@bp.route("/gastos/revisar", methods=["GET", "POST"])
+def revisar():
+    """Corrige en una sola pantalla la categoría, el IVA descontable y la forma de pago de los gastos importados."""
+    s = Session()
+    if request.method == "POST":
+        ids = request.form.getlist("id")
+        n = 0
+        for gid in ids:
+            g = s.get(Gasto, int(gid))
+            if g is None or not request.form.get(f"ok_{gid}"):
+                continue
+            try:
+                g.categoria_id = int(request.form[f"categoria_{gid}"])
+                g.iva_descontable = request.form.get(f"iva_{gid}") == "on"
+                g.forma_pago = request.form.get(f"forma_{gid}", g.forma_pago)
+                g.cuenta_pago = request.form.get(f"cuenta_{gid}") if g.forma_pago == "contado" else None
+                g.recurrente = request.form.get(f"rec_{gid}") == "on"
+                g.revisado = True
+                s.flush()
+                s.refresh(g)
+                contab.contabilizar_gasto(s, g)
+                n += 1
+            except Exception as e:  # noqa: BLE001
+                s.rollback()
+                flash(f"No se pudo guardar el gasto {g.numero or gid}: {e}", "error")
+                return redirect(url_for("gastos.revisar"))
+        s.commit()
+        flash(f"{n} gasto(s) revisado(s).", "ok")
+        return redirect(url_for("gastos.revisar") if s.query(Gasto).filter_by(revisado=False).count()
+                        else url_for("gastos.lista"))
+    pendientes = s.query(Gasto).filter_by(revisado=False).order_by(Gasto.fecha.desc()).limit(200).all()
+    return render_template("gastos/revisar.html", gastos=pendientes, **_contexto_form(s))
 
 
 @bp.route("/gastos/<int:id>", methods=["GET", "POST"])

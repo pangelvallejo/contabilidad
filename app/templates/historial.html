@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block titulo %}Historial de cambios{% endblock %}
+{% block contenido %}
+<h1>Historial de cambios</h1>
+<p class="sub">Todo lo que se creó, modificó o eliminó, con fecha y hora. Útil para entender un descuadre o soportar una revisión.</p>
+<form class="filtros"><div><label>Tipo</label><select name="entidad"><option value="">Todos</option>{% for e in entidades %}<option {{ 'selected' if e == entidad }}>{{ e }}</option>{% endfor %}</select></div><button>Filtrar</button></form>
+<div class="tarjeta tabla-scroll">
+  <table><tr><th>Fecha y hora</th><th>Acción</th><th>Tipo</th><th>Registro</th><th>Detalle</th></tr>
+  {% for b in filas %}<tr><td>{{ b.fecha.strftime('%d/%m/%Y %H:%M') }}</td><td><span class="etiqueta {{ {'crear':'ok','editar':'adv','borrar':'crit'}[b.accion] }}">{{ b.accion }}</span></td>
+    <td>{{ b.entidad }}</td><td>{{ b.descripcion }}</td><td class="nota">{{ b.detalle or '' }}</td></tr>
+  {% else %}<tr><td colspan="5" class="vacio">Sin registros.</td></tr>{% endfor %}</table>
+  {% include "_paginacion.html" %}
+</div>
+{% endblock %}

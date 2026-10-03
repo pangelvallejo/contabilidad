@@ -21,6 +21,7 @@
     {% endfor %}
     {% endfor %}
   </table>
+  {% include "_paginacion.html" %}
   {% else %}<p class="vacio">No hay asientos en el periodo.</p>{% endif %}
 </div>
 {% endblock %}

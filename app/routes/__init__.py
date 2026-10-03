@@ -55,3 +55,29 @@ XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 def destino_seguro(valor, defecto):
     """Solo permite redirigir a rutas internas de la aplicación."""
     return valor if valor and valor.startswith("/") and not valor.startswith("//") else defecto
+
+
+POR_PAGINA = 100
+
+
+def paginar(consulta, por_pagina=POR_PAGINA):
+    """Devuelve (elementos, pagina, total_paginas) según ?pagina=."""
+    try:
+        pagina = max(1, int(request.args.get("pagina") or 1))
+    except ValueError:
+        pagina = 1
+    total = consulta.order_by(None).count()
+    paginas = max(1, -(-total // por_pagina))
+    pagina = min(pagina, paginas)
+    return consulta.offset((pagina - 1) * por_pagina).limit(por_pagina).all(), pagina, paginas
+
+
+def paginar_lista(elementos, por_pagina=POR_PAGINA):
+    """Como `paginar`, pero sobre una lista ya calculada (cuando los totales necesitan todos los elementos)."""
+    try:
+        pagina = max(1, int(request.args.get("pagina") or 1))
+    except ValueError:
+        pagina = 1
+    paginas = max(1, -(-len(elementos) // por_pagina))
+    pagina = min(pagina, paginas)
+    return elementos[(pagina - 1) * por_pagina: pagina * por_pagina], pagina, paginas

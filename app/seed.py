@@ -212,6 +212,14 @@ NOTA_FECHA_ESTIMADA = "Fecha estimada con el calendario 2026; confirmar con el d
 
 
 def sembrar(session):
+    session.info["sin_bitacora"] = True  # los datos iniciales no son cambios del usuario
+    try:
+        _sembrar(session)
+    finally:
+        session.info.pop("sin_bitacora", None)
+
+
+def _sembrar(session):
     if session.get(Cuenta, "1") is None:
         codigos = [c for c, _, _ in PUC]
         for codigo, nombre, nat in PUC:

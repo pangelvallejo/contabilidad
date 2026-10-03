@@ -22,6 +22,8 @@
   <div class="kpi"><div class="etq">Cartera por cobrar</div><div class="val">{{ tot_cartera.total|pesos }}</div>
     <div class="det">Vencida {{ (tot_cartera.total - tot_cartera['Por vencer'])|pesos }}</div></div>
   <div class="kpi"><div class="etq">Gastos del mes</div><div class="val">{{ gastos_mes|pesos }}</div></div>
+  <div class="kpi"><div class="etq">Impuestos del año (estimado)</div><div class="val">{{ proyeccion.carga_total|pesos }}</div>
+    <div class="det">SIMPLE {{ proyeccion.simple_proyectado|pesos }} · <a href="/flujo-caja">ver proyección</a></div></div>
 </div>
 
 <div class="rejilla k2">

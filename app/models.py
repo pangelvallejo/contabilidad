@@ -4,6 +4,7 @@ from decimal import Decimal
 
 from sqlalchemy import (Boolean, Date, DateTime, ForeignKey, Integer, Numeric, String, Text,
                         UniqueConstraint)
+from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .db import Base
@@ -49,6 +50,8 @@ class Tercero(Base):
     es_proveedor: Mapped[bool] = mapped_column(Boolean, default=False)
     aplica_reteiva: Mapped[bool] = mapped_column(Boolean, default=False)
     plazo_dias: Mapped[int] = mapped_column(Integer, default=30)
+    # Honorarios mensuales fijos (retainer): el tablero avisa si en el mes no se le ha facturado.
+    retainer_mensual: Mapped[Decimal | None] = mapped_column(Dinero)
     notas: Mapped[str | None] = mapped_column(Text)
 
     @property
@@ -158,7 +161,7 @@ class DocumentoVenta(Base):
     def signo(self):
         return -1 if self.tipo == "NC" else 1
 
-    @property
+    @hybrid_property
     def ingreso(self):
         return self.total - self.iva
 
@@ -242,8 +245,10 @@ class Gasto(Base):
     cuenta_pago: Mapped[str | None] = mapped_column(ForeignKey("cuentas.codigo"))  # para contado
     xml_archivo: Mapped[str | None] = mapped_column(String(250))
     soporte_archivo: Mapped[str | None] = mapped_column(String(250))
-    origen: Mapped[str] = mapped_column(String(10), default="manual")  # manual | xml | correo
+    origen: Mapped[str] = mapped_column(String(10), default="manual")  # manual | xml | correo | carpeta | banco
     revisado: Mapped[bool] = mapped_column(Boolean, default=True)
+    recurrente: Mapped[bool] = mapped_column(Boolean, default=False)  # se espera cada mes (arriendo, internet…)
+    vida_util_meses: Mapped[int | None] = mapped_column(Integer)  # solo activos fijos (cuentas 15xx)
     notas: Mapped[str | None] = mapped_column(Text)
     creado: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
 
@@ -300,6 +305,46 @@ class PagoImpuesto(Base):
     @property
     def total(self):
         return self.valor_simple + self.valor_iva
+
+
+class MovimientoBanco(Base):
+    """Línea de un extracto bancario importado, para conciliación."""
+    __tablename__ = "movimientos_banco"
+    __table_args__ = (UniqueConstraint("banco_id", "huella"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    banco_id: Mapped[int] = mapped_column(ForeignKey("bancos.id"))
+    fecha: Mapped[date] = mapped_column(Date, index=True)
+    descripcion: Mapped[str] = mapped_column(String(250))
+    valor: Mapped[Decimal] = mapped_column(Dinero)  # positivo entra, negativo sale
+    referencia: Mapped[str | None] = mapped_column(String(80))
+    huella: Mapped[str] = mapped_column(String(64))  # evita importar dos veces la misma línea
+    estado: Mapped[str] = mapped_column(String(12), default="pendiente")  # pendiente | conciliado | ignorado
+    origen_tipo: Mapped[str | None] = mapped_column(String(12))  # recaudo | pagogasto | gasto | impuesto | asiento
+    origen_id: Mapped[int | None] = mapped_column(Integer)
+    importado: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+
+    banco: Mapped[Banco] = relationship()
+
+
+class CorreoProcesado(Base):
+    __tablename__ = "correos_procesados"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    mensaje_id: Mapped[str] = mapped_column(String(250), unique=True)
+    fecha: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+    asunto: Mapped[str | None] = mapped_column(String(250))
+    resultado: Mapped[str | None] = mapped_column(Text)
+
+
+class Bitacora(Base):
+    """Historial de cambios: qué se creó, modificó o eliminó y cuándo."""
+    __tablename__ = "bitacora"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    fecha: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, index=True)
+    accion: Mapped[str] = mapped_column(String(10))  # crear | editar | borrar
+    entidad: Mapped[str] = mapped_column(String(30))
+    entidad_id: Mapped[int | None] = mapped_column(Integer)
+    descripcion: Mapped[str] = mapped_column(String(300))
+    detalle: Mapped[str | None] = mapped_column(Text)
 
 
 class Vencimiento(Base):

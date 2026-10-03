@@ -3,7 +3,6 @@ import os
 import sqlite3
 import tempfile
 import threading
-import time
 import zipfile
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -65,20 +64,3 @@ def respaldo_pendiente(session, horas=24) -> bool:
     if not ultimo:
         return True
     return datetime.now() - datetime.fromisoformat(ultimo) > timedelta(hours=horas)
-
-
-def iniciar_respaldo_automatico(session_factory):
-    """Hilo en segundo plano: revisa cada hora y respalda si pasaron 24 horas."""
-    def ciclo():
-        while True:
-            s = session_factory()
-            try:
-                if respaldo_pendiente(s):
-                    crear_respaldo(s)
-            except Exception as e:  # noqa: BLE001 — un fallo de respaldo no debe tumbar la app
-                print(f"[respaldo] No se pudo crear el respaldo: {e}")
-            finally:
-                s.close()
-            time.sleep(3600)
-
-    threading.Thread(target=ciclo, daemon=True, name="respaldo").start()

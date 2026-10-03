@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block titulo %}Revisar gastos importados{% endblock %}
+{% block contenido %}
+<h1>Revisar gastos importados</h1>
+<p class="sub">Confirme la categoría, el IVA descontable y cómo se pagó. Marque los que ya revisó y guarde todos de una vez.</p>
+{% if gastos %}
+<form class="tarjeta tabla-scroll" method="post">
+  <table>
+    <tr><th><input type="checkbox" id="todos" title="Marcar todos"></th><th>Fecha</th><th>Proveedor</th><th>Descripción</th><th class="n">Base</th><th class="n">IVA</th>
+      <th>Categoría</th><th>IVA desc.</th><th>Pago</th><th>Mensual</th><th></th></tr>
+    {% for g in gastos %}
+    <tr><td><input type="hidden" name="id" value="{{ g.id }}"><input type="checkbox" name="ok_{{ g.id }}" class="ok" checked></td>
+      <td>{{ g.fecha|fecha }}</td><td>{{ g.proveedor.nombre if g.proveedor else '—' }}</td><td class="nota">{{ (g.descripcion or '')[:70] }}</td>
+      <td class="n">{{ g.subtotal|pesos }}</td><td class="n">{{ g.iva|pesos }}</td>
+      <td><select name="categoria_{{ g.id }}">{% for c in categorias %}<option value="{{ c.id }}" {{ 'selected' if c.id == g.categoria_id }}>{{ c.nombre }}</option>{% endfor %}</select></td>
+      <td><input type="checkbox" name="iva_{{ g.id }}" {{ 'checked' if g.iva_descontable }} {{ 'disabled' if not g.iva }}></td>
+      <td><select name="forma_{{ g.id }}"><option value="contado" {{ 'selected' if g.forma_pago == 'contado' }}>Pagado</option><option value="credito" {{ 'selected' if g.forma_pago == 'credito' }}>Por pagar</option></select>
+        <select name="cuenta_{{ g.id }}">{% for cta, nombre in opciones_pago %}<option value="{{ cta }}" {{ 'selected' if g.cuenta_pago == cta }}>{{ nombre }}</option>{% endfor %}</select></td>
+      <td><input type="checkbox" name="rec_{{ g.id }}" {{ 'checked' if g.recurrente }} title="Se repite cada mes"></td>
+      <td><a href="/gastos/{{ g.id }}" target="_blank">abrir</a></td></tr>
+    {% endfor %}
+  </table>
+  <p style="margin-top:12px"><button class="primario">Guardar los marcados</button></p>
+</form>
+{% else %}<div class="tarjeta"><p class="vacio">No hay gastos pendientes de revisión.</p></div>{% endif %}
+{% endblock %}
+{% block scripts %}<script>
+const t = document.getElementById('todos'); if (t) t.addEventListener('change', () => document.querySelectorAll('.ok').forEach(c => c.checked = t.checked));
+</script>{% endblock %}

@@ -21,6 +21,7 @@
     <div><label>Ciudad</label><input name="ciudad" value="{{ t.ciudad or '' }}"></div>
     <div><label>Código municipio DANE (5 dígitos)</label><input name="cod_municipio" value="{{ t.cod_municipio or '' }}" placeholder="11001 = Bogotá"></div>
     <div><label>País (código DIAN)</label><input name="pais" value="{{ t.pais or '169' }}"></div>
+    <div><label>Honorarios mensuales fijos (retainer)</label><input class="n" name="retainer_mensual" value="{{ t.retainer_mensual|entrada if t.retainer_mensual else '' }}" placeholder="Vacío si no aplica"></div>
     <div><label>Plazo de pago (días)</label><input type="number" name="plazo_dias" value="{{ t.plazo_dias if t.plazo_dias is not none else 30 }}"></div>
     <div class="campo ancho">
       <label class="check"><input type="checkbox" name="es_cliente" {{ 'checked' if t.es_cliente }}> Cliente</label>

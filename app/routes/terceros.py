@@ -48,6 +48,11 @@ def editar(id=None):
         t.es_proveedor = check("es_proveedor")
         t.aplica_reteiva = check("aplica_reteiva")
         try:
+            from ..contab import d
+            t.retainer_mensual = d(request.form.get("retainer_mensual") or 0) or None
+        except Exception:  # noqa: BLE001
+            t.retainer_mensual = None
+        try:
             t.plazo_dias = max(0, int(request.form.get("plazo_dias") or 0))
         except ValueError:
             t.plazo_dias = 30

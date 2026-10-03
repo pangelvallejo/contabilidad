@@ -77,6 +77,12 @@ def registrar_pago():
                                              Vencimiento.periodo.like(f"Bimestre {p.bimestre} %{p.anio}")).first())
             if v:
                 v.cumplido = True
+            # Al pagar el recibo, el bimestre queda declarado: se bloquea para evitar cambios accidentales.
+            fin = impuestos.rango_bimestre(p.anio, p.bimestre)[1] if p.bimestre else None
+            tope = contab.periodo_bloqueado_hasta(s)
+            if fin and (tope is None or fin > tope):
+                contab.set_config(s, "periodo_bloqueado_hasta", fin.isoformat())
+                flash(f"Contabilidad bloqueada hasta el {fin:%d/%m/%Y}. Se puede cambiar en Configuración.", "info")
         s.commit()
         flash("Pago registrado y contabilizado.", "ok")
     except Exception as e:  # noqa: BLE001
