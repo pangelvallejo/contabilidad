@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block titulo %}Movimientos de {{ banco.nombre }}{% endblock %}
+{% block contenido %}
+<div class="encabezado">
+  <div><h1>Movimientos: {{ banco.nombre }}</h1><p class="sub">Libro auxiliar de la cuenta {{ banco.cuenta }} del {{ desde|fecha }} al {{ hasta|fecha }}.</p></div>
+  <div class="acciones"><a class="btn" href="/bancos/movimientos?banco={{ banco.id }}&desde={{ desde }}&hasta={{ hasta }}&xlsx=1">Excel</a><a class="btn" href="/bancos/">Volver a bancos</a></div>
+</div>
+<form class="filtros">
+  <div><label>Banco</label><select name="banco">{% for b in bancos %}<option value="{{ b.id }}" {{ 'selected' if b.id == banco.id }}>{{ b.nombre }}</option>{% endfor %}</select></div>
+  <div><label>Desde</label><input type="date" name="desde" value="{{ desde }}"></div>
+  <div><label>Hasta</label><input type="date" name="hasta" value="{{ hasta }}"></div>
+  <button>Ver</button>
+</form>
+<div class="rejilla k4" style="margin-bottom:18px">
+  <div class="kpi"><div class="etq">Saldo inicial</div><div class="val">{{ inicial|pesos }}</div></div>
+  <div class="kpi"><div class="etq">Entradas</div><div class="val">{{ entradas|pesos }}</div></div>
+  <div class="kpi"><div class="etq">Salidas</div><div class="val">{{ salidas|pesos }}</div></div>
+  <div class="kpi"><div class="etq">Saldo final</div><div class="val">{{ final|pesos }}</div></div>
+</div>
+<div class="tarjeta tabla-scroll">
+  {% if filas %}
+  <table>
+    <tr><th>Fecha</th><th>Comprobante</th><th>Descripción</th><th>Tercero</th><th class="n">Entradas</th><th class="n">Salidas</th><th class="n">Saldo</th></tr>
+    <tr><td>{{ desde|fecha }}</td><td></td><td>Saldo inicial</td><td></td><td></td><td></td><td class="n">{{ inicial|pesos }}</td></tr>
+    {% for m, saldo in filas %}
+    <tr><td>{{ m.asiento.fecha|fecha }}</td><td><a href="/contabilidad/asiento/{{ m.asiento.id }}">{{ m.asiento.tipo }}-{{ m.asiento.numero }}</a></td>
+      <td>{{ m.descripcion or m.asiento.descripcion }}</td><td>{{ m.tercero.nombre if m.tercero else '' }}</td>
+      <td class="n">{{ m.debito|pesos if m.debito else '' }}</td><td class="n">{{ m.credito|pesos if m.credito else '' }}</td><td class="n">{{ saldo|pesos }}</td></tr>
+    {% endfor %}
+  </table>
+  {% else %}<p class="vacio">Sin movimientos en el periodo. Saldo: {{ inicial|pesos }}.</p>{% endif %}
+</div>
+{% endblock %}

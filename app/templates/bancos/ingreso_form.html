@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block titulo %}{{ 'Editar ingreso' if oi else 'Ingreso sin factura' }}{% endblock %}
+{% block contenido %}
+{% set v = form if form else {} %}
+<div class="encabezado">
+  <div><h1>{{ 'Editar ingreso sin factura' if oi else 'Registrar ingreso sin factura' }}</h1>
+    <p class="sub">Intereses abonados por el banco, reintegros de gastos u otros ingresos que no tienen factura de venta. No llevan IVA.</p></div>
+  <div class="acciones"><a class="btn" href="/bancos/ingresos">Volver</a></div>
+</div>
+<form method="post" enctype="multipart/form-data" class="tarjeta">
+  <div class="campos">
+    <div><label>Fecha</label><input type="date" name="fecha" required value="{{ v.get('fecha') or (oi.fecha if oi else hoy) }}"></div>
+    <div><label>Banco donde entró</label><select name="banco_id" required>{% for b in bancos %}<option value="{{ b.id }}" {{ 'selected' if (v.get('banco_id')|int if v.get('banco_id') else (oi.banco_id if oi else bancos[0].id)) == b.id }}>{{ b.nombre }}</option>{% endfor %}</select></div>
+    <div><label>Tipo de ingreso (cuenta)</label><select name="cuenta">{% for c in cuentas %}<option value="{{ c.codigo }}" {{ 'selected' if (v.get('cuenta') or (oi.cuenta if oi else '421005')) == c.codigo }}>{{ c.codigo }} {{ c.nombre }}</option>{% endfor %}</select></div>
+    <div><label>Concepto</label><input name="concepto" placeholder="Intereses cuenta de ahorros marzo" value="{{ v.get('concepto') or (oi.concepto if oi else '') }}"></div>
+    <div><label>Valor bruto del ingreso</label><input class="n" name="valor" id="valor" required value="{{ v.get('valor') or (oi.valor|entrada if oi else '') }}" placeholder="0"></div>
+    <div><label>Descontado por el banco (GMF, cargos)</label><input class="n" name="descuentos" id="descuentos" value="{{ v.get('descuentos') or (oi.descuentos|entrada if oi and oi.descuentos else '') }}" placeholder="0"></div>
+    <div><label>Neto que entró al banco</label><input class="n" id="neto" readonly></div>
+    <div><label>Tercero que pagó (para la exógena)</label>
+      <select name="tercero_id" id="tercero"><option value="">(sin tercero)</option>{% for t in terceros %}<option value="{{ t.id }}" {{ 'selected' if (v.get('tercero_id') or (oi.tercero_id|string if oi and oi.tercero_id else '')) == t.id|string }}>{{ t.nombre }} ({{ t.nit }})</option>{% endfor %}<option value="nuevo" {{ 'selected' if v.get('tercero_id') == 'nuevo' }}>+ Crear tercero (el banco)…</option></select></div>
+    <div id="nuevo-tercero" style="display:none"><label>NIT del tercero nuevo</label><input name="nuevo_nit" value="{{ v.get('nuevo_nit', '') }}" placeholder="860007335"></div>
+    <div id="nuevo-tercero-2" style="display:none"><label>Nombre del tercero nuevo</label><input name="nuevo_nombre" value="{{ v.get('nuevo_nombre', '') }}" placeholder="Banco Caja Social S.A."></div>
+    <div><label>Referencia (opcional)</label><input name="referencia" value="{{ v.get('referencia') or (oi.referencia if oi else '') }}"></div>
+    <div><label>Soporte (extracto, certificado)</label><input type="file" name="soporte">{% if oi and oi.soporte_archivo %}<span class="nota">Actual: <a href="/archivo/{{ oi.soporte_archivo }}" target="_blank">ver</a></span>{% endif %}</div>
+    <div class="campo ancho"><label>Notas</label><textarea name="notas" rows="2">{{ v.get('notas') or (oi.notas if oi else '') }}</textarea></div>
+  </div>
+  <button class="primario">{{ 'Guardar cambios' if oi else 'Registrar ingreso' }}</button>
+  {% if oi %}<button class="peligro" name="accion" value="borrar" data-confirmar="¿Eliminar este ingreso y su asiento contable?">Eliminar</button>{% endif %}
+</form>
+<p class="nota">Asiento que se genera: débito al banco por el neto, débito a gastos bancarios (530505) por lo descontado, y crédito a la cuenta de ingreso por el valor bruto. Los intereses hacen parte de los ingresos brutos del SIMPLE.</p>
+<script>
+const num = v => { v = String(v || '').trim(); if (v.includes(',')) v = v.replace(/\./g, '').replace(',', '.'); else if ((v.match(/\./g) || []).length > 1 || /\.\d{3}$/.test(v)) v = v.replace(/\./g, ''); return parseFloat(v) || 0; };
+const valor = document.getElementById('valor'), desc = document.getElementById('descuentos'), neto = document.getElementById('neto');
+const calc = () => neto.value = (num(valor.value) - num(desc.value)).toLocaleString('es-CO', {maximumFractionDigits: 2});
+valor.addEventListener('input', calc); desc.addEventListener('input', calc); calc();
+const sel = document.getElementById('tercero');
+const nuevo = () => ['nuevo-tercero', 'nuevo-tercero-2'].forEach(i => document.getElementById(i).style.display = sel.value === 'nuevo' ? '' : 'none');
+sel.addEventListener('change', nuevo); nuevo();
+</script>
+{% endblock %}

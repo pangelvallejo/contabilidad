@@ -14,6 +14,8 @@ from decimal import Decimal, InvalidOperation
 
 from openpyxl import load_workbook
 
+from sqlalchemy import func
+
 from . import contab
 from .models import CERO, Asiento, Banco, MovimientoBanco, Movimiento, PagoGasto, PagoImpuesto, Recaudo
 
@@ -195,6 +197,11 @@ def candidatos(session, mov: MovimientoBanco, dias=5, usados=None):
                                                Recaudo.valor == mov.valor):
             if ("recaudo", r.id) not in usados:
                 res.append(("recaudo", r.id, f"Recaudo {r.cliente.nombre} {r.fecha:%d/%m}", r.valor))
+        from .models import OtroIngreso
+        for oi in session.query(OtroIngreso).filter(OtroIngreso.banco_id == mov.banco_id,
+                                                    OtroIngreso.fecha.between(desde, hasta)):
+            if oi.neto == mov.valor and ("otroingreso", oi.id) not in usados:
+                res.append(("otroingreso", oi.id, f"{oi.concepto[:40]} {oi.fecha:%d/%m}", oi.neto))
     else:
         v = -mov.valor
         for p in session.query(PagoGasto).filter(PagoGasto.cuenta_pago == cuenta, PagoGasto.fecha.between(desde, hasta),
@@ -253,12 +260,14 @@ def sugerir_categoria_bancaria(descripcion: str):
     return None
 
 
-TIPOS_ORIGEN = {"recaudo", "pagogasto", "gasto", "impuesto", "asiento"}
+TIPOS_ORIGEN = {"recaudo", "pagogasto", "gasto", "impuesto", "asiento", "otroingreso"}
 
 
 def origen_existe(session, tipo, oid) -> bool:
     from .models import Gasto
-    modelo = {"recaudo": Recaudo, "pagogasto": PagoGasto, "gasto": Gasto, "impuesto": PagoImpuesto, "asiento": Asiento}
+    from .models import OtroIngreso
+    modelo = {"recaudo": Recaudo, "pagogasto": PagoGasto, "gasto": Gasto, "impuesto": PagoImpuesto, "asiento": Asiento,
+              "otroingreso": OtroIngreso}
     return tipo in modelo and session.get(modelo[tipo], oid) is not None
 
 
@@ -296,3 +305,24 @@ def deshacer(session, mov: MovimientoBanco):
         if a is not None:
             contab.verificar_periodo(session, a.fecha)
             session.delete(a)
+    elif tipo == "otroingreso":
+        from .models import OtroIngreso
+        oi = session.get(OtroIngreso, oid)
+        if oi is not None:
+            contab.borrar_asientos(session, f"otroingreso:{oi.id}")
+            session.delete(oi)
+
+
+# ------------------------------------------------------------------ saldos
+
+def saldos_bancos(session, corte=None):
+    """Saldo contable de cada banco (cuenta 11xx del PUC) a la fecha de corte, con lo pendiente por conciliar."""
+    from . import reportes
+    filas = []
+    for b in session.query(Banco).order_by(Banco.activo.desc(), Banco.id):
+        pendientes = session.query(MovimientoBanco).filter_by(banco_id=b.id, estado="pendiente").count()
+        ultimo = (session.query(func.max(MovimientoBanco.fecha)).filter_by(banco_id=b.id).scalar())
+        filas.append({"banco": b, "saldo": reportes.saldo_cuenta(session, b.cuenta, corte), "pendientes": pendientes,
+                      "ultimo_extracto": ultimo})
+    total = sum((f["saldo"] for f in filas if f["banco"].activo), Decimal("0"))
+    return filas, total

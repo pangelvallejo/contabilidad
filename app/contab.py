@@ -25,6 +25,7 @@ CTA_PROVEEDORES = "220505"
 CTA_ANTICIPOS_CLIENTES = "280505"
 CTA_SOCIOS = "235505"
 CTA_CAJA = "110505"
+CTA_GASTOS_BANCARIOS = "530505"  # GMF y cargos que el banco descuenta de los rendimientos
 
 TIPOS_ASIENTO = {
     "FV": "Factura de venta",
@@ -189,6 +190,16 @@ def contabilizar_recaudo(session, rec):
         lineas.append((CTA_ANTICIPOS_CLIENTES, 0, rec.sin_aplicar, t, "Saldo sin aplicar"))
     guardar_asiento(session, origen=f"recaudo:{rec.id}", tipo="RC", fecha=rec.fecha, descripcion=desc,
                     tercero_id=t, lineas=lineas)
+
+
+def contabilizar_otro_ingreso(session, oi):
+    """Dr banco (neto) y Dr gastos bancarios (descuentos) contra Cr la cuenta de ingreso elegida (valor bruto)."""
+    desc = f"{oi.concepto} {oi.referencia or ''}".strip()
+    lineas = [(oi.banco.cuenta, oi.neto, 0, oi.tercero_id, desc),
+              (CTA_GASTOS_BANCARIOS, oi.descuentos, 0, oi.tercero_id, "Descuentos del banco (GMF, cargos)"),
+              (oi.cuenta, 0, oi.valor, oi.tercero_id, desc)]
+    guardar_asiento(session, origen=f"otroingreso:{oi.id}", tipo="RC", fecha=oi.fecha, descripcion=desc,
+                    tercero_id=oi.tercero_id, lineas=lineas)
 
 
 # ------------------------------------------------------------------ gastos

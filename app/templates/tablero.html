@@ -18,6 +18,8 @@
     <div class="det">IVA generado {{ ventas_mes.iva_generado_neto|pesos }}</div></div>
   <div class="kpi"><div class="etq">Ingresos del año (sin IVA)</div><div class="val">{{ ventas_anio.ingresos_gravados|pesos }}</div>
     <div class="det">{{ ventas_anio.ventas|length }} documentos emitidos</div></div>
+  <div class="kpi"><div class="etq">Saldo en bancos</div><div class="val">{{ total_bancos|pesos }}</div>
+    <div class="det">{% for f in saldos_bancos %}{{ f.banco.nombre }} {{ f.saldo|pesos }}{{ ' · ' if not loop.last }}{% endfor %} · <a href="/bancos/">ver</a></div></div>
   <div class="kpi"><div class="etq">Recaudado este mes</div><div class="val">{{ recaudado_mes|pesos }}</div></div>
   <div class="kpi"><div class="etq">Cartera por cobrar</div><div class="val">{{ tot_cartera.total|pesos }}</div>
     <div class="det">Vencida {{ (tot_cartera.total - tot_cartera['Por vencer'])|pesos }}</div></div>

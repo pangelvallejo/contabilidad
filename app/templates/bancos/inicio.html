@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block titulo %}Bancos y saldos{% endblock %}
+{% block contenido %}
+<div class="encabezado">
+  <div><h1>Bancos y saldos</h1><p class="sub">Saldo contable de cada cuenta al {{ corte|fecha }}. Si no coincide con el extracto, concilie los movimientos pendientes.</p></div>
+  <div class="acciones">
+    <a class="btn primario" href="/bancos/ingresos/nuevo">Registrar ingreso sin factura</a>
+    <a class="btn" href="/bancos/conciliacion">Conciliar extracto</a>
+    <a class="btn" href="/configuracion/#banco">Administrar bancos</a>
+  </div>
+</div>
+<form class="filtros"><div><label>Saldos al</label><input type="date" name="corte" value="{{ corte }}"></div><button>Ver</button></form>
+
+<div class="rejilla k4" style="margin-bottom:18px">
+  <div class="kpi"><div class="etq">Total en bancos</div><div class="val">{{ total|pesos }}</div><div class="det">cuentas activas</div></div>
+  {% for f in filas if f.banco.activo %}
+  <div class="kpi"><div class="etq">{{ f.banco.nombre }}</div><div class="val">{{ f.saldo|pesos }}</div>
+    <div class="det">{% if f.pendientes %}<a href="/bancos/conciliacion?banco={{ f.banco.id }}">{{ f.pendientes }} por conciliar</a>{% else %}conciliado{% endif %}</div></div>
+  {% endfor %}
+  {% if caja %}<div class="kpi"><div class="etq">Caja</div><div class="val">{{ caja|pesos }}</div></div>{% endif %}
+</div>
+
+<div class="rejilla k2">
+  <div class="tarjeta tabla-scroll">
+    <h2>Cuentas bancarias</h2>
+    <table>
+      <tr><th>Banco</th><th>Número</th><th>Cuenta PUC</th><th>Último extracto</th><th class="n">Por conciliar</th><th class="n">Saldo</th><th></th></tr>
+      {% for f in filas %}
+      <tr{% if not f.banco.activo %} style="opacity:.6"{% endif %}>
+        <td>{{ f.banco.nombre }}{% if not f.banco.activo %} <span class="etiqueta Anulada">inactivo</span>{% endif %}</td>
+        <td>{{ [f.banco.numero, f.banco.tipo]|select|join(' · ') }}</td>
+        <td>{{ f.banco.cuenta }}</td>
+        <td>{{ f.ultimo_extracto|fecha if f.ultimo_extracto else '—' }}</td>
+        <td class="n">{{ f.pendientes or '' }}</td>
+        <td class="n">{{ f.saldo|pesos }}</td>
+        <td><a class="btn peq" href="/bancos/movimientos?banco={{ f.banco.id }}">Movimientos</a> <a class="btn peq" href="/bancos/conciliacion?banco={{ f.banco.id }}">Conciliar</a></td>
+      </tr>
+      {% endfor %}
+      <tr class="total"><td colspan="5">Total cuentas activas</td><td class="n">{{ total|pesos }}</td><td></td></tr>
+    </table>
+    <p class="nota">El saldo es el de la contabilidad (recaudos, pagos, impuestos e ingresos registrados). Importe el extracto del banco en Conciliación para detectar lo que falte.</p>
+  </div>
+  <div class="tarjeta tabla-scroll">
+    <h2>Ingresos sin factura {{ corte.year }} <small class="nota">(intereses, reintegros, otros)</small></h2>
+    {% if ingresos %}
+    <table>
+      <tr><th>Fecha</th><th>Concepto</th><th>Banco</th><th class="n">Valor</th></tr>
+      {% for o in ingresos %}
+      <tr><td>{{ o.fecha|fecha }}</td><td><a href="/bancos/ingresos/{{ o.id }}">{{ o.concepto }}</a></td><td>{{ o.banco.nombre }}</td><td class="n">{{ o.valor|pesos }}</td></tr>
+      {% endfor %}
+      {% for nombre, v in por_cuenta %}<tr class="grupo"><td colspan="3">{{ nombre }}</td><td class="n">{{ v|pesos }}</td></tr>{% endfor %}
+      <tr class="total"><td colspan="3">Total del año</td><td class="n">{{ total_ingresos|pesos }}</td></tr>
+    </table>
+    <p class="nota"><a href="/bancos/ingresos?anio={{ corte.year }}">Ver todos</a>. Estos ingresos hacen parte de los ingresos brutos del SIMPLE y se reportan en la exógena (formato 1007).</p>
+    {% else %}<p class="vacio">Sin ingresos sin factura este año. <a href="/bancos/ingresos/nuevo">Registrar el primero</a> (por ejemplo, los intereses que abona el banco).</p>{% endif %}
+  </div>
+</div>
+{% endblock %}

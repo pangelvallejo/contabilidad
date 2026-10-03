@@ -7,7 +7,7 @@ from collections import defaultdict
 from datetime import date
 
 from . import cartera
-from .models import CERO, DocumentoVenta, Gasto, Tercero
+from .models import CERO, DocumentoVenta, Gasto, OtroIngreso, Tercero
 
 COL_TERCERO = ["Tipo de documento", "Número identificación", "DV", "Primer apellido", "Segundo apellido",
                "Primer nombre", "Otros nombres", "Razón social", "Dirección", "Código dpto.", "Código mcp.",
@@ -60,6 +60,16 @@ def generar(session, anio):
             f1006[v.cliente_id][0] += v.iva
             f1007[v.cliente_id][0] += v.ingreso
 
+    # Ingresos sin factura: 4003 intereses y rendimientos financieros, 4002 otros no operacionales
+    f1007_otros = defaultdict(lambda: CERO)  # (concepto, tercero_id) -> valor
+    sin_tercero = []
+    for oi in session.query(OtroIngreso).filter(OtroIngreso.fecha.between(inicio, fin)):
+        concepto = "4003" if oi.cuenta.startswith("4210") else "4002"
+        if oi.tercero_id is None:
+            sin_tercero.append(oi)
+            continue
+        f1007_otros[(concepto, oi.tercero_id)] += oi.valor
+
     f1008 = defaultdict(lambda: CERO)
     for doc, saldo in cartera.documentos_abiertos(session, al=fin):
         f1008[doc.cliente_id] += saldo
@@ -93,12 +103,20 @@ def generar(session, anio):
         "1007 Ingresos": (["Concepto"] + COL_TERCERO[:8] + ["País", "Ingresos brutos recibidos",
                                                            "Devoluciones, rebajas y descuentos"],
                           [["4001"] + _datos_tercero(terceros[t])[:8] + ["169", v[0], v[1]]
-                           for t, v in f1007.items() if v[0] or v[1]]),
+                           for t, v in f1007.items() if v[0] or v[1]]
+                          + [[c] + _datos_tercero(terceros[t])[:8] + ["169", v, 0]
+                             for (c, t), v in sorted(f1007_otros.items()) if v]),
         "1008 Cuentas por cobrar": (["Concepto"] + COL_TERCERO + ["Saldo cuentas por cobrar al 31-12"],
                                     [["1315"] + _datos_tercero(terceros[t]) + [v] for t, v in f1008.items() if v]),
         "1009 Cuentas por pagar": (["Concepto"] + COL_TERCERO + ["Saldo cuentas por pagar al 31-12"],
                                    [["2201"] + _datos_tercero(terceros[t]) + [v] for t, v in f1009.items() if v]),
     }
-    usados = {t for (_, t) in f1001} | set(f1005) | set(f1006) | set(f1007) | set(f1008) | set(f1009)
+    usados = ({t for (_, t) in f1001} | set(f1005) | set(f1006) | set(f1007) | set(f1008) | set(f1009)
+              | {t for (_, t) in f1007_otros})
     incompletos = [(terceros[t], faltantes(terceros[t])) for t in usados if faltantes(terceros[t])]
+    if sin_tercero:
+        total = sum((oi.valor for oi in sin_tercero), CERO)
+        incompletos.append((Tercero(nit="", nombre=f"{len(sin_tercero)} ingreso(s) sin factura por {total:,.0f} sin "
+                                                   "tercero (indíquelo en Bancos → Ingresos sin factura)"),
+                            ["tercero"]))
     return hojas, incompletos

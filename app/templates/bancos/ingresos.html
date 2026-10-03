@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block titulo %}Ingresos sin factura{% endblock %}
+{% block contenido %}
+<div class="encabezado">
+  <div><h1>Ingresos sin factura {{ anio }}</h1><p class="sub">Intereses de las cuentas, reintegros y otros ingresos que no tienen factura de venta.</p></div>
+  <div class="acciones"><a class="btn primario" href="/bancos/ingresos/nuevo">Registrar ingreso</a><a class="btn" href="/bancos/ingresos?anio={{ anio }}&xlsx=1">Excel</a></div>
+</div>
+<form class="filtros">
+  <div><label>Año</label><input type="number" name="anio" value="{{ anio }}" style="width:90px"></div>
+  <div><label>Banco</label><select name="banco"><option value="">Todos</option>{% for b in bancos %}<option value="{{ b.id }}" {{ 'selected' if b.id == banco_id }}>{{ b.nombre }}</option>{% endfor %}</select></div>
+  <button>Ver</button>
+</form>
+<div class="tarjeta tabla-scroll">
+  {% if ingresos %}
+  <table>
+    <tr><th>Fecha</th><th>Concepto</th><th>Cuenta</th><th>Banco</th><th>Tercero</th><th class="n">Valor</th><th class="n">Descuentos</th><th class="n">Neto al banco</th><th></th></tr>
+    {% for o in ingresos %}
+    <tr><td>{{ o.fecha|fecha }}</td><td>{{ o.concepto }}{% if o.referencia %} <span class="nota">{{ o.referencia }}</span>{% endif %}{% if o.soporte_archivo %} <a href="/archivo/{{ o.soporte_archivo }}" target="_blank">soporte</a>{% endif %}</td>
+      <td>{{ o.cuenta_rel.nombre }}</td><td>{{ o.banco.nombre }}</td>
+      <td>{{ o.tercero.nombre if o.tercero else '' }}{% if not o.tercero %}<span class="etiqueta adv" title="La exógena necesita el tercero que pagó">sin tercero</span>{% endif %}</td>
+      <td class="n">{{ o.valor|pesos }}</td><td class="n">{{ o.descuentos|pesos if o.descuentos else '' }}</td><td class="n">{{ o.neto|pesos }}</td>
+      <td><a class="btn peq" href="/bancos/ingresos/{{ o.id }}">Editar</a></td></tr>
+    {% endfor %}
+    <tr class="total"><td colspan="5">Total</td><td class="n">{{ total|pesos }}</td><td></td><td class="n">{{ total_neto|pesos }}</td><td></td></tr>
+  </table>
+  {% include "_paginacion.html" %}
+  {% else %}<p class="vacio">No hay ingresos sin factura en {{ anio }}.</p>{% endif %}
+</div>
+<p class="nota">Estos ingresos entran en los ingresos brutos del SIMPLE (recibo 2593 y F260), no generan IVA y van a la exógena (formato 1007, conceptos 4003 intereses / 4002 otros). Para la exógena indique el tercero que pagó (el banco).</p>
+{% endblock %}
