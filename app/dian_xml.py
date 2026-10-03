@@ -188,8 +188,11 @@ def _documento_ubl(raiz) -> DocumentoDIAN:
         lineas.append(Linea(desc, cantidad, _dec(ln, "cbc:LineExtensionAmount"), pct, iva))
 
     medios = raiz.findall(_p("cac:PaymentMeans"))
-    medio = next((m for m in medios if _txt(m, "cbc:ID") == "2"), None) or next(
-        (m for m in medios if _fecha(_txt(m, "cbc:PaymentDueDate"))), None) or (medios[0] if medios else None)
+    medio = next((m for m in medios if _txt(m, "cbc:ID") == "2"), None)
+    if medio is None:
+        medio = next((m for m in medios if _fecha(_txt(m, "cbc:PaymentDueDate"))), None)
+    if medio is None and medios:
+        medio = medios[0]
     vencimiento = _fecha(_txt(medio, "cbc:PaymentDueDate")) or _fecha(_txt(raiz, "cbc:DueDate"))
     return DocumentoDIAN(
         tipo=tipo,
