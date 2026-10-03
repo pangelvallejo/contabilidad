@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block titulo %}Balance general{% endblock %}
+{% block contenido %}
+<h1>Estado de situación financiera</h1>
+<p class="sub">Al {{ corte|fecha_larga }}
+  {% if bg.cuadre == 0 %}<span class="etiqueta ok">Cuadrado</span>{% else %}<span class="etiqueta crit">Descuadre {{ bg.cuadre|pesos }}</span>{% endif %}</p>
+<form class="filtros"><div><label>Fecha de corte</label><input type="date" name="corte" value="{{ corte.isoformat() }}"></div><button>Ver</button></form>
+{% macro detalle(filas) %}{% for c, v in filas %}<tr><td style="padding-left:24px"><a href="/contabilidad/mayor?cuenta={{ c.codigo }}&hasta={{ corte.isoformat() }}">{{ c.codigo }}</a> {{ c.nombre }}</td><td class="n">{{ v|pesos }}</td></tr>{% endfor %}{% endmacro %}
+<div class="rejilla k2">
+  <div class="tarjeta"><table class="liquidacion">
+    <tr class="grupo"><td>ACTIVO</td><td class="n">{{ bg.activo|pesos }}</td></tr>
+    {{ detalle(bg.det_activo) }}
+  </table></div>
+  <div class="tarjeta"><table class="liquidacion">
+    <tr class="grupo"><td>PASIVO</td><td class="n">{{ bg.pasivo|pesos }}</td></tr>
+    {{ detalle(bg.det_pasivo) }}
+    <tr class="grupo"><td>PATRIMONIO</td><td class="n">{{ bg.total_patrimonio|pesos }}</td></tr>
+    {{ detalle(bg.det_patrimonio) }}
+    <tr><td style="padding-left:24px">Resultado del ejercicio</td><td class="n">{{ bg.resultado|pesos }}</td></tr>
+    <tr class="res"><td>Total pasivo y patrimonio</td><td class="n">{{ (bg.pasivo + bg.total_patrimonio)|pesos }}</td></tr>
+  </table></div>
+</div>
+{% endblock %}

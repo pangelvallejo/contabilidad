@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block titulo %}Estado de cuenta {{ cliente.nombre }}{% endblock %}
+{% block contenido %}
+<div class="encabezado">
+  <div><h1>Estado de cuenta</h1><p class="sub">{{ cliente.nombre }} · NIT {{ cliente.nit_completo }} · corte {{ corte|fecha_larga }}</p></div>
+  <div class="acciones">
+    <a class="btn primario" href="?corte={{ corte.isoformat() }}&pdf=1">Descargar PDF</a>
+    <a class="btn" href="/recaudos/nuevo?cliente_id={{ cliente.id }}">Registrar pago</a>
+  </div>
+</div>
+<form class="filtros"><div><label>Fecha de corte</label><input type="date" name="corte" value="{{ corte.isoformat() }}"></div><button>Ver</button></form>
+<div class="tarjeta tabla-scroll">
+  {% if filas %}
+  <table>
+    <tr><th>Factura</th><th>Fecha</th><th>Vence</th><th class="n">Valor</th><th class="n">ReteIVA</th><th class="n">Abonos y NC</th><th class="n">Saldo</th><th class="n">Días vencida</th></tr>
+    {% for f in filas %}
+    <tr><td><a href="/ventas/{{ f.doc.id }}">{{ f.numero }}</a></td><td>{{ f.fecha|fecha }}</td><td>{{ f.vencimiento|fecha }}</td>
+      <td class="n">{{ f.total|pesos }}</td><td class="n">{{ f.reteiva|pesos }}</td><td class="n">{{ f.abonos|pesos }}</td>
+      <td class="n">{{ f.saldo|pesos }}</td><td class="n">{% if f.dias > 0 %}<span class="etiqueta crit">{{ f.dias }}</span>{% else %}—{% endif %}</td></tr>
+    {% endfor %}
+    <tr class="total"><td colspan="6">Total a pagar</td><td class="n">{{ total|pesos }}</td><td></td></tr>
+  </table>
+  {% else %}<p class="vacio">El cliente está al día.</p>{% endif %}
+  {% if anticipo > 0 %}<p class="mensaje info">El cliente tiene anticipos sin aplicar por {{ anticipo|pesos }}.</p>{% endif %}
+</div>
+{% endblock %}

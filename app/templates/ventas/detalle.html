@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% block titulo %}{{ doc.numero }}{% endblock %}
+{% block contenido %}
+{% set nombres = {'FV': 'Factura de venta', 'NC': 'Nota crédito', 'ND': 'Nota débito'} %}
+<div class="encabezado">
+  <div><h1>{{ nombres[doc.tipo] }} {{ doc.numero }}</h1>
+    <p class="sub">{{ doc.cliente.nombre }} · NIT {{ doc.cliente.nit_completo }} · <span class="etiqueta {{ estado.split()[0] }}">{{ estado }}</span></p></div>
+  <div class="acciones">
+    {% if doc.pdf_archivo %}<a class="btn" href="/archivo/{{ doc.pdf_archivo }}" target="_blank">Ver PDF</a>{% endif %}
+    {% if doc.xml_archivo %}<a class="btn" href="/archivo/{{ doc.xml_archivo }}" target="_blank">Ver XML</a>{% endif %}
+    {% if saldo > 0 %}<a class="btn primario" href="/recaudos/nuevo?cliente_id={{ doc.cliente_id }}">Registrar pago</a>{% endif %}
+  </div>
+</div>
+
+<div class="rejilla k2">
+  <div class="tarjeta">
+    <h2>Valores</h2>
+    <table class="liquidacion">
+      <tr><td>Fecha de emisión</td><td class="n">{{ doc.fecha|fecha }}</td></tr>
+      <tr><td>Subtotal</td><td class="n">{{ doc.subtotal|pesos }}</td></tr>
+      {% if doc.descuentos %}<tr><td>Descuentos</td><td class="n">−{{ doc.descuentos|pesos }}</td></tr>{% endif %}
+      <tr><td>IVA</td><td class="n">{{ doc.iva|pesos }}</td></tr>
+      <tr class="res"><td>Total factura</td><td class="n">{{ doc.total|pesos }}</td></tr>
+      {% if doc.tipo != 'NC' %}
+      <tr><td>(−) ReteIVA</td><td class="n">{{ (doc.reteiva_valor if doc.reteiva_aplica else 0)|pesos }}</td></tr>
+      {% for n in notas %}<tr><td>(−) <a href="/ventas/{{ n.id }}">NC {{ n.numero }}</a></td><td class="n">{{ n.total|pesos }}</td></tr>{% endfor %}
+      {% for a in doc.aplicaciones %}<tr><td>(−) Abono {{ a.recaudo.fecha|fecha }} · {{ a.recaudo.banco.nombre }}</td><td class="n">{{ a.valor|pesos }}</td></tr>{% endfor %}
+      <tr class="res"><td>Saldo por cobrar</td><td class="n">{{ saldo|pesos }}</td></tr>
+      {% elif doc.referencia %}
+      <tr><td>Afecta la factura</td><td class="n"><a href="/ventas/{{ doc.referencia.id }}">{{ doc.referencia.numero }}</a></td></tr>
+      {% endif %}
+    </table>
+    {% if doc.cufe %}<p class="nota" style="word-break:break-all">CUFE: {{ doc.cufe }}</p>{% endif %}
+  </div>
+
+  <form class="tarjeta" method="post" enctype="multipart/form-data">
+    <h2>Retención de IVA y seguimiento</h2>
+    {% if doc.tipo != 'NC' %}
+    <label class="check"><input type="checkbox" name="reteiva_aplica" id="aplica" {{ 'checked' if doc.reteiva_aplica }}> El cliente me practicó reteIVA (15% del IVA)</label>
+    <div class="campos" id="bloque-rete" style="margin-top:10px">
+      <div><label>Valor retenido</label><input class="n" name="reteiva_valor" id="rete" value="{{ (doc.reteiva_valor if doc.reteiva_aplica else reteiva_sugerida)|entrada }}"></div>
+      <div><label>Fecha de la retención</label><input type="date" name="reteiva_fecha" value="{{ (doc.reteiva_fecha or doc.fecha).isoformat() }}"></div>
+      <div class="campo ancho"><label class="check"><input type="checkbox" name="cert_recibido" {{ 'checked' if doc.cert_recibido }}> Certificado recibido</label>
+        {% if doc.cert_archivo %}<a href="/archivo/{{ doc.cert_archivo }}" target="_blank">Ver certificado</a>{% endif %}</div>
+      <div class="campo ancho"><label>Adjuntar certificado</label><input type="file" name="cert_archivo" accept=".pdf,.png,.jpg,.jpeg"></div>
+    </div>
+    <label class="check"><input type="checkbox" name="recordar_reteiva"> Recordar para las próximas facturas de este cliente</label>
+    <p class="nota">Valor sugerido: {{ reteiva_sugerida|pesos }} (15% de {{ doc.iva|pesos }}). La retención se descuenta del IVA del bimestre en que se practicó.</p>
+    {% endif %}
+    <div class="campos">
+      <div><label>Vencimiento</label><input type="date" name="vencimiento" value="{{ doc.vencimiento.isoformat() if doc.vencimiento }}"></div>
+      <div><label>Reemplazar PDF</label><input type="file" name="pdf" accept=".pdf"></div>
+      <div class="campo ancho"><label>Notas</label><textarea name="notas" rows="2">{{ doc.notas or '' }}</textarea></div>
+      <div class="campo ancho"><label class="check"><input type="checkbox" name="anulada" {{ 'checked' if doc.anulada }}> Documento anulado (no afecta contabilidad ni impuestos)</label></div>
+    </div>
+    <button class="primario" name="accion" value="guardar">Guardar</button>
+    <button class="peligro" name="accion" value="eliminar" data-confirmar="¿Eliminar este documento y su contabilidad?">Eliminar</button>
+  </form>
+</div>
+
+<div class="tarjeta">
+  <h2>Detalle</h2>
+  <table>
+    <tr><th>Descripción</th><th class="n">Cantidad</th><th class="n">Base</th><th class="n">% IVA</th><th class="n">IVA</th></tr>
+    {% for l in doc.lineas %}<tr><td>{{ l.descripcion }}</td><td class="n">{{ l.cantidad|numero }}</td><td class="n">{{ l.base|pesos }}</td>
+      <td class="n">{{ l.iva_pct|numero }}</td><td class="n">{{ l.iva|pesos }}</td></tr>{% endfor %}
+  </table>
+  {% if doc.notas %}<p class="nota" style="white-space:pre-line">{{ doc.notas }}</p>{% endif %}
+</div>
+
+{% include "contabilidad/_asientos.html" %}
+{% endblock %}
+{% block scripts %}
+<script>
+const aplica = document.getElementById('aplica');
+if (aplica) {
+  const bloque = document.getElementById('bloque-rete');
+  const act = () => bloque.style.display = aplica.checked ? '' : 'none';
+  aplica.addEventListener('change', act); act();
+}
+</script>
+{% endblock %}

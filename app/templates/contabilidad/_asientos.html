@@ -1,0 +1,13 @@
+{% if asientos %}
+<div class="tarjeta">
+  <h2>Contabilización</h2>
+  {% for a in asientos %}
+  <p class="nota" style="margin:8px 0 4px"><a href="/contabilidad/asiento/{{ a.id }}">{{ a.tipo }}-{{ a.numero }}</a> · {{ a.fecha|fecha }} · {{ a.descripcion }}</p>
+  <table>
+    <tr><th>Cuenta</th><th>Nombre</th><th class="n">Débito</th><th class="n">Crédito</th></tr>
+    {% for m in a.lineas %}<tr><td>{{ m.cuenta }}</td><td>{{ m.cuenta_rel.nombre }}</td>
+      <td class="n">{{ m.debito|pesos if m.debito else '' }}</td><td class="n">{{ m.credito|pesos if m.credito else '' }}</td></tr>{% endfor %}
+  </table>
+  {% endfor %}
+</div>
+{% endif %}

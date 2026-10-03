@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block titulo %}Declaración IVA {{ anio }}{% endblock %}
+{% block contenido %}
+{% set r = dec.resumen %}
+<h1>Declaración anual consolidada de IVA (F300) · {{ anio }}</h1>
+<p class="sub">Contribuyentes del SIMPLE responsables de IVA: declaración anual, descontando lo pagado cada bimestre en los recibos 2593. Borrador por conceptos.</p>
+<form class="filtros"><div><label>Año</label><input type="number" name="anio" value="{{ anio }}" style="width:90px"></div><button>Ver</button></form>
+<div class="rejilla k2">
+  <div class="tarjeta">
+    <table class="liquidacion">
+      <tr><td>Ingresos por servicios gravados a la tarifa general</td><td class="n">{{ r.ingresos_gravados|pesos }}</td></tr>
+      <tr><td>IVA generado a la tarifa del 19%</td><td class="n">{{ r.iva_generado|pesos }}</td></tr>
+      <tr><td>(−) IVA recuperado en devoluciones / notas crédito</td><td class="n">{{ r.iva_devoluciones|pesos }}</td></tr>
+      <tr><td>Total impuesto generado</td><td class="n">{{ r.iva_generado_neto|pesos }}</td></tr>
+      <tr><td>Base de compras y servicios gravados</td><td class="n">{{ r.compras_base|pesos }}</td></tr>
+      <tr><td>(−) IVA descontable por compras y servicios</td><td class="n">{{ r.iva_descontable|pesos }}</td></tr>
+      <tr><td>(−) Retenciones de IVA que le practicaron</td><td class="n">{{ r.reteiva|pesos }}</td></tr>
+      <tr><td>Saldo del año</td><td class="n">{{ r.neto|pesos }}</td></tr>
+      <tr><td>(−) Pagos bimestrales de IVA (recibos 2593)</td><td class="n">{{ dec.pagos_bimestrales|pesos }}</td></tr>
+      <tr class="res"><td>{{ 'Saldo a pagar' if dec.saldo >= 0 else 'Saldo a favor' }}</td><td class="n">{{ (dec.saldo if dec.saldo >= 0 else -dec.saldo)|pesos }}</td></tr>
+    </table>
+  </div>
+  <div class="tarjeta">
+    <h2>Por bimestre</h2>
+    <table><tr><th>Bimestre</th><th class="n">Neto</th><th class="n">Pagado</th></tr>
+      {% for b, nombre, rb in bimestres %}<tr><td>{{ nombre }}</td><td class="n">{{ rb.neto|pesos }}</td><td class="n">{{ rb.pagado|pesos }}</td></tr>{% endfor %}
+    </table>
+    <form method="post" action="/impuestos/pago" style="margin-top:14px">
+      <input type="hidden" name="formulario" value="300"><input type="hidden" name="anio" value="{{ anio }}">
+      <input type="hidden" name="volver" value="/impuestos/f300?anio={{ anio }}">
+      <div class="campos">
+        <div><label>Fecha de pago</label><input type="date" name="fecha" value="{{ hoy.isoformat() }}"></div>
+        <div><label>Valor pagado</label><input class="n" name="valor_iva" value="{{ (dec.saldo if dec.saldo > 0 else 0)|entrada }}"></div>
+        <div><label>Desde</label><select name="banco_id">{% for b in bancos %}<option value="{{ b.id }}">{{ b.nombre }}</option>{% endfor %}</select></div>
+      </div>
+      <button>Registrar pago del F300</button>
+    </form>
+    {% for p in pagos %}<p class="nota">Pagado {{ p.fecha|fecha }}: {{ p.total|pesos }}</p>{% endfor %}
+  </div>
+</div>
+{% endblock %}

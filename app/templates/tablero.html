@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+{% block titulo %}Tablero{% endblock %}
+{% block contenido %}
+<div class="encabezado">
+  <div>
+    <h1>Tablero</h1>
+    <p class="sub">{{ hoy|fecha_larga }} · Bimestre en curso: {{ nombre_bimestre }}</p>
+  </div>
+  <div class="acciones">
+    <a class="btn primario" href="/ventas/importar">Importar factura emitida</a>
+    <a class="btn" href="/gastos/importar">Importar gasto</a>
+    <a class="btn" href="/recaudos/nuevo">Registrar recaudo</a>
+  </div>
+</div>
+
+<div class="rejilla k4" style="margin-bottom:18px">
+  <div class="kpi"><div class="etq">Ingresos del mes (sin IVA)</div><div class="val">{{ ventas_mes.ingresos_gravados|pesos }}</div>
+    <div class="det">IVA generado {{ ventas_mes.iva_generado_neto|pesos }}</div></div>
+  <div class="kpi"><div class="etq">Ingresos del año (sin IVA)</div><div class="val">{{ ventas_anio.ingresos_gravados|pesos }}</div>
+    <div class="det">{{ ventas_anio.ventas|length }} documentos emitidos</div></div>
+  <div class="kpi"><div class="etq">Recaudado este mes</div><div class="val">{{ recaudado_mes|pesos }}</div></div>
+  <div class="kpi"><div class="etq">Cartera por cobrar</div><div class="val">{{ tot_cartera.total|pesos }}</div>
+    <div class="det">Vencida {{ (tot_cartera.total - tot_cartera['Por vencer'])|pesos }}</div></div>
+  <div class="kpi"><div class="etq">Gastos del mes</div><div class="val">{{ gastos_mes|pesos }}</div></div>
+</div>
+
+<div class="rejilla k2">
+  <div class="tarjeta">
+    <h2>Recibo 2593 del bimestre {{ nombre_bimestre }} (estimado a hoy)</h2>
+    <table class="liquidacion">
+      <tr><td>IVA generado</td><td class="n">{{ recibo.iva.iva_generado_neto|pesos }}</td></tr>
+      <tr><td>(−) IVA descontable</td><td class="n">{{ recibo.iva.iva_descontable|pesos }}</td></tr>
+      <tr><td>(−) ReteIVA que le practicaron</td><td class="n">{{ recibo.iva.reteiva|pesos }}</td></tr>
+      <tr><td>IVA a pagar</td><td class="n">{{ recibo.iva_a_pagar|pesos }}</td></tr>
+      <tr><td>Anticipo SIMPLE ({{ recibo.ingresos|pesos }} × {{ recibo.tarifa|pct }})</td><td class="n">{{ recibo.anticipo_simple|pesos }}</td></tr>
+      <tr class="res"><td>Total recibo 2593</td><td class="n">{{ recibo.total|pesos }}</td></tr>
+    </table>
+    <p class="nota">{% if recibo.vencimiento %}Vence el {{ recibo.vencimiento|fecha_larga }}.{% endif %}
+      {% if recibo.iva.neto < 0 %} Saldo de IVA a favor en el bimestre: {{ (-recibo.iva.neto)|pesos }}.{% endif %}
+      <a href="/impuestos/simple">Ver todos los bimestres →</a></p>
+  </div>
+
+  <div class="tarjeta">
+    <h2>Alertas y vencimientos</h2>
+    {% if alertas %}
+    <ul class="alertas">
+      {% for nivel, texto, valor, enlace in alertas %}
+      <li><span class="punto {{ nivel }}" aria-hidden="true"></span>
+        <span style="flex:1"><a href="{{ enlace }}">{{ texto }}</a></span>
+        {% if valor %}<span class="n">{{ valor|pesos }}</span>{% endif %}</li>
+      {% endfor %}
+    </ul>
+    {% else %}<p class="vacio">Todo al día.</p>{% endif %}
+  </div>
+</div>
+
+<div class="rejilla k2">
+  <div class="tarjeta grafico">
+    <h2>Ingresos y gastos por mes, {{ hoy.year }}</h2>
+    {% set maxv = [1] + serie|map(attribute=1)|list + serie|map(attribute=2)|list %}
+    {% set tope = maxv|max %}
+    {% if tope > 1 %}
+    <div class="leyenda"><span class="l1">Ingresos</span><span class="l2">Gastos</span></div>
+    {% set W = 640 %}{% set H = 230 %}{% set ml = 64 %}{% set mb = 24 %}{% set mt = 8 %}
+    {% set ancho_mes = (W - ml - 8) / 12 %}{% set bw = (ancho_mes - 10) / 2 %}
+    <svg viewBox="0 0 {{ W }} {{ H }}" role="img" aria-label="Ingresos y gastos por mes">
+      {% for i in range(5) %}
+        {% set y = mt + (H - mt - mb) * i / 4 %}
+        <line class="eje" x1="{{ ml }}" x2="{{ W - 8 }}" y1="{{ y }}" y2="{{ y }}"></line>
+        <text x="{{ ml - 6 }}" y="{{ y + 4 }}" text-anchor="end">{{ ((tope * (4 - i) / 4 / 1000000)|round(1)|string).replace('.', ',') }} M</text>
+      {% endfor %}
+      {% for mes, ing, gas in serie %}
+        {% set x0 = ml + ancho_mes * (mes - 1) + 4 %}
+        {% set h1 = (H - mt - mb) * (ing if ing > 0 else 0) / tope %}
+        {% set h2 = (H - mt - mb) * (gas if gas > 0 else 0) / tope %}
+        <rect class="barra s1" x="{{ x0 }}" y="{{ H - mb - h1 }}" width="{{ bw }}" height="{{ h1 }}" rx="2"><title>{{ ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'][mes-1] }} · Ingresos {{ ing|pesos }}</title></rect>
+        <rect class="barra s2" x="{{ x0 + bw + 2 }}" y="{{ H - mb - h2 }}" width="{{ bw }}" height="{{ h2 }}" rx="2"><title>{{ ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'][mes-1] }} · Gastos {{ gas|pesos }}</title></rect>
+        <text x="{{ x0 + bw }}" y="{{ H - 6 }}" text-anchor="middle">{{ ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'][mes-1] }}</text>
+      {% endfor %}
+    </svg>
+    {% else %}<p class="vacio">Aún no hay movimientos este año.</p>{% endif %}
+  </div>
+
+  <div class="tarjeta">
+    <h2>Gastos del año por categoría</h2>
+    {% if por_categoria %}
+    {% set tope_c = por_categoria[0][1] %}
+    <div class="hbar">
+      {% for nombre, valor in por_categoria %}
+        <span>{{ nombre }}</span>
+        <span class="pista"><span class="relleno" style="display:block;width:{{ (valor / tope_c * 100) if valor > 0 else 0 }}%"></span></span>
+        <span class="v">{{ valor|pesos }}</span>
+      {% endfor %}
+    </div>
+    {% else %}<p class="vacio">Sin gastos registrados.</p>{% endif %}
+  </div>
+</div>
+
+<div class="tarjeta">
+  <div class="encabezado" style="margin:0 0 8px"><h2 style="margin:0">Cartera por edades</h2><a href="/cartera">Ver detalle →</a></div>
+  {% if filas_cartera %}
+  <div class="tabla-scroll"><table>
+    <tr><th>Cliente</th>{% for e in edades %}<th class="n">{{ e[0] }}</th>{% endfor %}<th class="n">Total</th></tr>
+    {% for f in filas_cartera %}
+    <tr><td><a href="/cartera/{{ f.cliente.id }}">{{ f.cliente.nombre }}</a></td>
+      {% for e in edades %}<td class="n">{{ f[e[0]]|pesos if f[e[0]] else '' }}</td>{% endfor %}
+      <td class="n"><b>{{ f.total|pesos }}</b></td></tr>
+    {% endfor %}
+    <tr class="total"><td>Total</td>{% for e in edades %}<td class="n">{{ tot_cartera[e[0]]|pesos }}</td>{% endfor %}<td class="n">{{ tot_cartera.total|pesos }}</td></tr>
+  </table></div>
+  {% else %}<p class="vacio">No hay facturas pendientes de cobro.</p>{% endif %}
+</div>
+{% endblock %}

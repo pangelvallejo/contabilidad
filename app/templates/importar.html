@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block titulo %}{{ titulo }}{% endblock %}
+{% block contenido %}
+<h1>{{ titulo }}</h1>
+<p class="sub">
+  {% if destino == 'ventas' %}
+  Suba el XML (o el ZIP con XML y PDF) que descarga del sistema gratuito de facturación de la DIAN.
+  El programa toma el CUFE, el cliente, la base, el IVA y el total, y hace el asiento contable.
+  {% else %}
+  Suba los XML o ZIP que le envían sus proveedores por correo. El programa registra el gasto, el IVA
+  descontable y propone una categoría que usted puede corregir.
+  {% endif %}
+  Puede seleccionar varios archivos a la vez. Los documentos ya cargados se detectan por CUFE y no se duplican.
+</p>
+
+<form class="tarjeta" method="post" enctype="multipart/form-data">
+  <label class="zona-carga" id="zona">
+    <input type="file" name="archivos" accept=".xml,.zip" multiple required id="archivos" style="max-width:420px;margin:0 auto">
+    <p class="nota" id="seleccion">Arrastre aquí los archivos o haga clic para elegirlos.</p>
+  </label>
+  <details style="margin:12px 0">
+    <summary class="nota">Opciones avanzadas</summary>
+    <p class="nota">El programa decide si es venta o gasto comparando el NIT del emisor y del receptor con el NIT de la firma.
+      Para pruebas con documentos de otras empresas puede forzar el tipo:</p>
+    <select name="forzar" style="max-width:320px">
+      <option value="">Automático según el NIT (recomendado)</option>
+      <option value="venta">Forzar como factura de venta (solo pruebas)</option>
+      <option value="gasto">Forzar como gasto (solo pruebas)</option>
+    </select>
+  </details>
+  <button class="primario" type="submit">Importar</button>
+  {% if destino == 'ventas' %}<a class="btn" href="/ventas/nueva">Registrar manualmente sin XML</a>
+  {% else %}<a class="btn" href="/gastos/nuevo">Registrar gasto manual</a>{% endif %}
+</form>
+
+{% if resultados is not none %}
+<div class="tarjeta">
+  <h2>Resultado</h2>
+  {% if not resultados %}<p class="vacio">No se recibió ningún archivo.</p>{% endif %}
+  <table>
+    <tr><th>Archivo</th><th>Resultado</th><th></th></tr>
+    {% for r in resultados %}
+    <tr><td>{{ r.archivo }}</td>
+      <td><span class="etiqueta {{ 'ok' if r.ok else 'crit' }}">{{ 'Importado' if r.ok else 'No importado' }}</span> {{ r.mensaje }}</td>
+      <td>{% if r.url %}<a href="{{ r.url }}">Abrir</a>{% endif %}</td></tr>
+    {% endfor %}
+  </table>
+</div>
+{% endif %}
+{% endblock %}
+{% block scripts %}
+<script>
+const zona = document.getElementById('zona'), input = document.getElementById('archivos');
+['dragover','dragenter'].forEach(ev => zona.addEventListener(ev, e => { e.preventDefault(); zona.classList.add('sobre'); }));
+['dragleave','drop'].forEach(ev => zona.addEventListener(ev, () => zona.classList.remove('sobre')));
+zona.addEventListener('drop', e => { e.preventDefault(); input.files = e.dataTransfer.files; mostrar(); });
+input.addEventListener('change', mostrar);
+function mostrar() {
+  document.getElementById('seleccion').textContent = input.files.length + ' archivo(s): ' +
+    Array.from(input.files).map(f => f.name).join(', ');
+}
+</script>
+{% endblock %}

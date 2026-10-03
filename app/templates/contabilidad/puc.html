@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block titulo %}Plan de cuentas{% endblock %}
+{% block contenido %}
+<h1>Plan único de cuentas</h1>
+<p class="sub">PUC base para una firma de servicios jurídicos. Puede crear subcuentas (6 dígitos) o auxiliares (8 o 10 dígitos).</p>
+<form class="tarjeta filtros" method="post">
+  <div><label>Código</label><input name="codigo" required style="width:130px"></div>
+  <div style="flex:1"><label>Nombre</label><input name="nombre" required></div>
+  <button class="primario">Crear o renombrar cuenta</button>
+</form>
+<div class="tarjeta tabla-scroll">
+  <table>
+    <tr><th>Código</th><th>Nombre</th><th>Naturaleza</th><th>Recibe movimientos</th></tr>
+    {% for c in cuentas %}
+    <tr class="nivel-{{ c.codigo|length }}"><td>{{ c.codigo }}</td><td>{{ c.nombre }}</td><td>{{ 'Débito' if c.naturaleza == 'D' else 'Crédito' }}</td>
+      <td>{{ 'Sí' if c.movimiento else '' }}</td></tr>
+    {% endfor %}
+  </table>
+</div>
+{% endblock %}

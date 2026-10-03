@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block titulo %}Registro manual de venta{% endblock %}
+{% block contenido %}
+<h1>Registrar factura sin XML</h1>
+<p class="sub">Úselo solo si no tiene el XML. Lo recomendado es <a href="/ventas/importar">importar el XML</a>, que trae el CUFE y evita errores.</p>
+<form class="tarjeta" method="post" enctype="multipart/form-data">
+  <div class="campos">
+    <div><label>Tipo</label><select name="tipo" id="tipo">
+      <option value="FV">Factura de venta</option><option value="NC">Nota crédito</option><option value="ND">Nota débito</option></select></div>
+    <div><label>Número (prefijo y consecutivo)</label><input name="numero" required></div>
+    <div><label>Fecha</label><input type="date" name="fecha" value="{{ hoy.isoformat() }}" required></div>
+    <div><label>Vencimiento</label><input type="date" name="vencimiento"></div>
+    <div class="campo ancho"><label>Cliente</label><select name="cliente_id" required>
+      <option value="">Seleccione…</option>
+      {% for c in clientes %}<option value="{{ c.id }}">{{ c.nombre }} — {{ c.nit }}</option>{% endfor %}</select>
+      <p class="nota"><a href="/terceros/nuevo?tipo=cliente&volver=/ventas/nueva">Crear cliente nuevo</a></p></div>
+    <div id="ref" style="display:none" class="campo ancho"><label>Factura que afecta la nota crédito</label><select name="referencia_id">
+      <option value="">—</option>{% for f in facturas %}<option value="{{ f.id }}">{{ f.numero }} · {{ f.cliente.nombre }} · {{ f.total|pesos }}</option>{% endfor %}</select></div>
+    <div class="campo ancho"><label>Descripción del servicio</label><input name="descripcion" value="Honorarios profesionales"></div>
+    <div><label>Base (antes de IVA)</label><input class="n" name="base" id="base" required inputmode="decimal"></div>
+    <div><label>IVA {{ (tarifa_iva*100)|int }}%</label><input class="n" name="iva" id="iva" inputmode="decimal"></div>
+    <div><label>Total</label><input class="n" id="total" disabled></div>
+    <div><label>CUFE (opcional)</label><input name="cufe"></div>
+    <div><label>PDF de la factura (opcional)</label><input type="file" name="pdf" accept=".pdf"></div>
+    <div class="campo ancho"><label>Notas</label><textarea name="notas" rows="2"></textarea></div>
+  </div>
+  <button class="primario">Guardar</button>
+</form>
+{% endblock %}
+{% block scripts %}
+<script>
+const num = v => parseFloat(String(v).replace(/\./g, '').replace(',', '.')) || 0;
+const fmt = v => v.toLocaleString('es-CO', {maximumFractionDigits: 2});
+const base = document.getElementById('base'), iva = document.getElementById('iva'), total = document.getElementById('total');
+base.addEventListener('input', () => { iva.value = Math.round(num(base.value) * {{ tarifa_iva }}); calc(); });
+iva.addEventListener('input', calc);
+function calc() { total.value = fmt(num(base.value) + num(iva.value)); }
+document.getElementById('tipo').addEventListener('change', e => {
+  document.getElementById('ref').style.display = e.target.value === 'NC' ? '' : 'none';
+});
+</script>
+{% endblock %}

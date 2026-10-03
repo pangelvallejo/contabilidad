@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block titulo %}Asiento{% endblock %}
+{% block contenido %}
+{% set editable = a is none or a.manual %}
+<h1>{% if a %}Comprobante {{ a.tipo }}-{{ a.numero }}{% else %}Asiento manual{% endif %}</h1>
+<p class="sub">{% if a and not a.manual %}Asiento automático generado por {{ a.origen }}. Para cambiarlo, edite el documento de origen.
+  {% else %}Para ajustes, aportes de capital, depreciaciones, intereses bancarios y otros movimientos sin documento.{% endif %}</p>
+<form class="tarjeta" method="post">
+  <div class="campos">
+    <div><label>Fecha</label><input type="date" name="fecha" value="{{ (a.fecha if a else hoy).isoformat() }}" {{ 'disabled' if not editable }}></div>
+    <div class="campo ancho"><label>Descripción</label><input name="descripcion" value="{{ a.descripcion if a else '' }}" {{ 'disabled' if not editable }}></div>
+  </div>
+  <table id="lineas">
+    <tr><th style="width:34%">Cuenta</th><th>Tercero</th><th>Detalle</th><th class="n" style="width:140px">Débito</th><th class="n" style="width:140px">Crédito</th></tr>
+    {% set lineas = a.lineas if a else [] %}
+    {% for i in range([lineas|length + (3 if editable else 0), 2]|max) %}
+    {% set m = lineas[i] if i < lineas|length else none %}
+    <tr>
+      <td><select name="cuenta" {{ 'disabled' if not editable }}><option value=""></option>
+        {% for c in cuentas %}<option value="{{ c.codigo }}" {{ 'selected' if m and m.cuenta == c.codigo }}>{{ c.codigo }} {{ c.nombre }}</option>{% endfor %}
+        {% if m and m.cuenta not in cuentas|map(attribute='codigo')|list %}<option selected value="{{ m.cuenta }}">{{ m.cuenta }}</option>{% endif %}</select></td>
+      <td><select name="tercero" {{ 'disabled' if not editable }}><option value=""></option>
+        {% for t in terceros %}<option value="{{ t.id }}" {{ 'selected' if m and m.tercero_id == t.id }}>{{ t.nombre }}</option>{% endfor %}</select></td>
+      <td><input name="detalle" value="{{ m.descripcion or '' if m else '' }}" {{ 'disabled' if not editable }}></td>
+      <td><input class="n deb" name="debito" value="{{ m.debito|entrada if m and m.debito else '' }}" {{ 'disabled' if not editable }}></td>
+      <td><input class="n cre" name="credito" value="{{ m.credito|entrada if m and m.credito else '' }}" {{ 'disabled' if not editable }}></td>
+    </tr>
+    {% endfor %}
+    <tr class="total"><td colspan="3">Sumas <span id="dif" class="etiqueta"></span></td><td class="n" id="sd"></td><td class="n" id="sc"></td></tr>
+  </table>
+  {% if editable %}
+  <p><button type="button" id="mas">+ Línea</button></p>
+  <button class="primario">Guardar</button>
+  {% if a %}<button class="peligro" name="accion" value="eliminar" data-confirmar="¿Eliminar este asiento?">Eliminar</button>{% endif %}
+  {% endif %}
+</form>
+{% endblock %}
+{% block scripts %}
+<script>
+const num = v => { v = String(v || '').trim(); if (v.includes(',')) v = v.replace(/\./g, '').replace(',', '.'); else if ((v.match(/\./g) || []).length > 1 || /\.\d{3}$/.test(v)) v = v.replace(/\./g, ''); return parseFloat(v) || 0; };
+const fmt = v => v.toLocaleString('es-CO', {maximumFractionDigits: 2});
+function sumar() {
+  const d = Array.from(document.querySelectorAll('.deb')).reduce((s, i) => s + num(i.value), 0);
+  const c = Array.from(document.querySelectorAll('.cre')).reduce((s, i) => s + num(i.value), 0);
+  document.getElementById('sd').textContent = fmt(d); document.getElementById('sc').textContent = fmt(c);
+  const dif = document.getElementById('dif');
+  dif.textContent = Math.abs(d - c) < 0.005 ? 'cuadrado' : 'diferencia ' + fmt(d - c);
+  dif.className = 'etiqueta ' + (Math.abs(d - c) < 0.005 ? 'ok' : 'crit');
+}
+document.getElementById('lineas').addEventListener('input', sumar); sumar();
+const mas = document.getElementById('mas');
+if (mas) mas.addEventListener('click', () => {
+  const filas = document.querySelectorAll('#lineas tr'); const ultima = filas[filas.length - 2];
+  const nueva = ultima.cloneNode(true); nueva.querySelectorAll('input').forEach(i => i.value = ''); nueva.querySelectorAll('select').forEach(s => s.value = '');
+  ultima.after(nueva);
+});
+</script>
+{% endblock %}

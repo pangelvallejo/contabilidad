@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% block titulo %}{{ 'Gasto ' ~ (g.numero or '') if g else 'Registrar gasto' }}{% endblock %}
+{% block contenido %}
+<div class="encabezado">
+  <div><h1>{{ 'Gasto ' ~ (g.numero or tipos[g.tipo_soporte]) if g else 'Registrar gasto' }}</h1>
+    <p class="sub">{% if g %}{{ g.proveedor.nombre if g.proveedor else '' }} · importado por {{ g.origen }}{% if not g.revisado %} · <span class="etiqueta adv">Revise la categoría y la forma de pago y guarde</span>{% endif %}
+      {% else %}Para gastos sin XML: cuentas de cobro, recibos, tiquetes, peajes, o facturas que no le llegaron por correo.{% endif %}</p></div>
+  {% if g %}<div class="acciones">
+    {% if g.xml_archivo %}<a class="btn" href="/archivo/{{ g.xml_archivo }}" target="_blank">Ver XML</a>{% endif %}
+    {% if g.soporte_archivo %}<a class="btn" href="/archivo/{{ g.soporte_archivo }}" target="_blank">Ver soporte</a>{% endif %}
+  </div>{% endif %}
+</div>
+
+{% macro val(campo, defecto='') -%}{{ (form.get(campo) if form.get(campo) is not none else (g[campo] if g and g[campo] is not none else defecto))|entrada }}{%- endmacro %}
+
+<form class="tarjeta" method="post" enctype="multipart/form-data">
+  <div class="campos">
+    <div><label>Tipo de soporte</label><select name="tipo_soporte">
+      {% for k, n in tipos.items() %}<option value="{{ k }}" {{ 'selected' if (g and g.tipo_soporte == k) or form.get('tipo_soporte') == k }}>{{ n }}</option>{% endfor %}</select></div>
+    <div><label>Número</label><input name="numero" value="{{ val('numero') }}"></div>
+    <div><label>Fecha</label><input type="date" name="fecha" value="{{ g.fecha.isoformat() if g else (form.get('fecha') or hoy.isoformat()) }}" required></div>
+    <div><label>Vencimiento</label><input type="date" name="vencimiento" value="{{ g.vencimiento.isoformat() if g and g.vencimiento else '' }}"></div>
+    <div class="campo ancho"><label>Proveedor</label>
+      <select name="proveedor_id" id="proveedor">
+        <option value="">Sin proveedor (recibo menor)</option>
+        <option value="nuevo">+ Proveedor nuevo…</option>
+        {% for p in proveedores %}<option value="{{ p.id }}" {{ 'selected' if g and g.proveedor_id == p.id }}>{{ p.nombre }} — {{ p.nit }}</option>{% endfor %}
+      </select></div>
+    <div id="nuevo-prov" class="campo ancho" style="display:none">
+      <div class="campos" style="margin:0">
+        <div><label>Tipo documento</label><select name="nuevo_tipo_doc"><option value="31">NIT</option><option value="13">Cédula</option></select></div>
+        <div><label>NIT / cédula (sin DV)</label><input name="nuevo_nit"></div>
+        <div><label>Nombre o razón social</label><input name="nuevo_nombre"></div>
+      </div></div>
+    <div class="campo ancho"><label>Categoría</label><select name="categoria_id" id="categoria" required>
+      {% for c in categorias %}<option value="{{ c.id }}" data-desc="{{ 1 if c.iva_descontable_def else 0 }}" {{ 'selected' if g and g.categoria_id == c.id }}>{{ c.nombre }} ({{ c.cuenta }})</option>{% endfor %}</select></div>
+    <div class="campo ancho"><label>Descripción</label><input name="descripcion" value="{{ val('descripcion') }}"></div>
+    <div><label>Base (antes de impuestos)</label><input class="n" name="subtotal" id="subtotal" value="{{ val('subtotal') }}" required inputmode="decimal"></div>
+    <div><label>IVA</label><input class="n" name="iva" id="iva" value="{{ val('iva', 0) }}" inputmode="decimal"></div>
+    <div><label>Otros impuestos (INC, etc.)</label><input class="n" name="otros_impuestos" id="otros" value="{{ val('otros_impuestos', 0) }}" inputmode="decimal"></div>
+    <div><label>Total</label><input class="n" id="total" disabled></div>
+    <div class="campo ancho"><label class="check"><input type="checkbox" name="iva_descontable" id="desc" {{ 'checked' if (g.iva_descontable if g else true) }}> El IVA es descontable (se cruza contra el IVA generado)</label>
+      <p class="nota">No es descontable el IVA de activos fijos ni el que no esté soportado en factura electrónica a nombre de la firma.</p></div>
+    <div><label>Forma de pago</label><select name="forma_pago" id="forma">
+      <option value="contado" {{ 'selected' if not g or g.forma_pago == 'contado' }}>Pagado (contado)</option>
+      <option value="credito" {{ 'selected' if g and g.forma_pago == 'credito' }}>Por pagar (crédito)</option></select></div>
+    <div id="cuenta-pago"><label>Pagado desde</label><select name="cuenta_pago">
+      {% for cta, nombre in opciones_pago %}<option value="{{ cta }}" {{ 'selected' if g and g.cuenta_pago == cta }}>{{ nombre }}</option>{% endfor %}</select></div>
+    <div><label>Soporte (PDF o foto)</label><input type="file" name="soporte" accept=".pdf,.png,.jpg,.jpeg,.heic,.webp,.xml"></div>
+    <div><label>CUFE (opcional)</label><input name="cufe" value="{{ val('cufe') }}"></div>
+    <div class="campo ancho"><label>Notas</label><textarea name="notas" rows="2">{{ val('notas') }}</textarea></div>
+  </div>
+  <button class="primario" name="accion" value="guardar">Guardar</button>
+  {% if not g %}<button name="otro" value="1">Guardar y registrar otro</button>{% endif %}
+  {% if g %}<button class="peligro" name="accion" value="eliminar" data-confirmar="¿Eliminar este gasto y su contabilidad?">Eliminar</button>{% endif %}
+</form>
+
+{% if g and g.forma_pago == 'credito' and g.tipo_soporte != 'NC' %}
+<div class="tarjeta">
+  <h2>Pagos · saldo {{ g.saldo|pesos }}</h2>
+  {% if g.pagos %}<table>
+    <tr><th>Fecha</th><th>Cuenta</th><th class="n">Valor</th><th></th></tr>
+    {% for p in g.pagos %}<tr><td>{{ p.fecha|fecha }}</td><td>{{ p.cuenta_pago }}</td><td class="n">{{ p.valor|pesos }}</td>
+      <td><form method="post"><input type="hidden" name="pago_id" value="{{ p.id }}"><button class="peq peligro" name="accion" value="borrar_pago" data-confirmar="¿Eliminar este pago?">Eliminar</button></form></td></tr>{% endfor %}
+  </table>{% endif %}
+  {% if g.saldo > 0 %}
+  <form method="post" class="filtros" style="margin-top:12px">
+    <div><label>Fecha</label><input type="date" name="pago_fecha" value="{{ hoy.isoformat() }}"></div>
+    <div><label>Desde</label><select name="pago_cuenta">{% for cta, nombre in opciones_pago %}<option value="{{ cta }}">{{ nombre }}</option>{% endfor %}</select></div>
+    <div><label>Valor</label><input class="n" name="pago_valor" value="{{ g.saldo|entrada }}"></div>
+    <button class="primario" name="accion" value="pago">Registrar pago</button>
+  </form>{% endif %}
+</div>
+{% endif %}
+
+{% if g %}{% include "contabilidad/_asientos.html" %}{% endif %}
+{% endblock %}
+{% block scripts %}
+<script>
+const num = v => { v = String(v || '').trim(); if (v.includes(',')) v = v.replace(/\./g, '').replace(',', '.'); else if ((v.match(/\./g) || []).length > 1 || /\.\d{3}$/.test(v)) v = v.replace(/\./g, ''); return parseFloat(v) || 0; };
+const ids = ['subtotal', 'iva', 'otros'].map(i => document.getElementById(i));
+const total = document.getElementById('total');
+const calc = () => total.value = (num(ids[0].value) + num(ids[1].value) + num(ids[2].value)).toLocaleString('es-CO', {maximumFractionDigits: 2});
+ids.forEach(i => i.addEventListener('input', calc)); calc();
+const forma = document.getElementById('forma'), cp = document.getElementById('cuenta-pago');
+const act = () => cp.style.display = forma.value === 'contado' ? '' : 'none'; forma.addEventListener('change', act); act();
+const prov = document.getElementById('proveedor'), np = document.getElementById('nuevo-prov');
+prov.addEventListener('change', () => np.style.display = prov.value === 'nuevo' ? '' : 'none');
+{% if not g %}
+const cat = document.getElementById('categoria'), desc = document.getElementById('desc');
+cat.addEventListener('change', () => desc.checked = cat.selectedOptions[0].dataset.desc === '1');
+{% endif %}
+</script>
+{% endblock %}

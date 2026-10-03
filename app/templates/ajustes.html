@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% block titulo %}Configuración{% endblock %}
+{% block contenido %}
+<h1>Configuración</h1>
+<p class="sub">Datos guardados en <code>{{ datos_dir }}</code></p>
+
+<form class="tarjeta" method="post" id="empresa">
+  <h2>Datos de la firma</h2>
+  <input type="hidden" name="accion" value="empresa">
+  <div class="campos">
+    <div class="campo ancho"><label>Razón social</label><input name="empresa_nombre" value="{{ v.empresa_nombre }}"></div>
+    <div><label>NIT (sin DV)</label><input name="empresa_nit" value="{{ v.empresa_nit }}"></div>
+    <div><label>DV</label><input name="empresa_dv" value="{{ v.empresa_dv }}" maxlength="1"></div>
+    <div><label>CIIU</label><input name="empresa_ciiu" value="{{ v.empresa_ciiu }}"></div>
+    <div class="campo ancho"><label>Dirección</label><input name="empresa_direccion" value="{{ v.empresa_direccion }}"></div>
+    <div><label>Ciudad</label><input name="empresa_ciudad" value="{{ v.empresa_ciudad }}"></div>
+    <div><label>Código municipio DANE</label><input name="empresa_cod_municipio" value="{{ v.empresa_cod_municipio }}"></div>
+    <div><label>Email</label><input name="empresa_email" value="{{ v.empresa_email }}"></div>
+    <div><label>Teléfono</label><input name="empresa_telefono" value="{{ v.empresa_telefono }}"></div>
+  </div>
+  <h2>Parámetros del SIMPLE</h2>
+  <div class="campos">
+    <div class="campo ancho"><label>Ingresos brutos para anticipos y declaración</label>
+      <select name="simple_base">
+        <option value="causacion" {{ 'selected' if v.simple_base != 'caja' }}>Causación: según la fecha de la factura</option>
+        <option value="caja" {{ 'selected' if v.simple_base == 'caja' }}>Caja: según la fecha en que se recibe el pago</option>
+      </select></div>
+  </div>
+  <button class="primario">Guardar</button>
+</form>
+
+<div class="tarjeta" id="banco">
+  <h2>Cuentas bancarias</h2>
+  {% for b in bancos %}<form method="post" id="fb{{ b.id }}"><input type="hidden" name="accion" value="banco"><input type="hidden" name="id" value="{{ b.id }}"></form>{% endfor %}
+  <form method="post" id="fb-nuevo"><input type="hidden" name="accion" value="banco"></form>
+  <table>
+    <tr><th>Nombre</th><th>Número</th><th>Tipo</th><th>Cuenta PUC</th><th>Activa</th><th></th></tr>
+    {% for b in bancos %}{% set f = 'fb' ~ b.id %}
+    <tr><td><input form="{{ f }}" name="nombre" value="{{ b.nombre }}"></td><td><input form="{{ f }}" name="numero" value="{{ b.numero or '' }}"></td>
+      <td><input form="{{ f }}" name="tipo" value="{{ b.tipo or '' }}"></td><td>{{ b.cuenta }}</td>
+      <td><input form="{{ f }}" type="checkbox" name="activo" {{ 'checked' if b.activo }}></td><td><button form="{{ f }}" class="peq">Guardar</button></td></tr>
+    {% endfor %}
+    <tr><td><input form="fb-nuevo" name="nombre" placeholder="Nueva cuenta" required></td><td><input form="fb-nuevo" name="numero"></td>
+      <td><input form="fb-nuevo" name="tipo" placeholder="Ahorros"></td><td class="nota">se crea</td><td></td>
+      <td><button form="fb-nuevo" class="peq primario">Agregar</button></td></tr>
+  </table>
+</div>
+
+<div class="tarjeta tabla-scroll" id="categoria">
+  <h2>Categorías de gasto</h2>
+  <p class="nota">Las palabras clave (separadas por coma) sirven para clasificar solos los XML importados. Si un proveedor ya tiene gastos revisados, se usa su última categoría.</p>
+  {% for c in categorias %}<form method="post" id="fc{{ c.id }}"><input type="hidden" name="accion" value="categoria"><input type="hidden" name="id" value="{{ c.id }}"></form>{% endfor %}
+  <form method="post" id="fc-nuevo"><input type="hidden" name="accion" value="categoria"></form>
+  <table>
+    <tr><th>Nombre</th><th>Cuenta</th><th>Concepto 1001</th><th>Palabras clave</th><th>IVA desc.</th><th>Activa</th><th></th></tr>
+    {% for c in categorias %}{% set f = 'fc' ~ c.id %}
+    <tr><td><input form="{{ f }}" name="nombre" value="{{ c.nombre }}"></td>
+      <td><select form="{{ f }}" name="cuenta">{% for cta in cuentas_gasto %}<option value="{{ cta.codigo }}" {{ 'selected' if cta.codigo == c.cuenta }}>{{ cta.codigo }} {{ cta.nombre }}</option>{% endfor %}</select></td>
+      <td><input form="{{ f }}" name="concepto_exogena" value="{{ c.concepto_exogena }}" style="width:70px"></td>
+      <td><input form="{{ f }}" name="palabras_clave" value="{{ c.palabras_clave or '' }}"></td>
+      <td><input form="{{ f }}" type="checkbox" name="iva_descontable_def" {{ 'checked' if c.iva_descontable_def }}></td>
+      <td><input form="{{ f }}" type="checkbox" name="activa" {{ 'checked' if c.activa }}></td>
+      <td><button form="{{ f }}" class="peq">Guardar</button></td></tr>
+    {% endfor %}
+    <tr><td><input form="fc-nuevo" name="nombre" placeholder="Nueva categoría" required></td>
+      <td><select form="fc-nuevo" name="cuenta">{% for cta in cuentas_gasto %}<option value="{{ cta.codigo }}">{{ cta.codigo }} {{ cta.nombre }}</option>{% endfor %}</select></td>
+      <td><input form="fc-nuevo" name="concepto_exogena" value="5016" style="width:70px"></td><td><input form="fc-nuevo" name="palabras_clave"></td>
+      <td><input form="fc-nuevo" type="checkbox" name="iva_descontable_def" checked></td><td></td>
+      <td><button form="fc-nuevo" class="peq primario">Agregar</button></td></tr>
+  </table>
+</div>
+
+<form class="tarjeta" method="post" id="respaldo">
+  <h2>Respaldos</h2>
+  <p>Se crea una copia automática cada 24 horas mientras el programa está abierto (base de datos y todos los soportes) en:<br>
+    <code>{{ carpeta_respaldo }}</code></p>
+  <p class="nota">Último respaldo: {{ v.ultimo_respaldo or 'nunca' }}. Se conservan los últimos {{ v.respaldos_a_conservar or 30 }}.</p>
+  <button class="primario" name="accion" value="respaldo">Crear respaldo ahora</button>
+</form>
+<form class="tarjeta" method="post">
+  <input type="hidden" name="accion" value="empresa">
+  <div class="campos">
+    <div class="campo ancho"><label>Carpeta de respaldo (vacío = OneDrive automático)</label><input name="carpeta_respaldo" value="{{ v.carpeta_respaldo }}"></div>
+    <div><label>Respaldos a conservar</label><input type="number" name="respaldos_a_conservar" value="{{ v.respaldos_a_conservar or 30 }}"></div>
+  </div>
+  <button>Guardar carpeta</button>
+</form>
+{% endblock %}

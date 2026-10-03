@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block titulo %}{{ t.nombre or 'Nuevo tercero' }}{% endblock %}
+{% block contenido %}
+<h1>{{ t.nombre or 'Nuevo tercero' }}</h1>
+<p class="sub">Los datos de dirección, municipio y nombres se usan en la información exógena.</p>
+<form class="tarjeta" method="post">
+  <div class="campos">
+    <div><label>Tipo de documento</label><select name="tipo_doc">
+      {% for k, n in [('31','NIT'),('13','Cédula de ciudadanía'),('22','Cédula de extranjería'),('42','Documento extranjero')] %}
+      <option value="{{ k }}" {{ 'selected' if t.tipo_doc == k }}>{{ n }}</option>{% endfor %}</select></div>
+    <div><label>Número (sin DV)</label><input name="nit" value="{{ t.nit or '' }}" required></div>
+    <div><label>DV</label><input name="dv" value="{{ t.dv or '' }}" maxlength="1" style="width:60px"></div>
+    <div class="campo ancho"><label>Nombre o razón social</label><input name="nombre" value="{{ t.nombre or '' }}" required></div>
+    <div><label>Primer apellido</label><input name="primer_apellido" value="{{ t.primer_apellido or '' }}"></div>
+    <div><label>Segundo apellido</label><input name="segundo_apellido" value="{{ t.segundo_apellido or '' }}"></div>
+    <div><label>Primer nombre</label><input name="primer_nombre" value="{{ t.primer_nombre or '' }}"></div>
+    <div><label>Otros nombres</label><input name="otros_nombres" value="{{ t.otros_nombres or '' }}"></div>
+    <div><label>Email</label><input name="email" value="{{ t.email or '' }}"></div>
+    <div><label>Teléfono</label><input name="telefono" value="{{ t.telefono or '' }}"></div>
+    <div class="campo ancho"><label>Dirección</label><input name="direccion" value="{{ t.direccion or '' }}"></div>
+    <div><label>Ciudad</label><input name="ciudad" value="{{ t.ciudad or '' }}"></div>
+    <div><label>Código municipio DANE (5 dígitos)</label><input name="cod_municipio" value="{{ t.cod_municipio or '' }}" placeholder="11001 = Bogotá"></div>
+    <div><label>País (código DIAN)</label><input name="pais" value="{{ t.pais or '169' }}"></div>
+    <div><label>Plazo de pago (días)</label><input type="number" name="plazo_dias" value="{{ t.plazo_dias if t.plazo_dias is not none else 30 }}"></div>
+    <div class="campo ancho">
+      <label class="check"><input type="checkbox" name="es_cliente" {{ 'checked' if t.es_cliente }}> Cliente</label>
+      <label class="check"><input type="checkbox" name="es_proveedor" {{ 'checked' if t.es_proveedor }}> Proveedor</label>
+      <label class="check"><input type="checkbox" name="aplica_reteiva" {{ 'checked' if t.aplica_reteiva }}> Este cliente me practica reteIVA (se marcará por defecto en sus facturas)</label>
+    </div>
+    <div class="campo ancho"><label>Notas</label><textarea name="notas" rows="2">{{ t.notas or '' }}</textarea></div>
+  </div>
+  <button class="primario">Guardar</button>
+  {% if t.id %}<a class="btn" href="/cartera/{{ t.id }}">Estado de cuenta</a> <a class="btn" href="/contabilidad/mayor?cuenta=1&tercero={{ t.id }}">Movimientos</a>{% endif %}
+</form>
+{% endblock %}

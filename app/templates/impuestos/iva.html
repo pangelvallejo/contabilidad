@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block titulo %}IVA {{ anio }}{% endblock %}
+{% block contenido %}
+<div class="encabezado">
+  <div><h1>IVA por bimestre {{ anio }}</h1>
+    <p class="sub">IVA generado en sus facturas menos el IVA descontable de sus gastos y la reteIVA que le practicaron. En el SIMPLE se paga cada bimestre con el recibo 2593 y se consolida en la declaración anual (F300).</p></div>
+  <div class="acciones"><a class="btn" href="/impuestos/simple?anio={{ anio }}">Recibos 2593</a><a class="btn" href="/impuestos/f300?anio={{ anio }}">Declaración anual</a></div>
+</div>
+<form class="filtros"><div><label>Año</label><input type="number" name="anio" value="{{ anio }}" style="width:90px"></div><button>Ver</button></form>
+<div class="tarjeta tabla-scroll">
+  <table>
+    <tr><th>Bimestre</th><th class="n">Ingresos gravados</th><th class="n">IVA generado</th><th class="n">IVA descontable</th>
+      <th class="n">ReteIVA</th><th class="n">Neto</th><th class="n">A pagar (2593)</th><th class="n">Pagado</th><th></th></tr>
+    {% for b, nombre, r in filas %}
+    <tr><td>{{ b }}. {{ nombre }}</td><td class="n">{{ r.ingresos_gravados|pesos }}</td><td class="n">{{ r.iva_generado_neto|pesos }}</td>
+      <td class="n">{{ r.iva_descontable|pesos }}</td><td class="n">{{ r.reteiva|pesos }}</td>
+      <td class="n">{{ r.neto|pesos }}</td><td class="n"><b>{{ r.a_pagar|pesos }}</b></td>
+      <td class="n">{% if r.pagado %}<span class="etiqueta ok">{{ r.pagado|pesos }}</span>{% endif %}</td>
+      <td><a href="/impuestos/iva/{{ anio }}/{{ b }}">Detalle</a></td></tr>
+    {% endfor %}
+    <tr class="total"><td>Año</td><td class="n">{{ anual.resumen.ingresos_gravados|pesos }}</td><td class="n">{{ anual.resumen.iva_generado_neto|pesos }}</td>
+      <td class="n">{{ anual.resumen.iva_descontable|pesos }}</td><td class="n">{{ anual.resumen.reteiva|pesos }}</td>
+      <td class="n">{{ anual.resumen.neto|pesos }}</td><td></td><td class="n">{{ anual.pagos_bimestrales|pesos }}</td><td></td></tr>
+  </table>
+  <p class="nota">Un neto negativo es saldo a favor del bimestre: no se paga en el 2593 y se compensa en la declaración anual.</p>
+</div>
+{% endblock %}

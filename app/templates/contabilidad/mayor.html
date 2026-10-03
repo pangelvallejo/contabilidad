@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block titulo %}Libro mayor{% endblock %}
+{% block contenido %}
+<div class="encabezado">
+  <div><h1>Libro mayor · {{ codigo }} {{ cuenta.nombre if cuenta else '' }}</h1><p class="sub">Movimientos y saldo acumulado de la cuenta y sus subcuentas.</p></div>
+  <div class="acciones"><a class="btn" href="?{{ request.query_string.decode() }}&xlsx=1">Exportar a Excel</a></div>
+</div>
+<form class="filtros">
+  <div><label>Cuenta</label><select name="cuenta">{% for c in cuentas %}<option value="{{ c.codigo }}" {{ 'selected' if c.codigo == codigo }}>{{ c.codigo }} {{ c.nombre }}</option>{% endfor %}</select></div>
+  <div><label>Tercero</label><select name="tercero"><option value="">Todos</option>{% for t in terceros %}<option value="{{ t.id }}" {{ 'selected' if t.id == tercero_id }}>{{ t.nombre }}</option>{% endfor %}</select></div>
+  {% include "contabilidad/_periodo.html" %}<button>Ver</button></form>
+<div class="tarjeta tabla-scroll">
+  <table>
+    <tr><th>Fecha</th><th>Comprobante</th><th>Cuenta</th><th>Descripción</th><th>Tercero</th><th class="n">Débito</th><th class="n">Crédito</th><th class="n">Saldo</th></tr>
+    <tr class="grupo"><td colspan="7">Saldo inicial</td><td class="n">{{ inicial|pesos }}</td></tr>
+    {% for m, saldo in filas %}
+    <tr><td>{{ m.asiento.fecha|fecha }}</td><td><a href="/contabilidad/asiento/{{ m.asiento.id }}">{{ m.asiento.tipo }}-{{ m.asiento.numero }}</a></td>
+      <td>{{ m.cuenta }}</td><td>{{ m.descripcion or m.asiento.descripcion }}</td><td>{{ m.tercero.nombre if m.tercero else '' }}</td>
+      <td class="n">{{ m.debito|pesos if m.debito else '' }}</td><td class="n">{{ m.credito|pesos if m.credito else '' }}</td><td class="n">{{ saldo|pesos }}</td></tr>
+    {% endfor %}
+    <tr class="total"><td colspan="7">Saldo final</td><td class="n">{{ final|pesos }}</td></tr>
+  </table>
+</div>
+{% endblock %}

@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block titulo %}Declaración SIMPLE {{ anio }}{% endblock %}
+{% block contenido %}
+<div class="encabezado">
+  <div><h1>Declaración anual consolidada SIMPLE (F260) · año gravable {{ anio }}</h1>
+    <p class="sub">Borrador por conceptos para trasladar al formulario. Verifique contra el formulario vigente antes de presentar.</p></div>
+</div>
+<form class="filtros"><div><label>Año</label><input type="number" name="anio" value="{{ anio }}" style="width:90px"></div><button>Ver</button></form>
+{% if dec.supera_limite %}<div class="mensaje critico">Los ingresos superan 12.000 UVT ({{ (12000 * uvt)|pesos }}): límite para profesiones liberales en el SIMPLE.</div>{% endif %}
+<div class="rejilla k2">
+  <div class="tarjeta">
+    <table class="liquidacion">
+      <tr><td>Ingresos brutos ordinarios y extraordinarios</td><td class="n">{{ dec.ingresos|pesos }}</td></tr>
+      <tr><td>Equivalente en UVT (UVT {{ uvt|pesos }})</td><td class="n">{{ dec.ingresos_uvt|numero }}</td></tr>
+      <tr><td>Tarifa consolidada</td><td class="n">{{ dec.tarifa|pct }}</td></tr>
+      <tr class="res"><td>Impuesto SIMPLE consolidado</td><td class="n">{{ dec.impuesto|pesos }}</td></tr>
+      <tr><td>(−) Descuento por ventas con tarjetas y medios electrónicos (0,5% de {{ dec.ingresos_medios_electronicos|pesos }})</td><td class="n">{{ dec.descuento_medios_electronicos|pesos }}</td></tr>
+      <tr><td>Impuesto neto</td><td class="n">{{ dec.impuesto_neto|pesos }}</td></tr>
+      <tr><td>(−) Anticipos pagados en recibos 2593</td><td class="n">{{ dec.anticipos|pesos }}</td></tr>
+      <tr class="res"><td>{{ 'Saldo a pagar' if dec.saldo >= 0 else 'Saldo a favor' }}</td><td class="n">{{ (dec.saldo if dec.saldo >= 0 else -dec.saldo)|pesos }}</td></tr>
+    </table>
+  </div>
+  <div class="tarjeta">
+    <h2>Contabilizar y pagar</h2>
+    <form method="post"><input type="hidden" name="anio" value="{{ anio }}">
+      <p class="nota">Registra al 31 de diciembre el gasto del impuesto, cruzado contra los anticipos, y deja el saldo por pagar en la cuenta 240405. Puede repetirlo; el asiento se actualiza.</p>
+      <button class="primario" formaction="/impuestos/f260?anio={{ anio }}">Causar impuesto SIMPLE {{ anio }}</button>
+    </form>
+    <hr style="border:0;border-top:1px solid var(--borde);margin:16px 0">
+    <form method="post" action="/impuestos/pago" enctype="multipart/form-data">
+      <input type="hidden" name="formulario" value="260"><input type="hidden" name="anio" value="{{ anio }}">
+      <input type="hidden" name="volver" value="/impuestos/f260?anio={{ anio }}">
+      <div class="campos">
+        <div><label>Fecha de pago</label><input type="date" name="fecha" value="{{ hoy.isoformat() }}"></div>
+        <div><label>Valor pagado</label><input class="n" name="valor_simple" value="{{ (dec.saldo if dec.saldo > 0 else 0)|entrada }}"></div>
+        <div><label>Desde</label><select name="banco_id">{% for b in bancos %}<option value="{{ b.id }}">{{ b.nombre }}</option>{% endfor %}</select></div>
+        <div><label>Formulario (PDF)</label><input type="file" name="archivo" accept=".pdf"></div>
+      </div>
+      <button>Registrar pago del F260</button>
+    </form>
+    {% for p in pagos %}<p class="nota">Pagado {{ p.fecha|fecha }}: {{ p.total|pesos }}</p>{% endfor %}
+  </div>
+</div>
+<div class="tarjeta"><h2>Tarifas anuales</h2>
+  <table><tr><th>Ingresos brutos anuales</th><th class="n">Tarifa</th></tr>
+    {% set ns = namespace(desde=0) %}
+    {% for hasta, t in tabla %}<tr><td>{{ ns.desde|numero }} a {{ hasta|numero }} UVT</td><td class="n">{{ t|pct }}</td></tr>{% set ns.desde = hasta %}{% endfor %}
+  </table>
+</div>
+{% endblock %}
