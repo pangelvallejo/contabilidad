@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block titulo %}Presupuesto{% endblock %}
+{% block contenido %}
+<div class="encabezado">
+  <div><h1>Presupuesto vs. real {{ anio }}</h1><p class="sub">Lo presupuestado para el año se compara con lo ejecutado hasta el {{ pr.corte|fecha }} ({{ pr.meses }} meses: la columna "esperado" prorratea el presupuesto anual).</p></div>
+  <div class="acciones"><a class="btn primario" href="?anio={{ anio }}&editar=1">Definir presupuesto</a><a class="btn" href="?anio={{ anio }}&xlsx=1">Excel</a></div>
+</div>
+<form class="filtros"><div><label>Año</label><input type="number" name="anio" value="{{ anio }}" style="width:90px"></div><div><label>Corte</label><input type="date" name="corte" value="{{ corte }}"></div><button>Ver</button></form>
+{% if editar %}
+<form method="post" class="tarjeta">
+  <h2>Presupuesto anual {{ anio }}</h2>
+  <input type="hidden" name="anio" value="{{ anio }}">
+  <div class="campos">
+    <div><label>Ingresos del año (sin IVA)</label><input class="n" name="ingresos" value="{{ pres.get('ingresos')|entrada if pres.get('ingresos') else '' }}"></div>
+    {% for c in pr.categorias %}<div><label>{{ c.nombre }}</label><input class="n" name="categoria:{{ c.id }}" value="{{ pres.get('categoria:' ~ c.id)|entrada if pres.get('categoria:' ~ c.id) else '' }}"></div>{% endfor %}
+  </div>
+  <button class="primario">Guardar presupuesto</button> <a class="btn" href="?anio={{ anio }}">Cancelar</a>
+</form>
+{% endif %}
+<div class="tarjeta tabla-scroll">
+  {% if pr.filas %}
+  <table>
+    <tr><th>Concepto</th><th class="n">Presupuesto anual</th><th class="n">Esperado a {{ pr.meses }} meses</th><th class="n">Real</th><th class="n">Diferencia</th><th class="n">Ejecución</th><th class="n">Ejec. anual</th></tr>
+    {% for f in pr.filas %}
+    <tr class="{{ 'grupo' if f.clave == 'ingresos' }}"><td>{{ f.concepto }}</td><td class="n">{{ f.anual|pesos }}</td><td class="n">{{ f.esperado|pesos }}</td><td class="n">{{ f.real|pesos }}</td>
+      <td class="n" style="color:{{ 'var(--ok)' if (f.diferencia >= 0) == (f.clave == 'ingresos') else 'var(--crit)' }}">{{ f.diferencia|pesos }}</td>
+      <td class="n">{{ f.ejecucion|pct1 }}</td><td class="n">{{ f.ejecucion_anual|pct1 }}</td></tr>
+    {% endfor %}
+    <tr class="total"><td>Total gastos</td><td class="n">{{ pr.total_gastos_anual|pesos }}</td><td class="n">{{ pr.total_gastos_esperado|pesos }}</td><td class="n">{{ pr.total_gastos_real|pesos }}</td><td class="n">{{ (pr.total_gastos_real - pr.total_gastos_esperado)|pesos }}</td><td colspan="2"></td></tr>
+    <tr class="total"><td>Utilidad (ingresos − gastos)</td><td class="n">{{ pr.utilidad_presupuestada|pesos }}</td><td></td><td class="n">{{ pr.utilidad_real|pesos }}</td><td colspan="3"></td></tr>
+  </table>
+  {% else %}<p class="vacio">Aún no hay presupuesto ni gastos para {{ anio }}. Pulse "Definir presupuesto".</p>{% endif %}
+</div>
+{% endblock %}

@@ -89,10 +89,16 @@
       <div><label>Carpeta / etiqueta</label><input name="correo_carpeta" value="{{ v.correo_carpeta or 'INBOX' }}"></div>
       <div><label>Revisar los últimos (días)</label><input type="number" name="correo_dias" value="{{ v.correo_dias or 30 }}"></div>
       <div><label>Solo asuntos que contengan (opcional)</label><input name="correo_filtro" value="{{ v.correo_filtro }}"></div>
+      <div><label>Servidor de salida (opcional)</label><input name="correo_smtp" value="{{ v.correo_smtp }}" placeholder="automático según el proveedor (smtp.gmail.com:465)"></div>
+      <div><label>Copia de lo enviado a mi buzón</label><select name="correo_copia"><option value="si">Sí</option><option value="no" {{ 'selected' if v.correo_copia == 'no' }}>No</option></select></div>
+      <div><label>Resumen mensual por correo</label><select name="resumen_mensual"><option value="no">No</option><option value="si" {{ 'selected' if v.resumen_mensual == 'si' }}>Sí, el primer día de cada mes</option></select></div>
+      <div><label>Enviar el resumen a</label><input name="resumen_correo" value="{{ v.resumen_correo }}" placeholder="{{ v.empresa_email or 'mi correo' }}"></div>
     </div>
+    <p class="nota">Con el correo configurado el programa también puede <b>enviar</b>: estados de cuenta y recordatorios de cobro a los clientes, propuestas de honorarios y el resumen mensual del despacho.</p>
     <button class="primario">Guardar</button>
     <button name="accion" value="probar_correo" data-espera="Probando…">Probar conexión</button>
     <button name="accion" value="revisar_correo" data-espera="Revisando…">Revisar correo ahora</button>
+    <button name="accion" value="enviar_resumen" data-espera="Enviando…" title="Envía el resumen del mes anterior al correo indicado">Enviar resumen del mes ahora</button>
   </form>
   {% if estado_tareas.ultimo_correo %}<p class="nota">Última revisión automática: {{ estado_tareas.ultimo_correo[0].strftime('%d/%m %H:%M') }} · {{ estado_tareas.ultimo_correo[1].importados }} importado(s){% if estado_tareas.ultimo_correo[1].error %} · {{ estado_tareas.ultimo_correo[1].error }}{% endif %}</p>{% endif %}
 </div>

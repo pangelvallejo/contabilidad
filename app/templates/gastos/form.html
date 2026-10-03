@@ -51,6 +51,13 @@
     <div id="cuenta-pago"><label>Pagado desde</label><select name="cuenta_pago">
       {% set cp = form.get('cuenta_pago') or (g.cuenta_pago if g else '') %}{% for cta, nombre in opciones_pago %}<option value="{{ cta }}" {{ 'selected' if cp == cta }}>{{ nombre }}</option>{% endfor %}</select></div>
     <div class="campo ancho"><label class="check"><input type="checkbox" name="recurrente" {{ 'checked' if (form.get('recurrente') if form else (g.recurrente if g else false)) }}> Gasto mensual recurrente (arriendo, internet, software…): el tablero avisará si en un mes no se ha registrado</label></div>
+    <div class="campo ancho" style="display:grid;grid-template-columns:1fr auto;gap:12px;align-items:end">
+      <div><label>Asunto / caso del cliente (opcional, para rentabilidad)</label><select name="asunto_id" id="asunto">
+        <option value="">— ninguno —</option>
+        {% set asel = form.get('asunto_id') or (g.asunto_id|string if g and g.asunto_id else '') %}
+        {% for a in asuntos %}<option value="{{ a.id }}" {{ 'selected' if asel == a.id|string }}>{{ a.cliente.nombre }} · {{ a.nombre }}</option>{% endfor %}</select></div>
+      <label class="check" id="reemb" title="Gasto hecho por cuenta del cliente que se le cobrará (notaría, certificados, viajes)"><input type="checkbox" name="reembolsable" {{ 'checked' if (form.get('reembolsable') if form else (g.reembolsable if g else false)) }}> Reembolsable al cliente</label>
+    </div>
     <div id="vida-util"><label>Vida útil en meses (solo activos fijos)</label><input type="number" name="vida_util_meses" value="{{ form.get('vida_util_meses') or (g.vida_util_meses if g else '') or '' }}" placeholder="60 equipos, 120 muebles"></div>
     <div><label>Soporte (PDF o foto)</label><input type="file" name="soporte" accept=".pdf,.png,.jpg,.jpeg,.heic,.webp,.xml"></div>
     <div><label>CUFE (opcional)</label><input name="cufe" value="{{ val('cufe') }}"></div>

@@ -7,7 +7,7 @@ from .. import archivos, bancos, contab, exportar, importacion, planeacion
 from sqlalchemy.orm import selectinload
 
 from ..db import Session
-from ..models import (CERO, TIPOS_SOPORTE, Asiento, Banco, CategoriaGasto, Gasto, PagoGasto,
+from ..models import (CERO, TIPOS_SOPORTE, Asiento, Asunto, Banco, CategoriaGasto, Gasto, PagoGasto,
                       Tercero)
 from . import XLSX, anio_arg, check, descargar, dinero, entero_requerido, fecha_arg, paginar_lista
 
@@ -26,7 +26,8 @@ def _contexto_form(s):
             "proveedores": s.query(Tercero).filter_by(es_proveedor=True).order_by(Tercero.nombre).all(),
             "opciones_pago": opciones_pago(s), "tipos": TIPOS_SOPORTE,
             "facturas_proveedor": s.query(Gasto).filter(Gasto.tipo_soporte != "NC", Gasto.proveedor_id.isnot(None))
-            .order_by(Gasto.fecha.desc()).limit(300).all()}
+            .order_by(Gasto.fecha.desc()).limit(300).all(),
+            "asuntos": s.query(Asunto).filter_by(estado="abierto").order_by(Asunto.nombre).all()}
 
 
 @bp.route("/gastos")
@@ -125,6 +126,12 @@ def _llenar_gasto(s, g):
     g.cuenta_pago = request.form.get("cuenta_pago") if g.forma_pago == "contado" else None
     g.notas = request.form.get("notas") or None
     g.recurrente = check("recurrente")
+    g.asunto_id = request.form.get("asunto_id", type=int) or None
+    if g.asunto_id and s.get(Asunto, g.asunto_id) is None:
+        raise ValueError("El asunto indicado no existe.")
+    g.reembolsable = check("reembolsable") and bool(g.asunto_id)
+    if not g.reembolsable:
+        g.reembolsado = False
     g.vida_util_meses = request.form.get("vida_util_meses", type=int) or None
     g.revisado = True
     if g.iva and g.iva_descontable and g.tipo_soporte not in ("FE", "DS", "NC"):

@@ -5,7 +5,8 @@
   <div><h1>Estado de cuenta</h1><p class="sub">{{ cliente.nombre }} · NIT {{ cliente.nit_completo }} · corte {{ corte|fecha_larga }}</p></div>
   <div class="acciones">
     <a class="btn primario" href="?corte={{ corte.isoformat() }}&pdf=1">Descargar PDF</a>
-    <a class="btn" href="{{ mailto }}" title="Abre su correo con el texto listo; adjunte el PDF descargado">Enviar por correo</a>
+    {% if correo_activo and cliente.email and filas %}<form method="post" action="/cartera/{{ cliente.id }}/enviar?corte={{ corte.isoformat() }}" style="display:inline"><button class="btn" data-espera="Enviando…" data-confirmar="¿Enviar el estado de cuenta en PDF a {{ cliente.email }}?">Enviar por correo</button></form>
+    {% else %}<a class="btn" href="{{ mailto }}" title="Abre su correo con el texto listo; adjunte el PDF descargado">Enviar por correo</a>{% endif %}
     <a class="btn" href="/recaudos/nuevo?cliente_id={{ cliente.id }}">Registrar pago</a>
   </div>
 </div>

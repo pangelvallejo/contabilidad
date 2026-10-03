@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block titulo %}Rentabilidad{% endblock %}
+{% block contenido %}
+<div class="encabezado">
+  <div><h1>Rentabilidad por cliente y asunto</h1><p class="sub">{{ desde|fecha }} a {{ hasta|fecha }}. Ingresos sin IVA (netos de notas crédito) menos los gastos imputados a cada asunto. Para imputar un gasto, elija el asunto al registrarlo.</p></div>
+  <div class="acciones"><a class="btn" href="?desde={{ desde }}&hasta={{ hasta }}&xlsx=1">Excel</a><a class="btn" href="/informes/asuntos">Administrar asuntos</a></div>
+</div>
+<form class="filtros">{% include "contabilidad/_periodo.html" %}<button>Ver</button></form>
+<div class="tarjeta tabla-scroll">
+  {% if filas %}
+  <table>
+    <tr><th>Cliente / asunto</th><th class="n">Ingresos</th><th class="n">Gastos imputados</th><th class="n">Margen</th><th class="n">Margen %</th><th class="n">Reembolsables sin cobrar</th></tr>
+    {% for f in filas %}
+    <tr class="grupo"><td>{{ f.cliente.nombre if f.cliente else '—' }}</td><td class="n">{{ f.ingresos|pesos }}</td><td class="n">{{ f.gastos|pesos }}</td><td class="n">{{ f.margen|pesos }}</td><td class="n">{{ f.margen_pct|pct1 }}</td><td class="n">{{ f.reembolsables|pesos if f.reembolsables else '' }}</td></tr>
+    {% for a in f.asuntos %}<tr><td style="padding-left:24px">{{ a.asunto.nombre }}{% if a.asunto.referencia %} <span class="nota">{{ a.asunto.referencia }}</span>{% endif %}</td><td class="n">{{ a.ingresos|pesos }}</td><td class="n">{{ a.gastos|pesos }}</td><td class="n">{{ a.margen|pesos }}</td><td class="n">{{ a.margen_pct|pct1 }}</td><td></td></tr>{% endfor %}
+    {% endfor %}
+    <tr class="total"><td>Total</td><td class="n">{{ totales.ingresos|pesos }}</td><td class="n">{{ totales.gastos|pesos }}</td><td class="n">{{ totales.margen|pesos }}</td><td></td><td class="n">{{ totales.reembolsables|pesos }}</td></tr>
+  </table>
+  {% else %}<p class="vacio">Sin ingresos ni gastos imputados en el periodo.</p>{% endif %}
+</div>
+<p class="nota">Los gastos generales del despacho (arriendo, software) no se reparten entre clientes: el margen aquí es la contribución de cada cliente antes de esos gastos.</p>
+{% endblock %}

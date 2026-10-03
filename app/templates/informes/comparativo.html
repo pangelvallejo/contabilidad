@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block titulo %}Resultados comparativo{% endblock %}
+{% block contenido %}
+<h1>Estado de resultados comparativo</h1>
+<p class="sub">{{ desde|fecha }} a {{ hasta|fecha }} frente a {{ c.desde2|fecha }} a {{ c.hasta2|fecha }}. Variación (análisis horizontal) y participación sobre los ingresos (análisis vertical).</p>
+<div class="acciones"><a class="btn" href="?desde={{ desde }}&hasta={{ hasta }}&modo={{ modo }}&pdf=1">PDF</a><a class="btn" href="?desde={{ desde }}&hasta={{ hasta }}&modo={{ modo }}&xlsx=1">Excel</a></div>
+<form class="filtros">{% include "contabilidad/_periodo.html" %}
+  <div><label>Comparar con</label><select name="modo"><option value="anio" {{ 'selected' if modo == 'anio' }}>Mismo periodo del año anterior</option><option value="anterior" {{ 'selected' if modo == 'anterior' }}>Periodo inmediatamente anterior</option></select></div>
+  <button>Ver</button></form>
+<div class="tarjeta tabla-scroll">
+  <table>
+    <tr><th>Concepto</th><th class="n">Actual</th><th class="n">Anterior</th><th class="n">Variación</th><th class="n">Var. %</th><th class="n">% ingresos actual</th><th class="n">% ingresos anterior</th></tr>
+    {% for f in c.filas %}
+    <tr class="{{ f.estilo }}"><td style="white-space:pre">{{ f.concepto }}</td><td class="n">{{ f.actual|pesos }}</td><td class="n">{{ f.anterior|pesos }}</td>
+      <td class="n">{{ f.variacion|pesos }}</td><td class="n">{{ f.variacion_pct|pct1 }}</td><td class="n">{{ f.vertical_actual|pct1 }}</td><td class="n">{{ f.vertical_anterior|pct1 }}</td></tr>
+    {% else %}<tr><td colspan="7" class="vacio">Sin movimientos en ninguno de los dos periodos.</td></tr>{% endfor %}
+  </table>
+</div>
+{% endblock %}

@@ -3,7 +3,9 @@
 {% block contenido %}
 <div class="encabezado">
   <div><h1>Cartera por cobrar</h1><p class="sub">Saldos por cliente según días de vencimiento, al {{ corte|fecha_larga }}. Los saldos ya descuentan reteIVA, notas crédito y abonos.</p></div>
-  <div class="acciones"><a class="btn" href="?corte={{ corte.isoformat() }}&xlsx=1">Exportar a Excel</a></div>
+  <div class="acciones"><a class="btn" href="?corte={{ corte.isoformat() }}&xlsx=1">Exportar a Excel</a>
+    {% if correo_activo %}<form method="post" action="/cartera/recordatorios?corte={{ corte.isoformat() }}" style="display:inline"><button class="btn" data-espera="Enviando…" data-confirmar="¿Enviar el estado de cuenta por correo a todos los clientes con facturas vencidas?">Enviar recordatorios a los vencidos</button></form>{% endif %}
+    <a class="btn" href="/informes/cuentas-por-pagar">Cuentas por pagar</a></div>
 </div>
 <form class="filtros"><div><label>Fecha de corte</label><input type="date" name="corte" value="{{ corte.isoformat() }}"></div><button>Ver</button></form>
 <div class="tarjeta tabla-scroll">

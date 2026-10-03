@@ -5,7 +5,7 @@ from datetime import datetime
 
 from . import correo, respaldo, vigilancia
 
-ESTADO = {"ultima_carpeta": None, "ultimo_correo": None, "errores": []}
+ESTADO = {"ultima_carpeta": None, "ultimo_correo": None, "ultimo_resumen": None, "errores": []}
 
 
 def _registrar_error(texto):
@@ -49,6 +49,56 @@ def ciclo_respaldo(session_factory):
         s.close()
 
 
+def ciclo_resumen(session_factory):
+    """El primer día de cada mes (o la primera vez que se abra el programa después) envía el resumen del mes anterior."""
+    from . import contab
+    s = session_factory()
+    try:
+        if contab.config(s, "resumen_mensual", "no") != "si" or not correo.configuracion(s)["activo"]:
+            return
+        hoy = datetime.now().date()
+        anio, mes = (hoy.year - 1, 12) if hoy.month == 1 else (hoy.year, hoy.month - 1)
+        marca = f"{anio}-{mes:02d}"
+        if contab.config(s, "ultimo_resumen", "") == marca:
+            return
+        enviar_resumen(s, anio, mes)
+        contab.set_config(s, "ultimo_resumen", marca)
+        s.commit()
+        ESTADO["ultimo_resumen"] = datetime.now()
+    except Exception as e:  # noqa: BLE001
+        _registrar_error(f"resumen mensual: {e}")
+    finally:
+        s.close()
+
+
+def texto_resumen(session, anio, mes) -> str:
+    from . import contab, informes
+    from .formato import pesos
+    r = informes.resumen_mensual(session, anio, mes)
+    nombre = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre",
+              "noviembre", "diciembre"][mes - 1]
+    emp = contab.config(session, "empresa_nombre", "")
+    return (f"Resumen de {emp} - {nombre} de {anio}\n\n"
+            f"Ingresos del mes (sin IVA): {pesos(r.ingresos)}\n"
+            f"Gastos del mes: {pesos(r.gastos)}\n"
+            f"Resultado del mes: {pesos(r.ingresos - r.gastos)}\n"
+            f"Recaudado de clientes: {pesos(r.recaudado)}\n\n"
+            f"Cartera por cobrar al cierre: {pesos(r.cartera)} (vencida: {pesos(r.cartera_vencida)})\n"
+            f"Cuentas por pagar a proveedores: {pesos(r.por_pagar)}\n"
+            f"Caja y bancos: {pesos(r.efectivo)}\n"
+            f"Recibo 2593 estimado del bimestre en curso: {pesos(r.simple_estimado)}\n\n"
+            "Generado automáticamente por el programa de contabilidad.")
+
+
+def enviar_resumen(session, anio, mes):
+    from . import contab
+    destino = contab.config(session, "resumen_correo", "") or contab.config(session, "empresa_email", "") \
+        or correo.configuracion(session)["correo_usuario"]
+    emp = contab.config(session, "empresa_nombre", "")
+    correo.enviar(session, destino, f"Resumen mensual {anio}-{mes:02d} · {emp}", texto_resumen(session, anio, mes))
+    return destino
+
+
 def iniciar(session_factory, minutos_carpeta=2, minutos_correo=15):
     def bucle():
         ultimo_correo = 0.0
@@ -61,6 +111,7 @@ def iniciar(session_factory, minutos_carpeta=2, minutos_correo=15):
                 ultimo_correo = ahora
             if ahora - ultimo_respaldo >= 3600:
                 ciclo_respaldo(session_factory)
+                ciclo_resumen(session_factory)
                 ultimo_respaldo = ahora
             time.sleep(minutos_carpeta * 60)
 

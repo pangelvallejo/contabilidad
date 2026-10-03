@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block titulo %}Informe de conciliación{% endblock %}
+{% block contenido %}
+<div class="encabezado">
+  <div><h1>Informe de conciliación bancaria: {{ banco.nombre }}</h1><p class="sub">Al {{ corte|fecha_larga }}. Explica la diferencia entre el saldo del extracto y el de la contabilidad.</p></div>
+  <div class="acciones"><a class="btn" href="?banco={{ banco.id }}&corte={{ corte }}&saldo_extracto={{ saldo_txt }}&pdf=1">PDF</a><a class="btn" href="/bancos/conciliacion?banco={{ banco.id }}">Conciliar movimientos</a></div>
+</div>
+<form class="filtros">
+  <div><label>Banco</label><select name="banco">{% for b in bancos %}<option value="{{ b.id }}" {{ 'selected' if b.id == banco.id }}>{{ b.nombre }}</option>{% endfor %}</select></div>
+  <div><label>Fecha de corte</label><input type="date" name="corte" value="{{ corte }}"></div>
+  <div><label>Saldo según el extracto</label><input class="n" name="saldo_extracto" value="{{ saldo_txt }}" placeholder="del extracto del banco"></div>
+  <button>Ver</button>
+</form>
+{% if not inf.tiene_extracto %}<p class="mensaje info">Este banco no tiene extractos importados: todo lo registrado en libros aparece como "no en el extracto". Importe el extracto en Conciliación bancaria.</p>{% endif %}
+<div class="tarjeta" style="max-width:900px">
+  <table class="liquidacion">
+    <tr class="res"><td>Saldo según libros (contabilidad)</td><td class="n">{{ inf.saldo_libros|pesos }}</td></tr>
+    <tr class="grupo"><td>(−) Registrado en libros y no en el extracto</td><td class="n">{{ inf.total_en_libros|pesos }}</td></tr>
+    {% for a, v in inf.en_libros %}<tr><td style="padding-left:24px">{{ a.fecha|fecha }} <a href="/contabilidad/asiento/{{ a.id }}">{{ a.tipo }}-{{ a.numero }}</a> {{ (a.descripcion or '')[:70] }}</td><td class="n">{{ v|pesos }}</td></tr>{% endfor %}
+    <tr class="grupo"><td>(+) En el extracto y pendiente de registrar</td><td class="n">{{ inf.total_pendientes|pesos }}</td></tr>
+    {% for m in inf.pendientes %}<tr><td style="padding-left:24px">{{ m.fecha|fecha }} {{ m.descripcion[:70] }}</td><td class="n">{{ m.valor|pesos }}</td></tr>{% endfor %}
+    <tr class="res"><td>Saldo que debe mostrar el extracto</td><td class="n">{{ inf.extracto_esperado|pesos }}</td></tr>
+    {% if inf.saldo_extracto is not none %}
+    <tr><td>Saldo según el extracto</td><td class="n">{{ inf.saldo_extracto|pesos }}</td></tr>
+    <tr class="res"><td>Diferencia sin explicar</td><td class="n" style="color:{{ 'var(--ok)' if inf.diferencia == 0 else 'var(--crit)' }}">{{ inf.diferencia|pesos }}</td></tr>
+    {% endif %}
+  </table>
+  <p class="nota">Si la diferencia no es cero, falta registrar o conciliar algo: revise las partidas listadas. Las líneas "en libros y no en el extracto" son movimientos contabilizados que el banco aún no refleja (o que no se han vinculado en la conciliación).</p>
+</div>
+{% endblock %}

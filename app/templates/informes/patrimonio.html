@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block titulo %}Cambios en el patrimonio{% endblock %}
+{% block contenido %}
+<h1>Estado de cambios en el patrimonio</h1>
+<p class="sub">Año {{ anio }}: cómo cambió cada cuenta del patrimonio durante el año.</p>
+<div class="acciones"><a class="btn" href="?anio={{ anio }}&pdf=1">Descargar PDF</a></div>
+<form class="filtros"><div><label>Año</label><input type="number" name="anio" value="{{ anio }}" style="width:90px"></div><button>Ver</button></form>
+<div class="tarjeta tabla-scroll">
+  <table>
+    <tr><th>Cuenta</th><th class="n">Saldo inicial</th><th class="n">Aumentos</th><th class="n">Disminuciones</th><th class="n">Saldo final</th></tr>
+    {% for f in filas %}<tr><td>{{ f.cuenta }}</td><td class="n">{{ f.inicial|pesos }}</td><td class="n">{{ f.aumentos|pesos }}</td><td class="n">{{ f.disminuciones|pesos }}</td><td class="n">{{ f.final|pesos }}</td></tr>{% endfor %}
+    <tr class="total"><td>Total patrimonio</td><td class="n">{{ total.inicial|pesos }}</td><td class="n">{{ total.aumentos|pesos }}</td><td class="n">{{ total.disminuciones|pesos }}</td><td class="n">{{ total.final|pesos }}</td></tr>
+  </table>
+  <p class="nota">El resultado del ejercicio es la utilidad (o pérdida) del año según el estado de resultados; con el cierre del año pasa a utilidades o pérdidas acumuladas.</p>
+</div>
+{% endblock %}

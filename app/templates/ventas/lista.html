@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% block titulo %}Facturas de venta{% endblock %}
 {% block contenido %}
+{% if request.args.get("asunto") %}<p class="mensaje info">Mostrando solo las facturas del asunto seleccionado. <a href="/ventas">Ver todas</a> · <a href="/informes/asuntos">Asuntos</a></p>{% endif %}
 <div class="encabezado">
   <div><h1>Facturas de venta {{ anio }}</h1><p class="sub">Facturas, notas crédito y notas débito emitidas.</p></div>
   <div class="acciones">

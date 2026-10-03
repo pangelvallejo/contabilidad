@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block titulo %}Indicadores{% endblock %}
+{% block contenido %}
+<h1>Indicadores financieros</h1>
+<p class="sub">Año {{ anio }} al {{ corte|fecha_larga }}. Pase el cursor sobre cada indicador para ver cómo se calcula.</p>
+<form class="filtros"><div><label>Año</label><input type="number" name="anio" value="{{ anio }}" style="width:90px"></div><div><label>Corte</label><input type="date" name="corte" value="{{ corte }}"></div><button>Ver</button></form>
+{% for grupo, items in grupos %}
+<div class="tarjeta"><h2>{{ grupo }}</h2>
+  <div class="rejilla k4">
+    {% for i in items %}
+    <div class="kpi" title="{{ i.ayuda }}"><div class="etq">{{ i.nombre }}</div>
+      <div class="val">{% if i.valor is none %}—{% elif i.formato == 'pct' %}{{ i.valor|pct1 }}{% elif i.formato == 'pesos' %}{{ i.valor|pesos }}{% elif i.formato == 'dias' %}{{ i.valor }} días{% else %}{{ i.valor }}{% endif %}</div>
+      <div class="det">{{ i.ayuda }}</div></div>
+    {% endfor %}
+  </div>
+</div>
+{% endfor %}
+{% endblock %}

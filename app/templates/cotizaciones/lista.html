@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block titulo %}Cotizaciones{% endblock %}
+{% block contenido %}
+<div class="encabezado">
+  <div><h1>Cotizaciones y propuestas de honorarios {{ anio }}</h1><p class="sub">Prepare la propuesta, envíela en PDF y, cuando el cliente acepte, facture en el software de la DIAN y márquela como facturada.</p></div>
+  <div class="acciones"><a class="btn primario" href="/cotizaciones/nueva">Nueva cotización</a></div>
+</div>
+<div class="rejilla k4" style="margin-bottom:18px">
+  {% for k, n in estados.items() %}{% set r = resumen.get(k) %}
+  <a class="kpi" href="?anio={{ anio }}&estado={{ k }}" style="text-decoration:none;color:inherit"><div class="etq">{{ n }}</div><div class="val">{{ r[0] if r else 0 }}</div><div class="det">{{ r[1]|pesos if r else '' }}</div></a>
+  {% endfor %}
+</div>
+<form class="filtros"><div><label>Año</label><input type="number" name="anio" value="{{ anio }}" style="width:90px"></div>
+  <div><label>Estado</label><select name="estado"><option value="">Todos</option>{% for k, n in estados.items() %}<option value="{{ k }}" {{ 'selected' if estado == k }}>{{ n }}</option>{% endfor %}</select></div><button>Ver</button></form>
+<div class="tarjeta tabla-scroll">
+  {% if cots %}
+  <table>
+    <tr><th>Número</th><th>Fecha</th><th>Cliente</th><th>Título</th><th>Estado</th><th>Vence</th><th class="n">Honorarios</th><th class="n">Total con IVA</th><th></th></tr>
+    {% for c in cots %}
+    <tr><td><a href="/cotizaciones/{{ c.id }}">{{ c.numero }}</a></td><td>{{ c.fecha|fecha }}</td><td>{{ c.cliente.nombre }}</td><td>{{ c.titulo[:60] }}</td>
+      <td><span class="etiqueta {{ {'borrador': 'Nota', 'enviada': 'adv', 'aceptada': 'ok', 'rechazada': 'crit', 'facturada': 'ok'}[c.estado] }}">{{ estados[c.estado] }}</span></td>
+      <td>{{ c.vence|fecha }}{% if c.estado == 'enviada' and c.vence < hoy %} <span class="etiqueta crit">vencida</span>{% endif %}</td>
+      <td class="n">{{ c.subtotal|pesos }}</td><td class="n">{{ c.total|pesos }}</td>
+      <td><a class="btn peq" href="/cotizaciones/{{ c.id }}/pdf">PDF</a></td></tr>
+    {% endfor %}
+  </table>
+  {% else %}<p class="vacio">Sin cotizaciones en {{ anio }}.</p>{% endif %}
+</div>
+{% endblock %}

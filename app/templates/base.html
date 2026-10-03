@@ -22,12 +22,14 @@
     <a href="/recaudos" class="{{ 'activo' if ruta.startswith('/recaudos') }}">Recaudos</a>
     <a href="/cartera" class="{{ 'activo' if ruta.startswith('/cartera') }}">Cartera por cobrar</a>
     <a href="/certificados" class="{{ 'activo' if ruta.startswith('/certificados') }}">Certificados reteIVA</a>
+    <a href="/cotizaciones/" class="{{ 'activo' if ruta.startswith('/cotizaciones') }}">Cotizaciones</a>
+    <a href="/informes/asuntos" class="{{ 'activo' if ruta.startswith('/informes/asuntos') }}">Asuntos y casos</a>
     <h4>Gastos</h4>
     <a href="/gastos" class="{{ 'activo' if ruta == '/gastos' or ruta.startswith('/gastos/') and ruta not in ('/gastos/importar', '/gastos/nuevo', '/gastos/revisar') }}">Gastos</a>
     <a href="/gastos/importar" class="{{ 'activo' if ruta == '/gastos/importar' }}">Importar XML de proveedores</a>
     <a href="/gastos/nuevo" class="{{ 'activo' if ruta == '/gastos/nuevo' }}">Registrar gasto</a>
     <a href="/gastos/revisar" class="{{ 'activo' if ruta == '/gastos/revisar' }}">Revisar importados</a>
-    <a href="/gastos?por_pagar=1">Cuentas por pagar</a>
+    <a href="/informes/cuentas-por-pagar" class="{{ 'activo' if ruta.startswith('/informes/cuentas-por-pagar') }}">Cuentas por pagar</a>
     <h4>Impuestos</h4>
     <a href="/impuestos/iva" class="{{ 'activo' if ruta.startswith('/impuestos/iva') }}">IVA por bimestre</a>
     <a href="/impuestos/simple" class="{{ 'activo' if ruta.startswith('/impuestos/simple') }}">Recibo 2593 (SIMPLE + IVA)</a>
@@ -40,9 +42,15 @@
     <a href="/bancos/" class="{{ 'activo' if ruta == '/bancos/' or ruta == '/bancos/movimientos' }}">Bancos y saldos</a>
     <a href="/bancos/ingresos" class="{{ 'activo' if ruta.startswith('/bancos/ingresos') }}">Ingresos sin factura</a>
     <a href="/bancos/conciliacion" class="{{ 'activo' if ruta.startswith('/bancos/conciliacion') }}">Conciliación bancaria</a>
+    <h4>Informes</h4>
+    <a href="/informes/" class="{{ 'activo' if ruta == '/informes/' }}">Todos los informes</a>
+    <a href="/informes/indicadores" class="{{ 'activo' if ruta.startswith('/informes/indicadores') }}">Indicadores</a>
+    <a href="/informes/rentabilidad" class="{{ 'activo' if ruta.startswith('/informes/rentabilidad') }}">Rentabilidad por cliente</a>
+    <a href="/informes/presupuesto" class="{{ 'activo' if ruta.startswith('/informes/presupuesto') }}">Presupuesto vs. real</a>
     <h4>Contabilidad</h4>
     <a href="/contabilidad/resultados" class="{{ 'activo' if ruta.startswith('/contabilidad/resultados') }}">Estado de resultados</a>
     <a href="/contabilidad/balance" class="{{ 'activo' if ruta == '/contabilidad/balance' }}">Balance general</a>
+    <a href="/informes/flujo-efectivo" class="{{ 'activo' if ruta.startswith('/informes/flujo-efectivo') }}">Flujo de efectivo</a>
     <a href="/contabilidad/balance-prueba" class="{{ 'activo' if ruta.startswith('/contabilidad/balance-prueba') }}">Balance de prueba</a>
     <a href="/contabilidad/diario" class="{{ 'activo' if ruta.startswith('/contabilidad/diario') }}">Libro diario</a>
     <a href="/contabilidad/mayor" class="{{ 'activo' if ruta.startswith('/contabilidad/mayor') }}">Libro mayor</a>

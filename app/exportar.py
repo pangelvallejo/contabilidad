@@ -208,3 +208,56 @@ def recibo_de_caja_pdf(empresa, rec) -> bytes:
     pdf.multi_cell(0, 4, _latin1("Este recibo acredita el pago recibido. La factura electrónica correspondiente fue "
                                  "emitida a través de la DIAN."))
     return bytes(pdf.output())
+
+
+def cotizacion_pdf(empresa, cot) -> bytes:
+    """Propuesta de honorarios para el cliente, con las líneas, IVA, total y condiciones."""
+    pdf = _Informe(empresa, f"Propuesta de honorarios {cot.numero}",
+                   f"Fecha: {fecha(cot.fecha)} · válida hasta el {fecha(cot.vence)}")
+    pdf.add_page()
+    pdf.set_font("helvetica", "", 10)
+    pdf.cell(0, 6, _latin1(f"Para: {cot.cliente.nombre}   NIT {cot.cliente.nit_completo}"), new_x="LMARGIN", new_y="NEXT")
+    if cot.cliente.email or cot.cliente.direccion:
+        pdf.cell(0, 6, _latin1(f"{cot.cliente.direccion or ''}  {cot.cliente.email or ''}"), new_x="LMARGIN", new_y="NEXT")
+    if cot.asunto:
+        pdf.cell(0, 6, _latin1(f"Asunto: {cot.asunto.nombre}"), new_x="LMARGIN", new_y="NEXT")
+    pdf.ln(2)
+    pdf.set_font("helvetica", "B", 11)
+    pdf.multi_cell(0, 6, _latin1(cot.titulo))
+    pdf.ln(2)
+    columnas = [("Concepto", 115, "L"), ("Honorarios", 30, "R"), ("IVA", 25, "R"), ("Total", 25, "R")]
+    pdf.set_font("helvetica", "B", 9)
+    pdf.set_fill_color(31, 58, 95)
+    pdf.set_text_color(255)
+    for t, w, al in columnas:
+        pdf.cell(w, 6, t, align=al, fill=True)
+    pdf.ln()
+    pdf.set_text_color(0)
+    pdf.set_font("helvetica", "", 9)
+    for l in cot.lineas:
+        y = pdf.get_y()
+        pdf.multi_cell(115, 5, _latin1(l.descripcion), new_x="RIGHT", new_y="TOP")
+        alto = max(pdf.get_y() - y, 5)
+        pdf.set_xy(pdf.l_margin + 115, y)
+        pdf.cell(30, alto, _latin1(pesos(l.valor)), align="R")
+        pdf.cell(25, alto, _latin1(pesos(l.iva)), align="R")
+        pdf.cell(25, alto, _latin1(pesos(l.valor + l.iva)), align="R")
+        pdf.ln(alto)
+    pdf.ln(2)
+    pdf.set_font("helvetica", "B", 10)
+    for etiqueta, v in (("Subtotal honorarios", cot.subtotal), ("IVA 19 %", cot.iva), ("TOTAL", cot.total)):
+        pdf.cell(145, 6, etiqueta, align="R")
+        pdf.cell(50, 6, _latin1(pesos(v)), align="R")
+        pdf.ln()
+    if cot.condiciones:
+        pdf.ln(4)
+        pdf.set_font("helvetica", "B", 9)
+        pdf.cell(0, 5, "Condiciones", new_x="LMARGIN", new_y="NEXT")
+        pdf.set_font("helvetica", "", 9)
+        pdf.multi_cell(0, 4.5, _latin1(cot.condiciones))
+    pdf.ln(6)
+    pdf.set_font("helvetica", "", 8)
+    pdf.multi_cell(0, 4, _latin1("Los honorarios se facturarán electrónicamente a través de la DIAN una vez aceptada "
+                                 "esta propuesta. Régimen SIMPLE de Tributación: no practicar retención en la fuente "
+                                 "a título de renta (art. 911 E.T.)."))
+    return bytes(pdf.output())

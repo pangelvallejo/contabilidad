@@ -19,7 +19,8 @@ CAMPOS_EMPRESA = ["empresa_nombre", "empresa_nit", "empresa_dv", "empresa_direcc
                   "empresa_cod_municipio", "empresa_email", "empresa_telefono", "empresa_ciiu", "simple_base",
                   "carpeta_respaldo", "respaldos_a_conservar", "periodo_bloqueado_hasta", "carpeta_vigilada",
                   "correo_servidor", "correo_usuario", "correo_clave", "correo_carpeta", "correo_dias", "correo_filtro",
-                  "iva_arrastre_saldo_favor", "acceso_red", "clave_acceso", "actualizaciones_repo", "github_token"]
+                  "iva_arrastre_saldo_favor", "acceso_red", "clave_acceso", "actualizaciones_repo", "github_token",
+                  "correo_smtp", "correo_copia", "resumen_mensual", "resumen_correo", "ica_por_mil"]
 
 
 SECRETOS = {"correo_clave", "github_token", "clave_acceso"}
@@ -37,7 +38,7 @@ def inicio():
     s = Session()
     if request.method == "POST":
         accion = (request.form.getlist("accion") or [""])[-1]  # el botón pulsado va después del campo oculto
-        if accion in ("empresa", "probar_correo", "revisar_correo", "revisar_carpeta"):
+        if accion in ("empresa", "probar_correo", "revisar_correo", "revisar_carpeta", "enviar_resumen"):
             # Los botones de prueba también guardan lo escrito: se prueba lo que el usuario ve en pantalla.
             for campo in CAMPOS_EMPRESA:
                 if campo in request.form:
@@ -114,6 +115,15 @@ def inicio():
                 flash(f"Correo revisado: {res.revisados} mensaje(s) nuevo(s), {res.importados} documento(s) importado(s).", "ok")
                 for asunto, lineas in res.mensajes:
                     flash(f"{asunto}: " + " | ".join(lineas), "info")
+        elif accion == "enviar_resumen":
+            try:
+                from .. import tareas
+                hoy = date.today()
+                anio, mes = (hoy.year - 1, 12) if hoy.month == 1 else (hoy.year, hoy.month - 1)
+                destino = tareas.enviar_resumen(s, anio, mes)
+                flash(f"Resumen de {anio}-{mes:02d} enviado a {destino}.", "ok")
+            except Exception as e:  # noqa: BLE001
+                flash(f"No se pudo enviar el resumen: {e}", "error")
         elif accion == "revisar_carpeta":
             res = vigilancia.revisar(s)
             if not res:

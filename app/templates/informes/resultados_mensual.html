@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block titulo %}Resultados mes a mes{% endblock %}
+{% block contenido %}
+<h1>Estado de resultados mes a mes</h1>
+<p class="sub">Año {{ anio }}. Útil para ver la estacionalidad de los honorarios y los meses de más gasto.</p>
+<div class="acciones"><a class="btn" href="?anio={{ anio }}&xlsx=1">Excel</a></div>
+<form class="filtros"><div><label>Año</label><input type="number" name="anio" value="{{ anio }}" style="width:90px"></div><button>Ver</button></form>
+<div class="tarjeta tabla-scroll">
+  <table style="font-size:12.5px">
+    <tr><th>Concepto</th>{% for m in meses %}<th class="n">{{ m }}</th>{% endfor %}<th class="n">Total</th></tr>
+    {% for f in filas %}
+    <tr class="{{ f.estilo }}"><td style="white-space:pre">{{ f.concepto }}</td>{% for v in f.meses %}<td class="n">{{ v|pesos if v else '' }}</td>{% endfor %}<td class="n">{{ f.total|pesos }}</td></tr>
+    {% else %}<tr><td colspan="14" class="vacio">Sin movimientos en {{ anio }}.</td></tr>{% endfor %}
+  </table>
+</div>
+{% endblock %}

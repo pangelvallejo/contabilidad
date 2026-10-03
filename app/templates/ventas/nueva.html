@@ -16,6 +16,7 @@
       <p class="nota"><a href="/terceros/nuevo?tipo=cliente&volver=/ventas/nueva">Crear cliente nuevo</a></p></div>
     <div id="ref" style="{{ '' if form.get('tipo') == 'NC' else 'display:none' }}" class="campo ancho"><label>Factura que afecta la nota crédito</label><select name="referencia_id">
       <option value="">—</option>{% for f in facturas %}<option value="{{ f.id }}" {{ 'selected' if form.get('referencia_id') == f.id|string }}>{{ f.numero }} · {{ f.cliente.nombre }} · {{ f.total|pesos }}</option>{% endfor %}</select></div>
+    <div class="campo ancho"><label>Asunto / caso (opcional)</label><select name="asunto_id"><option value="">— ninguno —</option>{% for a in asuntos %}<option value="{{ a.id }}" data-cliente="{{ a.cliente_id }}" {{ 'selected' if form.get('asunto_id') == a.id|string }}>{{ a.cliente.nombre }} · {{ a.nombre }}</option>{% endfor %}</select></div>
     <div class="campo ancho"><label>Descripción del servicio</label><input name="descripcion" value="{{ form.get('descripcion') or 'Honorarios profesionales' }}"></div>
     <div><label>Base (antes de IVA)</label><input class="n" name="base" id="base" value="{{ form.get('base', '') }}" required inputmode="decimal"></div>
     <div><label>IVA {{ (tarifa_iva*100)|int }}%</label><input class="n" name="iva" id="iva" value="{{ form.get('iva', '') }}" inputmode="decimal"></div>

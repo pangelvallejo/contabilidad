@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block titulo %}Gastos por proveedor{% endblock %}
+{% block contenido %}
+<div class="encabezado">
+  <div><h1>Gastos por proveedor</h1><p class="sub">{{ desde|fecha }} a {{ hasta|fecha }}. El gasto excluye el IVA descontable (que no es costo).</p></div>
+  <div class="acciones"><a class="btn" href="?desde={{ desde }}&hasta={{ hasta }}&xlsx=1">Excel</a></div>
+</div>
+<form class="filtros">{% include "contabilidad/_periodo.html" %}<button>Ver</button></form>
+<div class="tarjeta tabla-scroll">
+  {% if filas %}
+  <table>
+    <tr><th>Proveedor</th><th>NIT</th><th class="n">Documentos</th><th class="n">Gasto</th><th class="n">IVA descontable</th><th class="n">% del total</th><th style="width:30%"></th></tr>
+    {% for f in filas %}
+    <tr><td>{% if f.proveedor %}<a href="/informes/proveedor/{{ f.proveedor.id }}">{{ f.proveedor.nombre }}</a>{% else %}Sin proveedor (recibos menores){% endif %}</td><td>{{ f.proveedor.nit if f.proveedor else '' }}</td>
+      <td class="n">{{ f.n }}</td><td class="n">{{ f.total|pesos }}</td><td class="n">{{ f.iva|pesos if f.iva else '' }}</td><td class="n">{{ f.pct|pct1 }}</td>
+      <td><div class="hbar" style="grid-template-columns:1fr"><div class="pista"><div class="relleno" style="width:{{ (f.pct or 0)|float }}%"></div></div></div></td></tr>
+    {% endfor %}
+    <tr class="total"><td colspan="3">Total</td><td class="n">{{ total|pesos }}</td><td colspan="3"></td></tr>
+  </table>
+  {% else %}<p class="vacio">Sin gastos en el periodo.</p>{% endif %}
+</div>
+{% endblock %}
