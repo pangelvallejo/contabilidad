@@ -3,7 +3,7 @@ from datetime import date, timedelta
 
 from flask import Blueprint, render_template
 
-from .. import cartera, impuestos, reportes
+from .. import bancos, cartera, impuestos, reportes
 from ..db import Session
 from ..models import CERO, DocumentoVenta, Gasto, Recaudo, Tercero, Vencimiento
 
@@ -80,10 +80,12 @@ def tablero():
     serie = reportes.serie_mensual(s, hoy.year)
     por_categoria = reportes.gastos_por_categoria(s, inicio_anio, hoy)
     gastos_mes = sum((v for _, v in reportes.gastos_por_categoria(s, inicio_mes, hoy)), CERO)
+    saldos_bancos, total_bancos = bancos.saldos_bancos(s, hoy)
 
     return render_template(
         "tablero.html", ventas_mes=ventas_mes, ventas_anio=ventas_anio, recaudado_mes=recaudado_mes,
         filas_cartera=filas_cartera[:5], tot_cartera=tot_cartera, edades=cartera.EDADES, recibo=recibo,
         serie=[x for x in serie if x[0] <= hoy.month], por_categoria=por_categoria[:8], gastos_mes=gastos_mes,
         alertas=alertas(s, hoy), nombre_bimestre=impuestos.nombre_bimestre(bim),
-        proyeccion=impuestos.proyeccion_anual(s, hoy.year, hoy))
+        proyeccion=impuestos.proyeccion_anual(s, hoy.year, hoy),
+        saldos_bancos=[f for f in saldos_bancos if f["banco"].activo], total_bancos=total_bancos)

@@ -36,7 +36,10 @@
     <a href="/impuestos/exogena" class="{{ 'activo' if ruta.startswith('/impuestos/exogena') }}">Exógena</a>
     <a href="/impuestos/calendario" class="{{ 'activo' if ruta.startswith('/impuestos/calendario') }}">Calendario tributario</a>
     <a href="/flujo-caja" class="{{ 'activo' if ruta == '/flujo-caja' }}">Flujo de caja y proyección</a>
-    <a href="/bancos/conciliacion" class="{{ 'activo' if ruta.startswith('/bancos') }}">Conciliación bancaria</a>
+    <h4>Bancos</h4>
+    <a href="/bancos/" class="{{ 'activo' if ruta == '/bancos/' or ruta == '/bancos/movimientos' }}">Bancos y saldos</a>
+    <a href="/bancos/ingresos" class="{{ 'activo' if ruta.startswith('/bancos/ingresos') }}">Ingresos sin factura</a>
+    <a href="/bancos/conciliacion" class="{{ 'activo' if ruta.startswith('/bancos/conciliacion') }}">Conciliación bancaria</a>
     <h4>Contabilidad</h4>
     <a href="/contabilidad/resultados" class="{{ 'activo' if ruta.startswith('/contabilidad/resultados') }}">Estado de resultados</a>
     <a href="/contabilidad/balance" class="{{ 'activo' if ruta == '/contabilidad/balance' }}">Balance general</a>

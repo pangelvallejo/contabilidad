@@ -78,6 +78,7 @@ PUC = [
     ("425050", "Reintegro de costos y gastos", "C"),
     ("4295", "Diversos", "C"),
     ("429581", "Ajuste al peso", "C"),
+    ("429595", "Otros ingresos diversos", "C"),
     ("5", "GASTOS", "D"),
     ("51", "Operacionales de administración", "D"),
     ("5110", "Honorarios", "D"),

@@ -86,7 +86,10 @@ pruebas, construye el paquete portable con Windows y lo adjunta al lanzamiento
 4. **Gasto sin factura electrónica** (taxi, parqueadero, cuenta de cobro) → *Registrar gasto* y adjunte
    la foto. Para los que se repiten cada mes, márquelos como recurrentes o use *Duplicar*.
 5. **Fin de mes** → importe el extracto en *Conciliación bancaria* y registre con un clic 4x1000 y
-   comisiones. Mire *Flujo de caja y proyección*.
+   comisiones. En *Bancos y saldos* vea cuánto hay en cada cuenta y el detalle de movimientos. Los
+   intereses que abona el banco u otros ingresos sin factura se registran en *Ingresos sin factura*
+   (o con el botón *Otro ingreso* de la conciliación): entran a los ingresos brutos del SIMPLE, no
+   generan IVA y van a la exógena con el tercero que indique. Mire *Flujo de caja y proyección*.
 6. **Antes del vencimiento del 2593** → *Recibo 2593*: copie los valores al portal de la DIAN, pague y
    registre el pago; el bimestre queda bloqueado contra cambios accidentales.
 7. **Cierre del año** → *Declaración SIMPLE (F260)*, *Declaración IVA (F300)*, *Exógena* y

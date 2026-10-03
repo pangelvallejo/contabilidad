@@ -215,6 +215,32 @@ class AplicacionRecaudo(Base):
     documento: Mapped[DocumentoVenta] = relationship(back_populates="aplicaciones")
 
 
+class OtroIngreso(Base):
+    """Ingreso sin factura de venta: intereses de cuentas bancarias, reintegros, ingresos diversos.
+    Entra directo al banco; si el banco descontó GMF u otros cargos, se registran como gasto bancario."""
+    __tablename__ = "otros_ingresos"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    fecha: Mapped[date] = mapped_column(Date, index=True)
+    banco_id: Mapped[int] = mapped_column(ForeignKey("bancos.id"))
+    cuenta: Mapped[str] = mapped_column(ForeignKey("cuentas.codigo"), default="421005")
+    concepto: Mapped[str] = mapped_column(String(160))
+    valor: Mapped[Decimal] = mapped_column(Dinero)            # ingreso bruto (lo que abona el banco)
+    descuentos: Mapped[Decimal] = mapped_column(Dinero, default=CERO)  # GMF u otros cargos descontados
+    tercero_id: Mapped[int | None] = mapped_column(ForeignKey("terceros.id"))  # quien paga (el banco), para la exógena
+    referencia: Mapped[str | None] = mapped_column(String(80))
+    notas: Mapped[str | None] = mapped_column(Text)
+    soporte_archivo: Mapped[str | None] = mapped_column(String(250))
+    creado: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+
+    banco: Mapped[Banco] = relationship()
+    tercero: Mapped[Tercero | None] = relationship()
+    cuenta_rel: Mapped[Cuenta] = relationship()
+
+    @property
+    def neto(self):
+        return self.valor - self.descuentos
+
+
 TIPOS_SOPORTE = {
     "FE": "Factura electrónica",
     "NC": "Nota crédito de proveedor",

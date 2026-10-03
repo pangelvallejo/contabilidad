@@ -48,8 +48,8 @@
           <select name="cliente_id"><option value="">Cliente…</option>{% for c in clientes %}<option value="{{ c.id }}">{{ c.nombre }}</option>{% endfor %}</select>
           <label class="check" title="Tarjeta o pasarela"><input type="checkbox" name="medio_electronico"> electrónico</label>
           <button class="peq" name="accion" value="recaudo" title="Crea el recaudo y lo aplica a las facturas más antiguas">Crear recaudo</button>
-          <select name="cuenta"><option value="421005">Rendimientos financieros</option><option value="425050">Reintegro de gastos</option><option value="235505">Dinero prestado por el socio (por pagar)</option></select>
-          <button class="peq" name="accion" value="ingreso">Otro ingreso</button>
+          <select name="cuenta"><option value="421005">Intereses / rendimientos</option><option value="425050">Reintegro de gastos</option><option value="429595">Otros ingresos diversos</option><option value="235505">Dinero prestado por el socio (por pagar)</option></select>
+          <button class="peq" name="accion" value="ingreso" title="Registra un ingreso sin factura (intereses, reintegros) o un préstamo del socio">Otro ingreso</button>
           {% endif %}
           <button class="peq" name="accion" value="ignorar" title="No corresponde a la contabilidad">Ignorar</button>
         </form>

@@ -140,7 +140,7 @@ def paquete():
     s = Session()
     desde, hasta = periodo()
     from sqlalchemy.orm import selectinload
-    from ..models import AplicacionRecaudo, DocumentoVenta, Gasto, Recaudo
+    from ..models import AplicacionRecaudo, DocumentoVenta, Gasto, OtroIngreso, Recaudo
     from .. import cartera, impuestos
     asientos = reportes.libro_diario(s, desde, hasta)
     bp_filas, td, tc = reportes.balance_de_prueba(s, desde, hasta)
@@ -153,6 +153,9 @@ def paquete():
     recaudos = (s.query(Recaudo).options(selectinload(Recaudo.cliente), selectinload(Recaudo.banco),
                                          selectinload(Recaudo.aplicaciones).selectinload(AplicacionRecaudo.documento))
                 .filter(Recaudo.fecha.between(desde, hasta)).order_by(Recaudo.fecha).all())
+    otros = (s.query(OtroIngreso).options(selectinload(OtroIngreso.banco), selectinload(OtroIngreso.tercero),
+                                          selectinload(OtroIngreso.cuenta_rel))
+             .filter(OtroIngreso.fecha.between(desde, hasta)).order_by(OtroIngreso.fecha).all())
     iva = impuestos.resumen_iva(s, desde, hasta)
     cart, _ = cartera.cartera_por_edades(s, hasta)
     hojas = {
@@ -180,6 +183,10 @@ def paquete():
         "Recaudos": (["Fecha", "Cliente", "Banco", "Valor", "Aplicado a"],
                      [[r.fecha, r.cliente.nombre, r.banco.nombre, r.valor,
                        ", ".join(f"{a.documento.numero} ({a.valor:,.0f})" for a in r.aplicaciones)] for r in recaudos]),
+        "Otros ingresos": (["Fecha", "Concepto", "Cuenta", "Banco", "Tercero", "NIT", "Valor", "Descuentos banco"],
+                           [[o.fecha, o.concepto, f"{o.cuenta} {o.cuenta_rel.nombre}", o.banco.nombre,
+                             o.tercero.nombre if o.tercero else "", o.tercero.nit if o.tercero else "", o.valor,
+                             o.descuentos] for o in otros]),
         "IVA": (["Concepto", "Valor"],
                 [["Ingresos gravados", iva.ingresos_gravados], ["IVA generado", iva.iva_generado_neto],
                  ["IVA descontable", iva.iva_descontable], ["ReteIVA", iva.reteiva], ["Neto", iva.neto]]),
