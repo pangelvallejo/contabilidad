@@ -223,12 +223,17 @@ def contabilizar_pago_impuesto(session, p):
     periodo = f"bimestre {p.bimestre} de {p.anio}" if p.bimestre else str(p.anio)
     desc = f"Formulario {p.formulario} {periodo}"
     if p.formulario == "2593":
-        # Si el año ya se causó (asiento simple:<año>) y el pago es posterior al cierre, cancela el pasivo.
-        causado = session.query(Asiento).filter_by(origen=f"simple:{p.anio}").first() is not None
-        cta_simple = CTA_SIMPLE_POR_PAGAR if causado and p.fecha.year > p.anio else CTA_ANTICIPO_SIMPLE
+        # El anticipo del bimestre 6 se paga en enero: ya es un pago del impuesto causado al cierre (pasivo),
+        # no un anticipo del año en curso.
+        cta_simple = CTA_SIMPLE_POR_PAGAR if p.fecha.year > p.anio else CTA_ANTICIPO_SIMPLE
         lineas = [(cta_simple, p.valor_simple, 0, None, "Anticipo SIMPLE"),
                   (CTA_IVA_PAGADO_2593, p.valor_iva, 0, None, "IVA bimestral"),
                   (p.banco.cuenta, 0, p.total, None, desc)]
+        if p.bimestre:
+            # La reteIVA que practicaron los clientes en el bimestre se aplica contra el IVA generado.
+            from .impuestos import resumen_iva_bimestre
+            rete = resumen_iva_bimestre(session, p.anio, p.bimestre).reteiva
+            lineas += [(CTA_IVA_GENERADO, rete, 0, None, "ReteIVA aplicada"), (CTA_RETEIVA, 0, rete, None, "ReteIVA aplicada")]
     else:  # saldo de declaración anual: 260 cancela SIMPLE por pagar; 300 cancela IVA
         cta = CTA_SIMPLE_POR_PAGAR if p.formulario == "260" else CTA_IVA_PAGADO_2593
         lineas = [(cta, p.total, 0, None, desc), (p.banco.cuenta, 0, p.total, None, desc)]

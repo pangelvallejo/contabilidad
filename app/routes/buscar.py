@@ -27,7 +27,7 @@ def buscar():
         f_gastos = [Gasto.numero.ilike(like), Gasto.descripcion.ilike(like), Gasto.cufe.ilike(like),
                     Tercero.nombre.ilike(like), Tercero.nit.like(like)]
         f_rec = [Recaudo.referencia.ilike(like), Tercero.nombre.ilike(like)]
-        if valor and valor > 0:
+        if valor is not None and valor.is_finite() and valor > 0:
             f_ventas += [DocumentoVenta.total == valor, DocumentoVenta.ingreso == valor]
             f_gastos += [Gasto.total == valor, Gasto.subtotal == valor]
             f_rec += [Recaudo.valor == valor]

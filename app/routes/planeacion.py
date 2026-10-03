@@ -23,7 +23,7 @@ def flujo_caja():
 def depreciaciones():
     s = Session()
     if request.method == "POST":
-        n, omitidos = planeacion.causar_depreciaciones(s)
+        n, omitidos = planeacion.causar_depreciaciones(s, forzar=True)
         flash(f"{n} asiento(s) de depreciación creados." if n else "No había depreciaciones pendientes.", "ok")
         if omitidos:
             flash(f"{omitidos} cuota(s) quedaron sin causar porque caen en un periodo bloqueado.", "advertencia")
@@ -36,7 +36,13 @@ def cierre():
     s = Session()
     anio = anio_arg() if request.args.get("anio") else date.today().year - 1
     if request.method == "POST":
-        anio = int(request.form["anio"])
+        try:
+            anio = int(request.form.get("anio", ""))
+            if not 2000 <= anio <= 2100:
+                raise ValueError
+        except ValueError:
+            flash("Año no válido.", "error")
+            return redirect(url_for("planeacion.cierre"))
         try:
             if request.form.get("accion") == "reabrir":
                 planeacion.reabrir_anio(s, anio)

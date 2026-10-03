@@ -22,7 +22,9 @@ def opciones_pago(s):
 def _contexto_form(s):
     return {"categorias": s.query(CategoriaGasto).filter_by(activa=True).order_by(CategoriaGasto.nombre).all(),
             "proveedores": s.query(Tercero).filter_by(es_proveedor=True).order_by(Tercero.nombre).all(),
-            "opciones_pago": opciones_pago(s), "tipos": TIPOS_SOPORTE}
+            "opciones_pago": opciones_pago(s), "tipos": TIPOS_SOPORTE,
+            "facturas_proveedor": s.query(Gasto).filter(Gasto.tipo_soporte != "NC", Gasto.proveedor_id.isnot(None))
+            .order_by(Gasto.fecha.desc()).limit(300).all()}
 
 
 @bp.route("/gastos")
@@ -92,6 +94,8 @@ def _proveedor_desde_form(s):
 
 def _llenar_gasto(s, g):
     g.tipo_soporte = request.form.get("tipo_soporte", "FE")
+    if g.tipo_soporte not in TIPOS_SOPORTE:
+        raise ValueError("Tipo de soporte no válido.")
     g.numero = request.form.get("numero", "").strip() or None
     g.cufe = request.form.get("cufe", "").strip() or None
     g.fecha = fecha_arg("fecha", date.today())
@@ -103,8 +107,15 @@ def _llenar_gasto(s, g):
     g.iva = dinero("iva")
     g.iva_descontable = check("iva_descontable")
     g.otros_impuestos = dinero("otros_impuestos")
+    if g.subtotal < 0 or g.iva < 0 or g.otros_impuestos < 0:
+        raise ValueError("Los valores no pueden ser negativos (una nota crédito se registra con su tipo de soporte).")
     g.total = g.subtotal + g.iva + g.otros_impuestos
     g.forma_pago = request.form.get("forma_pago", "contado")
+    if g.forma_pago not in ("contado", "credito"):
+        raise ValueError("Forma de pago no válida.")
+    if g.tipo_soporte == "NC":
+        ref = s.get(Gasto, request.form.get("referencia_id", type=int) or 0)
+        g.referencia = ref if ref is not None and ref.tipo_soporte != "NC" else None
     g.cuenta_pago = request.form.get("cuenta_pago") if g.forma_pago == "contado" else None
     g.notas = request.form.get("notas") or None
     g.recurrente = check("recurrente")
@@ -163,7 +174,7 @@ def revisar():
         ids = request.form.getlist("id")
         n = 0
         for gid in ids:
-            g = s.get(Gasto, int(gid))
+            g = s.get(Gasto, int(gid)) if str(gid).isdigit() else None
             if g is None or not request.form.get(f"ok_{gid}"):
                 continue
             try:
@@ -175,6 +186,8 @@ def revisar():
                 g.categoria_id = categoria.id
                 g.iva_descontable = request.form.get(f"iva_{gid}") == "on" and g.tipo_soporte in ("FE", "DS", "NC")
                 forma = request.form.get(f"forma_{gid}", g.forma_pago)
+                if forma not in ("contado", "credito"):
+                    raise ValueError("forma de pago no válida")
                 if forma == "contado" and g.pagos:
                     raise ValueError("tiene pagos registrados; elimínelos antes de marcarlo de contado")
                 g.forma_pago = forma
@@ -205,6 +218,8 @@ def detalle(id):
         accion = request.form.get("accion")
         try:
             if accion == "eliminar":
+                if g.notas_credito:
+                    raise ValueError("Tiene notas crédito asociadas; elimínelas primero.")
                 planeacion.borrar_depreciaciones(s, g.id)
                 bancos.liberar(s, "gasto", g.id)
                 for p in g.pagos:

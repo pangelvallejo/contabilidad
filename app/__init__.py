@@ -111,7 +111,7 @@ def create_app(datos_dir=None, respaldo_automatico=False):
     if respaldo_automatico:  # modo normal (no pruebas): depreciaciones del mes y tareas en segundo plano
         try:
             from .planeacion import causar_depreciaciones
-            causar_depreciaciones(Session())
+            causar_depreciaciones(Session(), forzar=True)  # automática, como la causación del impuesto
         except Exception as e:  # noqa: BLE001
             print(f"[depreciación] {e}")
         finally:

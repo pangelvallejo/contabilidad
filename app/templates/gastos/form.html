@@ -32,6 +32,9 @@
         <div><label>NIT / cédula (sin DV)</label><input name="nuevo_nit" value="{{ form.get('nuevo_nit', '') }}"></div>
         <div><label>Nombre o razón social</label><input name="nuevo_nombre" value="{{ form.get('nuevo_nombre', '') }}"></div>
       </div></div>
+    <div class="campo ancho" id="ref-nc" style="display:none"><label>Factura del proveedor que afecta la nota crédito</label>
+      <select name="referencia_id"><option value="">— sin asociar —</option>
+      {% for f in facturas_proveedor %}<option value="{{ f.id }}" {{ 'selected' if g and g.referencia_id == f.id }}>{{ f.numero or '—' }} · {{ f.proveedor.nombre if f.proveedor else '' }} · {{ f.fecha|fecha }} · {{ f.total|pesos }}</option>{% endfor %}</select></div>
     <div class="campo ancho"><label>Categoría</label><select name="categoria_id" id="categoria" required>
       {% for c in categorias %}<option value="{{ c.id }}" data-desc="{{ 1 if c.iva_descontable_def else 0 }}" {{ 'selected' if (form.get('categoria_id') == c.id|string) or (not form.get('categoria_id') and g and g.categoria_id == c.id) }}>{{ c.nombre }} ({{ c.cuenta }})</option>{% endfor %}</select></div>
     <div class="campo ancho"><label>Descripción</label><input name="descripcion" value="{{ val('descripcion') }}"></div>
@@ -86,6 +89,8 @@ const ids = ['subtotal', 'iva', 'otros'].map(i => document.getElementById(i));
 const total = document.getElementById('total');
 const calc = () => total.value = (num(ids[0].value) + num(ids[1].value) + num(ids[2].value)).toLocaleString('es-CO', {maximumFractionDigits: 2});
 ids.forEach(i => i.addEventListener('input', calc)); calc();
+const tipoSop = document.querySelector('select[name=tipo_soporte]'), refNc = document.getElementById('ref-nc');
+const actNc = () => refNc.style.display = tipoSop.value === 'NC' ? '' : 'none'; tipoSop.addEventListener('change', actNc); actNc();
 const forma = document.getElementById('forma'), cp = document.getElementById('cuenta-pago');
 const act = () => cp.style.display = forma.value === 'contado' ? '' : 'none'; forma.addEventListener('change', act); act();
 const vida = document.getElementById('vida-util');

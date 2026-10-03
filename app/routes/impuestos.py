@@ -66,8 +66,10 @@ def registrar_pago():
                          banco_id=int(request.form["banco_id"]),
                          numero_formulario=request.form.get("numero_formulario") or None)
         p.archivo = archivos.guardar_upload("impuestos", request.files.get("archivo"))
-        if p.total <= 0:
-            raise ValueError("El valor pagado debe ser mayor que cero.")
+        if p.total <= 0 or p.valor_simple < 0 or p.valor_iva < 0:
+            raise ValueError("Los valores pagados deben ser positivos.")
+        if p.formulario not in ("2593", "260", "300") or (p.formulario == "2593" and p.bimestre not in BIMESTRES):
+            raise ValueError("Formulario o bimestre no válido.")
         s.add(p)
         s.flush()
         s.refresh(p)

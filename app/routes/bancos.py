@@ -125,7 +125,8 @@ def accion(id):
             cuenta = request.form.get("cuenta", "421005")
             if mov.valor <= 0:
                 raise ValueError("Solo las entradas de dinero se registran como ingreso.")
-            if s.get(Cuenta, cuenta) is None:
+            cta = s.get(Cuenta, cuenta)
+            if cta is None or not cta.movimiento or not cta.activa or cta.codigo[0] not in "234":
                 raise ValueError("Cuenta no válida.")
             a = contab.guardar_asiento(s, origen=None, tipo="AJ", fecha=mov.fecha,
                                        descripcion=f"Banco: {mov.descripcion}"[:250], tercero_id=None,

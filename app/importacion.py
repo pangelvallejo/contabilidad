@@ -154,6 +154,14 @@ def importar_gasto(session, doc: DocumentoDIAN, leido, origen="xml") -> Gasto:
     session.add(g)
     session.flush()
     contab.contabilizar_gasto(session, g)
+    if doc.tipo == "NC":  # nota crédito del proveedor: se asocia a la factura que afecta para descontar su saldo
+        ref = None
+        if doc.referencia_cufe:
+            ref = session.query(Gasto).filter_by(cufe=doc.referencia_cufe).first()
+        if ref is None and doc.referencia_numero:
+            ref = session.query(Gasto).filter(Gasto.numero == doc.referencia_numero, Gasto.proveedor_id == proveedor.id,
+                                              Gasto.tipo_soporte != "NC").first()
+        g.referencia = ref
     g.xml_archivo, g.soporte_archivo = _guardar_adjuntos("gastos", leido)  # al final: si algo falla no quedan huérfanos
     return g
 

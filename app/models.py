@@ -254,7 +254,11 @@ class Gasto(Base):
 
     proveedor: Mapped[Tercero | None] = relationship()
     categoria: Mapped[CategoriaGasto] = relationship()
+    referencia_id: Mapped[int | None] = mapped_column(ForeignKey("gastos.id"))  # NC de proveedor -> factura
     pagos: Mapped[list["PagoGasto"]] = relationship(back_populates="gasto", cascade="all, delete-orphan")
+    referencia: Mapped["Gasto | None"] = relationship(remote_side="Gasto.id", foreign_keys=[referencia_id],
+                                                      back_populates="notas_credito")
+    notas_credito: Mapped[list["Gasto"]] = relationship(foreign_keys=[referencia_id], back_populates="referencia")
 
     @property
     def signo(self):
@@ -272,7 +276,9 @@ class Gasto(Base):
 
     @property
     def saldo(self):
-        return self.total - self.pagado
+        if self.tipo_soporte == "NC":
+            return CERO
+        return self.total - self.pagado - sum((n.total for n in self.notas_credito), CERO)
 
 
 class PagoGasto(Base):

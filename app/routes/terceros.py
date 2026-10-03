@@ -49,7 +49,8 @@ def editar(id=None):
         t.aplica_reteiva = check("aplica_reteiva")
         try:
             from ..contab import d
-            t.retainer_mensual = d(request.form.get("retainer_mensual") or 0) or None
+            valor = d(request.form.get("retainer_mensual") or 0)
+            t.retainer_mensual = valor if valor.is_finite() and valor > 0 else None
         except Exception:  # noqa: BLE001
             t.retainer_mensual = None
         try:

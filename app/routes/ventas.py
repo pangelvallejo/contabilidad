@@ -73,6 +73,10 @@ def nueva():
             cliente = s.get(Tercero, int(request.form["cliente_id"]))
             base = dinero("base")
             iva = dinero("iva")
+            if request.form.get("tipo", "FV") not in ("FV", "NC", "ND"):
+                raise ValueError("Tipo de documento no válido.")
+            if base < 0 or iva < 0:
+                raise ValueError("Los valores no pueden ser negativos.")
             doc = DocumentoVenta(tipo=request.form.get("tipo", "FV"), numero=request.form["numero"].strip(),
                                  cufe=request.form.get("cufe", "").strip() or None,
                                  fecha=fecha_arg("fecha"), cliente=cliente, subtotal=base, base_gravada=base,
@@ -148,6 +152,8 @@ def _actualizar_venta(s, doc, notas_asociadas):
     doc.vencimiento = fecha_arg("vencimiento", doc.vencimiento)
     doc.reteiva_aplica = check("reteiva_aplica")
     doc.reteiva_valor = dinero("reteiva_valor") if doc.reteiva_aplica else CERO
+    if doc.reteiva_valor < 0 or doc.reteiva_valor > doc.iva:
+        raise ValueError("La reteIVA debe estar entre 0 y el IVA de la factura.")
     doc.reteiva_fecha = fecha_arg("reteiva_fecha", doc.fecha) if doc.reteiva_aplica else None
     doc.cert_recibido = check("cert_recibido")
     if check("anulada") and not doc.anulada and (doc.aplicaciones or notas_asociadas):

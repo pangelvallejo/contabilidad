@@ -190,7 +190,8 @@ def ventas_clientes():
     from collections import defaultdict
     from ..models import DocumentoVenta
     s = Session()
-    anio = request.args.get("anio", type=int) or date.today().year
+    from . import anio_arg
+    anio = anio_arg()
     por_cliente = defaultdict(lambda: [CERO] * 12)
     totales_mes = [CERO] * 12
     anterior = defaultdict(lambda: CERO)
@@ -255,6 +256,8 @@ def asiento(id=None):
                     credito = contab.d(creditos[i] if i < len(creditos) else 0)
                 except Exception as e:  # noqa: BLE001
                     raise contab.ErrorContable(f"Monto no válido en la línea {i + 1} (use 1.234.567,89).") from e
+                if debito < 0 or credito < 0:
+                    raise contab.ErrorContable(f"Los valores de la línea {i + 1} no pueden ser negativos.")
                 lineas.append((cta, debito, credito, int(tercero) if tercero.isdigit() else None,
                                detalles[i] if i < len(detalles) else ""))
             if len(lineas) < 2:

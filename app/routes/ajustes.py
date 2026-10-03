@@ -77,7 +77,7 @@ def inicio():
             if not nombre or repetida or s.get(Cuenta, request.form.get("cuenta", "")) is None:
                 flash("La categoría necesita un nombre único y una cuenta válida.", "error")
                 return redirect(url_for("ajustes.inicio") + "#categoria")
-            c = s.get(CategoriaGasto, cid) if cid else CategoriaGasto()
+            c = (s.get(CategoriaGasto, cid) if cid else None) or CategoriaGasto()
             c.nombre = nombre
             c.cuenta = request.form["cuenta"]
             c.concepto_exogena = request.form.get("concepto_exogena") or "5016"

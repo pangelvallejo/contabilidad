@@ -877,6 +877,10 @@ def test_segunda_auditoria_cierre_y_depreciacion(cliente_web, s):
     cliente_web.post("/contabilidad/cierre", data={"anio": "2026", "accion": "reabrir"})
     contab.set_config(s, "periodo_bloqueado_hasta", "")
     s.commit()
+    nc_pc = s.query(Gasto).filter_by(numero="NC-PC").one()
+    assert nc_pc.referencia_id == pc.id
+    assert cliente_web.post(f"/gastos/{pc.id}", data={"accion": "eliminar"}).status_code == 200  # tiene NC asociada
+    assert cliente_web.post(f"/gastos/{nc_pc.id}", data={"accion": "eliminar"}).status_code == 302
     assert cliente_web.post(f"/gastos/{pc.id}", data={"accion": "eliminar"}).status_code == 302
     assert s.query(Asiento).filter(Asiento.origen.like(f"depre:{pc.id}:%")).count() == 0
     # Bitácora no guarda claves en claro
@@ -960,3 +964,58 @@ def test_segunda_auditoria_bancos_y_sistema(cliente_web, s):
     assert r.status_code == 403 and contab.config(s, "empresa_ciiu") != "9999"
     assert cliente_web.post("/configuracion/", data={"accion": "empresa", "empresa_ciiu": "6910"},
                             headers={"Origin": "http://localhost"}).status_code == 302
+
+
+
+def test_tercera_auditoria_nc_proveedor_reteiva_y_validaciones(cliente_web, s):
+    from app import contab, reportes
+    from app.models import Banco, DocumentoVenta, Gasto, MovimientoBanco
+    from ubl import documento
+    # La NC del proveedor descuenta el saldo de la factura afectada
+    importar(s, "g.xml", factura_compra("INM-06", "2026-06-05", ARRENDADOR, 2_000_000, 380_000, vence="2026-07-05",
+                                        descripcion="ARRENDAMIENTO"))
+    nc = documento(tipo="CreditNote", numero="NCP-1", cufe="cude-ncp1", fecha="2026-06-10", emisor=ARRENDADOR,
+                   receptor=EMPRESA, base=500_000, iva=95_000, descripcion="ARRENDAMIENTO", referencia=("INM-06", "cufe-inm-06"))
+    assert importar(s, "nc.xml", nc)[0].ok
+    g = s.query(Gasto).filter_by(numero="INM-06").one()
+    assert g.saldo == D("1785000") and reportes.saldo_cuenta(s, "220505") == D("-1785000")
+    r = cliente_web.post(f"/gastos/{g.id}", data={"accion": "pago", "pago_fecha": "2026-07-01", "pago_cuenta": "11200501",
+                                                  "pago_valor": "1785000"})
+    assert r.status_code == 302
+    s.expire_all()
+    assert s.get(Gasto, g.id).saldo == 0 and reportes.saldo_cuenta(s, "220505") == 0
+    assert "INM-06" not in cliente_web.get("/gastos?por_pagar=1&anio=2026").data.decode()
+    # ReteIVA se cruza contra el IVA generado al pagar el 2593; anticipo de enero va al pasivo
+    importar(s, "v.xml", factura_venta("ALC-9", "2026-11-03", GRAN_CONTRIBUYENTE, 5_000_000, reteiva=142500))
+    cliente_web.post("/impuestos/pago", data={"formulario": "2593", "anio": "2026", "bimestre": "6", "fecha": "2027-01-21",
+                                              "valor_simple": "295000", "valor_iva": "808000", "banco_id": "1"})
+    assert reportes.saldo_cuenta(s, "135517") == 0
+    # 2408: −950.000 generado + 142.500 reteIVA cruzada + 808.000 pagado (redondeo a miles) + 285.000 descontable
+    # del bimestre 3 aún sin declarar = 285.500 débito
+    assert reportes.saldo_cuenta(s, "2408") == D("285500")
+    assert reportes.saldo_cuenta(s, "240405") == D("295000") and reportes.saldo_cuenta(s, "135595") == 0
+    # 'Otro ingreso' desde el banco solo a cuentas de movimiento de ingreso/pasivo/patrimonio
+    from app import bancos
+    bancos.importar_extracto(s, s.get(Banco, 1), "e.csv", b"Fecha;Descripcion;Valor\n05/12/2026;ABONO;1000\n")
+    m = s.query(MovimientoBanco).one()
+    cliente_web.post(f"/bancos/movimiento/{m.id}", data={"accion": "ingreso", "cuenta": "1"})
+    assert s.get(MovimientoBanco, m.id).estado == "pendiente"
+    cliente_web.post(f"/bancos/movimiento/{m.id}", data={"accion": "ingreso", "cuenta": "421005"})
+    s.expire_all()
+    assert s.get(MovimientoBanco, m.id).estado == "conciliado"
+    # Validaciones de dominio y errores que antes daban 500
+    doc = s.query(DocumentoVenta).one()
+    cliente_web.post(f"/ventas/{doc.id}", data={"accion": "guardar", "reteiva_aplica": "on", "reteiva_valor": "-5"})
+    s.expire_all()
+    assert s.get(DocumentoVenta, doc.id).reteiva_valor == D("142500")
+    assert cliente_web.post("/gastos/nuevo", data={"tipo_soporte": "ZZ", "fecha": "2026-12-01", "categoria_id": "1",
+                                                   "subtotal": "100"}).status_code == 200
+    assert cliente_web.post("/gastos/revisar", data={"id": ["abc"], "ok_abc": "on", "categoria_abc": "1"}).status_code == 302
+    assert cliente_web.post("/contabilidad/cierre", data={"anio": "abc", "accion": "cerrar"}).status_code == 302
+    assert cliente_web.post("/configuracion/", data={"accion": "categoria", "id": "999", "nombre": "Nueva", "cuenta": "519595"}).status_code == 302
+    for ruta in ["/buscar?q=NaN", "/buscar?q=Infinity", "/contabilidad/ventas-clientes?anio=1", "/contabilidad/ventas-clientes?anio=99999"]:
+        assert cliente_web.get(ruta).status_code == 200, ruta
+    r = cliente_web.post("/contabilidad/asiento/nuevo", data={"fecha": "2026-12-02", "descripcion": "x", "cuenta": ["11200501", "310505"],
+                                                              "tercero": ["", ""], "detalle": ["", ""], "debito": ["-1", ""], "credito": ["", "-1"]})
+    assert r.status_code == 200 and "negativos" in r.data.decode()
+    assert reportes.balance_general(s, date(2027, 1, 31))["cuadre"] == 0
