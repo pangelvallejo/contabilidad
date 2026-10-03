@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block titulo %}Calendario tributario{% endblock %}
+{% block contenido %}
+<h1>Calendario tributario</h1>
+<p class="sub">Fechas para NIT terminado en 7 según el Decreto 2229 de 2023. Edítelas si cambian; el tablero avisa 30 días antes.</p>
+<form class="tarjeta tabla-scroll" method="post">
+  <table>
+    <tr><th>Obligación</th><th>Periodo</th><th>Fecha</th><th>Cumplido</th><th>Notas</th><th></th></tr>
+    {% for v in vencimientos %}
+    <tr><td>{{ v.obligacion }}</td><td>{{ v.periodo or '' }}</td>
+      <td><input type="date" name="fecha_{{ v.id }}" value="{{ v.fecha.isoformat() }}" style="width:150px"></td>
+      <td><input type="checkbox" name="cumplido_{{ v.id }}" {{ 'checked' if v.cumplido }}>
+        {% if not v.cumplido and v.fecha < hoy %}<span class="etiqueta crit">vencido</span>{% elif not v.cumplido and (v.fecha - hoy).days <= 30 %}<span class="etiqueta adv">próximo</span>{% endif %}</td>
+      <td class="nota">{{ v.notas or '' }}</td>
+      <td><button class="peq peligro" name="eliminar" value="{{ v.id }}" data-confirmar="¿Eliminar este vencimiento?">×</button></td></tr>
+    {% endfor %}
+  </table>
+  <button class="primario" name="accion" value="guardar">Guardar cambios</button>
+</form>
+<form class="tarjeta" method="post">
+  <h2>Agregar vencimiento</h2>
+  <div class="campos">
+    <div class="campo ancho"><label>Obligación</label><input name="obligacion" required></div>
+    <div><label>Periodo</label><input name="periodo"></div>
+    <div><label>Fecha</label><input type="date" name="fecha" required></div>
+    <div class="campo ancho"><label>Notas</label><input name="notas"></div>
+  </div>
+  <button name="accion" value="agregar">Agregar</button>
+</form>
+{% endblock %}

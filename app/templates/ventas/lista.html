@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block titulo %}Facturas de venta{% endblock %}
+{% block contenido %}
+<div class="encabezado">
+  <div><h1>Facturas de venta {{ anio }}</h1><p class="sub">Facturas, notas crédito y notas débito emitidas.</p></div>
+  <div class="acciones">
+    <a class="btn primario" href="/ventas/importar">Importar XML</a>
+    <a class="btn" href="/ventas/nueva">Registro manual</a>
+    <a class="btn" href="?{{ request.query_string.decode() }}&xlsx=1">Exportar a Excel</a>
+  </div>
+</div>
+<form class="filtros">
+  <div><label>Año</label><input type="number" name="anio" value="{{ anio }}" style="width:90px"></div>
+  <div><label>Cliente</label><select name="cliente"><option value="">Todos</option>
+    {% for c in clientes %}<option value="{{ c.id }}" {{ 'selected' if c.id == cliente_id }}>{{ c.nombre }}</option>{% endfor %}</select></div>
+  <div><label>Estado</label><select name="estado"><option value="">Todos</option>
+    {% for e in ['Pendiente','Abonada','Vencida','Pagada','Nota crédito','Anulada'] %}<option {{ 'selected' if e == estado }}>{{ e }}</option>{% endfor %}</select></div>
+  <button>Filtrar</button>
+</form>
+<div class="tarjeta tabla-scroll">
+  {% if filas %}
+  <table>
+    <tr><th>Número</th><th>Fecha</th><th>Vence</th><th>Cliente</th><th class="n">Base</th><th class="n">IVA</th>
+      <th class="n">Total</th><th class="n">ReteIVA</th><th class="n">Saldo</th><th>Estado</th></tr>
+    {% for d, saldo, estado in filas %}
+    <tr>
+      <td><a href="/ventas/{{ d.id }}">{{ d.tipo if d.tipo != 'FV' }} {{ d.numero }}</a></td>
+      <td>{{ d.fecha|fecha }}</td><td>{{ d.vencimiento|fecha }}</td><td>{{ d.cliente.nombre }}</td>
+      <td class="n">{{ (d.signo * d.ingreso)|pesos }}</td><td class="n">{{ (d.signo * d.iva)|pesos }}</td>
+      <td class="n">{{ (d.signo * d.total)|pesos }}</td>
+      <td class="n">{% if d.reteiva_aplica %}{{ d.reteiva_valor|pesos }}{% if not d.cert_recibido %} <span class="etiqueta adv" title="Certificado pendiente">cert.</span>{% endif %}{% else %}<span class="nota">No aplicó</span>{% endif %}</td>
+      <td class="n">{{ saldo|pesos if saldo else '' }}</td>
+      <td><span class="etiqueta {{ estado.split()[0] }}">{{ estado }}</span></td>
+    </tr>
+    {% endfor %}
+    <tr class="total"><td colspan="4">Total</td><td class="n">{{ totales.base|pesos }}</td><td class="n">{{ totales.iva|pesos }}</td>
+      <td class="n">{{ totales.total|pesos }}</td><td class="n">{{ totales.reteiva|pesos }}</td><td class="n">{{ totales.saldo|pesos }}</td><td></td></tr>
+  </table>
+  {% else %}<p class="vacio">No hay documentos. <a href="/ventas/importar">Importe el XML de su primera factura.</a></p>{% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block titulo %}Gastos{% endblock %}
+{% block contenido %}
+<div class="encabezado">
+  <div><h1>{{ 'Cuentas por pagar' if request.args.get('por_pagar') else 'Gastos' }} {{ anio }}</h1>
+    <p class="sub">Compras y gastos con su IVA descontable.</p></div>
+  <div class="acciones">
+    <a class="btn primario" href="/gastos/importar">Importar XML</a>
+    <a class="btn" href="/gastos/nuevo">Registrar gasto</a>
+    <a class="btn" href="?{{ request.query_string.decode() }}&xlsx=1">Exportar a Excel</a>
+  </div>
+</div>
+<form class="filtros">
+  <div><label>Año</label><input type="number" name="anio" value="{{ anio }}" style="width:90px"></div>
+  <div><label>Categoría</label><select name="categoria"><option value="">Todas</option>
+    {% for c in categorias %}<option value="{{ c.id }}" {{ 'selected' if c.id == categoria_id }}>{{ c.nombre }}</option>{% endfor %}</select></div>
+  <label class="check"><input type="checkbox" name="revisar" value="1" {{ 'checked' if request.args.get('revisar') }}> Por revisar</label>
+  <label class="check"><input type="checkbox" name="sin_soporte" value="1" {{ 'checked' if request.args.get('sin_soporte') }}> Sin soporte</label>
+  <label class="check"><input type="checkbox" name="por_pagar" value="1" {{ 'checked' if request.args.get('por_pagar') }}> Por pagar</label>
+  <button>Filtrar</button>
+</form>
+<div class="tarjeta tabla-scroll">
+  {% if gastos %}
+  <table>
+    <tr><th>Fecha</th><th>Proveedor</th><th>Número</th><th>Categoría</th><th class="n">Base</th><th class="n">IVA</th>
+      <th class="n">IVA descontable</th><th class="n">Total</th><th class="n">Por pagar</th><th></th></tr>
+    {% for g in gastos %}
+    <tr><td>{{ g.fecha|fecha }}</td><td>{{ g.proveedor.nombre if g.proveedor else '—' }}</td>
+      <td><a href="/gastos/{{ g.id }}">{{ g.numero or tipos[g.tipo_soporte] }}</a>{% if g.tipo_soporte == 'NC' %} <span class="etiqueta Nota">NC</span>{% endif %}</td>
+      <td>{{ g.categoria.nombre }}{% if not g.revisado %} <span class="etiqueta adv">revisar</span>{% endif %}</td>
+      <td class="n">{{ (g.signo * g.subtotal)|pesos }}</td><td class="n">{{ (g.signo * g.iva)|pesos }}</td>
+      <td class="n">{{ (g.signo * g.iva_desc_valor)|pesos }}</td><td class="n">{{ (g.signo * g.total)|pesos }}</td>
+      <td class="n">{{ g.saldo|pesos if g.forma_pago == 'credito' and g.tipo_soporte != 'NC' and g.saldo > 0 else '' }}</td>
+      <td>{% if g.xml_archivo or g.soporte_archivo %}<a href="/archivo/{{ g.soporte_archivo or g.xml_archivo }}" target="_blank" title="Ver soporte">📎</a>{% else %}<span class="nota" title="Sin soporte">—</span>{% endif %}</td></tr>
+    {% endfor %}
+    <tr class="total"><td colspan="4">Total</td><td class="n">{{ totales.subtotal|pesos }}</td><td class="n">{{ totales.iva|pesos }}</td>
+      <td class="n">{{ totales.iva_desc_valor|pesos }}</td><td class="n">{{ totales.total|pesos }}</td><td colspan="2"></td></tr>
+  </table>
+  {% else %}<p class="vacio">No hay gastos con estos filtros.</p>{% endif %}
+</div>
+{% endblock %}

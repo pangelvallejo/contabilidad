@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block titulo %}Contabilidad{% endblock %} · {{ empresa_nombre }}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='estilos.css') }}">
+</head>
+<body>
+<div class="marco">
+  <nav class="lateral">
+    <div class="marca">{{ empresa_nombre }}<small>Contabilidad · Régimen SIMPLE</small></div>
+    {% set ruta = request.path %}
+    <a href="/" class="{{ 'activo' if ruta == '/' }}">Tablero</a>
+    <h4>Ingresos</h4>
+    <a href="/ventas" class="{{ 'activo' if ruta.startswith('/ventas') and ruta != '/ventas/importar' }}">Facturas de venta</a>
+    <a href="/ventas/importar" class="{{ 'activo' if ruta == '/ventas/importar' }}">Importar XML de facturas</a>
+    <a href="/recaudos" class="{{ 'activo' if ruta.startswith('/recaudos') }}">Recaudos</a>
+    <a href="/cartera" class="{{ 'activo' if ruta.startswith('/cartera') }}">Cartera por cobrar</a>
+    <a href="/certificados" class="{{ 'activo' if ruta.startswith('/certificados') }}">Certificados reteIVA</a>
+    <h4>Gastos</h4>
+    <a href="/gastos" class="{{ 'activo' if ruta == '/gastos' or ruta.startswith('/gastos/') and ruta not in ('/gastos/importar', '/gastos/nuevo') }}">Gastos</a>
+    <a href="/gastos/importar" class="{{ 'activo' if ruta == '/gastos/importar' }}">Importar XML de proveedores</a>
+    <a href="/gastos/nuevo" class="{{ 'activo' if ruta == '/gastos/nuevo' }}">Registrar gasto</a>
+    <a href="/gastos?por_pagar=1">Cuentas por pagar</a>
+    <h4>Impuestos</h4>
+    <a href="/impuestos/iva" class="{{ 'activo' if ruta.startswith('/impuestos/iva') }}">IVA por bimestre</a>
+    <a href="/impuestos/simple" class="{{ 'activo' if ruta.startswith('/impuestos/simple') }}">Recibo 2593 (SIMPLE + IVA)</a>
+    <a href="/impuestos/f260" class="{{ 'activo' if ruta.startswith('/impuestos/f260') }}">Declaración SIMPLE (F260)</a>
+    <a href="/impuestos/f300" class="{{ 'activo' if ruta.startswith('/impuestos/f300') }}">Declaración IVA (F300)</a>
+    <a href="/impuestos/exogena" class="{{ 'activo' if ruta.startswith('/impuestos/exogena') }}">Exógena</a>
+    <a href="/impuestos/calendario" class="{{ 'activo' if ruta.startswith('/impuestos/calendario') }}">Calendario tributario</a>
+    <h4>Contabilidad</h4>
+    <a href="/contabilidad/resultados" class="{{ 'activo' if ruta.startswith('/contabilidad/resultados') }}">Estado de resultados</a>
+    <a href="/contabilidad/balance" class="{{ 'activo' if ruta == '/contabilidad/balance' }}">Balance general</a>
+    <a href="/contabilidad/balance-prueba" class="{{ 'activo' if ruta.startswith('/contabilidad/balance-prueba') }}">Balance de prueba</a>
+    <a href="/contabilidad/diario" class="{{ 'activo' if ruta.startswith('/contabilidad/diario') }}">Libro diario</a>
+    <a href="/contabilidad/mayor" class="{{ 'activo' if ruta.startswith('/contabilidad/mayor') }}">Libro mayor</a>
+    <a href="/contabilidad/asiento/nuevo" class="{{ 'activo' if ruta.startswith('/contabilidad/asiento') }}">Asiento manual</a>
+    <a href="/contabilidad/puc" class="{{ 'activo' if ruta.startswith('/contabilidad/puc') }}">Plan de cuentas</a>
+    <h4>Otros</h4>
+    <a href="/terceros" class="{{ 'activo' if ruta.startswith('/terceros') }}">Clientes y proveedores</a>
+    <a href="/configuracion/" class="{{ 'activo' if ruta.startswith('/configuracion') }}">Configuración</a>
+  </nav>
+  <main>
+    {% with mensajes = get_flashed_messages(with_categories=true) %}
+      {% for cat, msg in mensajes %}<div class="mensaje {{ cat }}">{{ msg }}</div>{% endfor %}
+    {% endwith %}
+    {% block contenido %}{% endblock %}
+  </main>
+</div>
+<script>
+// Confirmación para acciones destructivas
+document.addEventListener('submit', e => {
+  const msg = e.submitter && e.submitter.dataset.confirmar;
+  if (msg && !confirm(msg)) e.preventDefault();
+});
+</script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

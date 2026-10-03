@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block titulo %}Libro diario{% endblock %}
+{% block contenido %}
+<div class="encabezado">
+  <div><h1>Libro diario</h1><p class="sub">Todos los comprobantes del periodo. Los automáticos se modifican desde su documento de origen.</p></div>
+  <div class="acciones"><a class="btn" href="/contabilidad/asiento/nuevo">Asiento manual</a><a class="btn" href="?{{ request.query_string.decode() }}&xlsx=1">Exportar a Excel</a></div>
+</div>
+<form class="filtros">{% include "contabilidad/_periodo.html" %}
+  <div><label>Tipo</label><select name="tipo"><option value="">Todos</option>
+    {% for k, n in tipos.items() %}<option value="{{ k }}" {{ 'selected' if tipo == k }}>{{ k }} · {{ n }}</option>{% endfor %}</select></div>
+  <button>Ver</button></form>
+<div class="tarjeta tabla-scroll">
+  {% if asientos %}
+  <table>
+    <tr><th>Fecha</th><th>Comprobante</th><th>Cuenta</th><th>Tercero</th><th class="n">Débito</th><th class="n">Crédito</th></tr>
+    {% for a in asientos %}
+    <tr class="grupo"><td>{{ a.fecha|fecha }}</td><td><a href="/contabilidad/asiento/{{ a.id }}">{{ a.tipo }}-{{ a.numero }}</a></td><td colspan="4">{{ a.descripcion }}</td></tr>
+    {% for m in a.lineas %}
+    <tr><td></td><td></td><td>{{ m.cuenta }} {{ m.cuenta_rel.nombre }}</td><td>{{ m.tercero.nombre if m.tercero else '' }}</td>
+      <td class="n">{{ m.debito|pesos if m.debito else '' }}</td><td class="n">{{ m.credito|pesos if m.credito else '' }}</td></tr>
+    {% endfor %}
+    {% endfor %}
+  </table>
+  {% else %}<p class="vacio">No hay asientos en el periodo.</p>{% endif %}
+</div>
+{% endblock %}

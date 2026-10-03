@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block titulo %}Recibo 2593 {{ anio }}{% endblock %}
+{% block contenido %}
+<div class="encabezado">
+  <div><h1>Recibo electrónico 2593 · {{ anio }}</h1>
+    <p class="sub">Anticipo bimestral del impuesto unificado SIMPLE más el IVA del bimestre. Ingresos brutos por
+      {{ 'causación (fecha de factura)' if base == 'causacion' else 'caja (fecha de recaudo)' }}; se cambia en Configuración.</p></div>
+  <div class="acciones"><a class="btn" href="/impuestos/f260?anio={{ anio }}">Declaración anual SIMPLE</a></div>
+</div>
+<form class="filtros"><div><label>Año</label><input type="number" name="anio" value="{{ anio }}" style="width:90px"></div><button>Ver</button></form>
+
+<div class="tarjeta tabla-scroll">
+  <table>
+    <tr><th>Bimestre</th><th>Vence</th><th class="n">Ingresos brutos</th><th class="n">Tarifa</th><th class="n">Anticipo SIMPLE</th>
+      <th class="n">IVA</th><th class="n">Total recibo</th><th class="n">Pagado</th></tr>
+    {% for r in recibos %}
+    <tr><td>{{ r.bimestre }}. {{ nombres(r.bimestre) }}</td><td>{{ r.vencimiento|fecha }}</td>
+      <td class="n">{{ r.ingresos|pesos }}</td><td class="n">{{ r.tarifa|pct }}</td>
+      <td class="n">{{ r.anticipo_simple|pesos }}</td><td class="n">{{ r.iva_a_pagar|pesos }}</td>
+      <td class="n"><b>{{ r.total|pesos }}</b></td>
+      <td class="n">{% for p in r.pagos %}<span class="etiqueta ok" title="{{ p.fecha|fecha }} · {{ p.banco.nombre }}">{{ p.total|pesos }}</span>
+        <form method="post" action="/impuestos/pago/{{ p.id }}/eliminar" style="display:inline"><input type="hidden" name="volver" value="/impuestos/simple?anio={{ anio }}">
+          <button class="peq peligro" data-confirmar="¿Eliminar este pago?">×</button></form>{% endfor %}</td></tr>
+    {% endfor %}
+    <tr class="total"><td colspan="2">Año</td><td class="n">{{ recibos|sum(attribute='ingresos')|pesos }}</td><td></td>
+      <td class="n">{{ recibos|sum(attribute='anticipo_simple')|pesos }}</td><td class="n">{{ recibos|sum(attribute='iva_a_pagar')|pesos }}</td>
+      <td class="n">{{ recibos|sum(attribute='total')|pesos }}</td><td class="n">{{ recibos|sum(attribute='pagado')|pesos }}</td></tr>
+  </table>
+</div>
+
+<div class="rejilla k2">
+  <form class="tarjeta" method="post" action="/impuestos/pago" enctype="multipart/form-data">
+    <h2>Registrar pago de un recibo 2593</h2>
+    <input type="hidden" name="formulario" value="2593"><input type="hidden" name="anio" value="{{ anio }}">
+    <input type="hidden" name="volver" value="/impuestos/simple?anio={{ anio }}">
+    <div class="campos">
+      <div><label>Bimestre</label><select name="bimestre" id="bim">{% for r in recibos %}<option value="{{ r.bimestre }}" data-simple="{{ r.anticipo_simple }}" data-iva="{{ r.iva_a_pagar }}">{{ r.bimestre }}. {{ nombres(r.bimestre) }}</option>{% endfor %}</select></div>
+      <div><label>Fecha de pago</label><input type="date" name="fecha" value="{{ hoy.isoformat() }}"></div>
+      <div><label>Valor anticipo SIMPLE</label><input class="n" name="valor_simple" id="vs"></div>
+      <div><label>Valor IVA</label><input class="n" name="valor_iva" id="vi"></div>
+      <div><label>Pagado desde</label><select name="banco_id">{% for b in bancos %}<option value="{{ b.id }}">{{ b.nombre }}</option>{% endfor %}</select></div>
+      <div><label>Número del formulario</label><input name="numero_formulario"></div>
+      <div class="campo ancho"><label>Recibo (PDF)</label><input type="file" name="archivo" accept=".pdf"></div>
+    </div>
+    <button class="primario">Registrar pago</button>
+    <p class="nota">Ajuste los valores a lo que efectivamente pagó en el portal de la DIAN.</p>
+  </form>
+  <div class="tarjeta">
+    <h2>Tarifas bimestrales · actividades profesionales y de consultoría</h2>
+    <p class="nota">Art. 908 E.T. (Ley 2277 de 2022). UVT {{ anio }}: {{ uvt|pesos }}.</p>
+    <table>
+      <tr><th>Ingresos brutos del bimestre</th><th class="n">Tarifa</th></tr>
+      {% set ns = namespace(desde=0) %}
+      {% for hasta, t in tabla %}<tr><td>{{ ns.desde|numero }} a {{ hasta|numero }} UVT ({{ (hasta * uvt)|pesos }})</td><td class="n">{{ t|pct }}</td></tr>{% set ns.desde = hasta %}{% endfor %}
+    </table>
+    <p class="nota">Para profesiones liberales el límite para permanecer en el SIMPLE es de 12.000 UVT de ingresos al año.</p>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+const bim = document.getElementById('bim');
+const llenar = () => { const o = bim.selectedOptions[0]; document.getElementById('vs').value = parseFloat(o.dataset.simple); document.getElementById('vi').value = parseFloat(o.dataset.iva); };
+bim.addEventListener('change', llenar); llenar();
+</script>
+{% endblock %}

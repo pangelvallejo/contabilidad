@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block titulo %}Registrar recaudo{% endblock %}
+{% block contenido %}
+<h1>Registrar recaudo</h1>
+<p class="sub">Un pago puede cubrir una o varias facturas, total o parcialmente. Lo que no se aplique queda como anticipo del cliente.</p>
+<form class="tarjeta" method="get">
+  <div class="campos"><div class="campo ancho"><label>Cliente</label>
+    <select name="cliente_id" onchange="this.form.submit()"><option value="">Seleccione…</option>
+      {% for c in clientes %}<option value="{{ c.id }}" {{ 'selected' if c.id == cliente_id }}>{{ c.nombre }} — {{ c.nit }}</option>{% endfor %}</select></div></div>
+</form>
+
+{% if cliente_id %}
+<form class="tarjeta" method="post" enctype="multipart/form-data">
+  <input type="hidden" name="cliente_id" value="{{ cliente_id }}">
+  <div class="campos">
+    <div><label>Fecha del pago</label><input type="date" name="fecha" value="{{ form.get('fecha') or hoy.isoformat() }}" required></div>
+    <div><label>Cuenta donde entró</label><select name="banco_id">{% for b in bancos %}<option value="{{ b.id }}">{{ b.nombre }}</option>{% endfor %}</select></div>
+    <div><label>Valor recibido</label><input class="n" name="valor" id="valor" value="{{ form.get('valor', '') }}" required inputmode="decimal"></div>
+    <div><label>Referencia</label><input name="referencia" value="{{ form.get('referencia', '') }}"></div>
+    <div class="campo ancho"><label class="check"><input type="checkbox" name="medio_electronico"> Recibido con tarjeta o pasarela de pagos (Bold, PSE con tarjeta, etc.). Da derecho al descuento del 0,5% en el SIMPLE (art. 912 E.T.).</label></div>
+    <div><label>Soporte (opcional)</label><input type="file" name="soporte"></div>
+  </div>
+
+  <h2>Facturas pendientes</h2>
+  {% if abiertos %}
+  <table>
+    <tr><th>Factura</th><th>Fecha</th><th>Vence</th><th class="n">Total</th><th class="n">ReteIVA</th><th class="n">Saldo</th><th class="n" style="width:170px">Aplicar</th></tr>
+    {% for doc, saldo in abiertos %}
+    <tr><td><a href="/ventas/{{ doc.id }}" target="_blank">{{ doc.numero }}</a></td><td>{{ doc.fecha|fecha }}</td><td>{{ doc.vencimiento|fecha }}</td>
+      <td class="n">{{ doc.total|pesos }}</td><td class="n">{{ (doc.reteiva_valor if doc.reteiva_aplica else 0)|pesos }}</td>
+      <td class="n">{{ saldo|pesos }}</td>
+      <td><input class="n aplicar" name="aplicar_{{ doc.id }}" data-saldo="{{ saldo }}" value="{{ form.get('aplicar_' ~ doc.id, '') }}"></td></tr>
+    {% endfor %}
+    <tr class="total"><td colspan="6">Total aplicado / sin aplicar</td><td class="n"><span id="aplicado">0</span> / <span id="resto">0</span></td></tr>
+  </table>
+  <p class="nota">Si el cliente le retuvo IVA y aún no lo ha marcado, hágalo en la factura antes de registrar el pago para que el saldo cuadre.</p>
+  <button type="button" id="auto">Repartir automáticamente (más antiguas primero)</button>
+  {% else %}<p class="vacio">Este cliente no tiene facturas pendientes; el valor quedará como anticipo.</p>{% endif %}
+  <div style="margin-top:14px"><button class="primario" name="guardar" value="1">Guardar recaudo</button></div>
+</form>
+{% endif %}
+{% endblock %}
+{% block scripts %}
+<script>
+const num = v => parseFloat(String(v).replace(/\./g, '').replace(',', '.')) || 0;
+const fmt = v => v.toLocaleString('es-CO', {maximumFractionDigits: 2});
+const valor = document.getElementById('valor');
+const campos = Array.from(document.querySelectorAll('.aplicar'));
+function totales() {
+  const ap = campos.reduce((s, c) => s + num(c.value), 0);
+  const a = document.getElementById('aplicado'), r = document.getElementById('resto');
+  if (a) { a.textContent = fmt(ap); r.textContent = fmt(num(valor && valor.value) - ap); }
+}
+function repartir() {
+  let resto = num(valor.value);
+  campos.forEach(c => { const v = Math.min(parseFloat(c.dataset.saldo), Math.max(resto, 0)); c.value = v ? String(v).replace('.', ',') : ''; resto -= v; });
+  totales();
+}
+const auto = document.getElementById('auto');
+if (auto) auto.addEventListener('click', repartir);
+if (valor) valor.addEventListener('change', () => { if (!campos.some(c => c.value)) repartir(); else totales(); });
+campos.forEach(c => c.addEventListener('input', totales));
+totales();
+</script>
+{% endblock %}

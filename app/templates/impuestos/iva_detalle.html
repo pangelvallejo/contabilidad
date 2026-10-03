@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block titulo %}IVA bimestre {{ bim }} de {{ anio }}{% endblock %}
+{% block contenido %}
+<div class="encabezado">
+  <div><h1>IVA bimestre {{ bim }} ({{ nombre }}) {{ anio }}</h1><p class="sub">{{ r.inicio|fecha }} a {{ r.fin|fecha }}</p></div>
+  <div class="acciones"><a class="btn" href="?xlsx=1">Exportar a Excel</a></div>
+</div>
+<div class="rejilla k2">
+  <div class="tarjeta"><h2>Liquidación</h2>
+    <table class="liquidacion">
+      <tr><td>Ingresos gravados (base)</td><td class="n">{{ r.ingresos_gravados|pesos }}</td></tr>
+      <tr><td>IVA generado</td><td class="n">{{ r.iva_generado|pesos }}</td></tr>
+      <tr><td>(−) IVA de notas crédito</td><td class="n">{{ r.iva_devoluciones|pesos }}</td></tr>
+      <tr><td>(−) IVA descontable</td><td class="n">{{ r.iva_descontable|pesos }}</td></tr>
+      <tr><td>(−) ReteIVA practicada por clientes</td><td class="n">{{ r.reteiva|pesos }}</td></tr>
+      <tr class="res"><td>{{ 'Saldo a pagar' if r.neto >= 0 else 'Saldo a favor' }}</td><td class="n">{{ (r.neto if r.neto >= 0 else -r.neto)|pesos }}</td></tr>
+      <tr><td>Valor para el recibo 2593 (múltiplo de mil)</td><td class="n">{{ r.a_pagar|pesos }}</td></tr>
+    </table>
+    {% if r.iva_no_descontable %}<p class="nota">IVA no descontable llevado como mayor valor del gasto: {{ r.iva_no_descontable|pesos }}</p>{% endif %}
+  </div>
+  <div class="tarjeta"><h2>ReteIVA del bimestre</h2>
+    {% if r.retenciones %}<table><tr><th>Factura</th><th>Cliente</th><th class="n">Valor</th><th>Certificado</th></tr>
+      {% for v in r.retenciones %}<tr><td><a href="/ventas/{{ v.id }}">{{ v.numero }}</a></td><td>{{ v.cliente.nombre }}</td><td class="n">{{ v.reteiva_valor|pesos }}</td>
+        <td>{{ 'Recibido' if v.cert_recibido else 'Pendiente' }}</td></tr>{% endfor %}</table>
+    {% else %}<p class="vacio">Sin retenciones.</p>{% endif %}
+  </div>
+</div>
+<div class="tarjeta tabla-scroll"><h2>IVA generado</h2>
+  {% if r.ventas %}<table><tr><th>Documento</th><th>Fecha</th><th>Cliente</th><th class="n">Base</th><th class="n">IVA</th></tr>
+    {% for v in r.ventas %}<tr><td><a href="/ventas/{{ v.id }}">{{ v.tipo }} {{ v.numero }}</a></td><td>{{ v.fecha|fecha }}</td><td>{{ v.cliente.nombre }}</td>
+      <td class="n">{{ (v.signo * v.ingreso)|pesos }}</td><td class="n">{{ (v.signo * v.iva)|pesos }}</td></tr>{% endfor %}</table>
+  {% else %}<p class="vacio">Sin facturas en el bimestre.</p>{% endif %}
+</div>
+<div class="tarjeta tabla-scroll"><h2>IVA descontable</h2>
+  {% if r.gastos %}<table><tr><th>Fecha</th><th>Proveedor</th><th>Número</th><th>Categoría</th><th class="n">Base</th><th class="n">IVA</th><th class="n">Descontable</th></tr>
+    {% for g in r.gastos %}<tr><td>{{ g.fecha|fecha }}</td><td>{{ g.proveedor.nombre if g.proveedor else '—' }}</td><td><a href="/gastos/{{ g.id }}">{{ g.numero or '—' }}</a></td>
+      <td>{{ g.categoria.nombre }}</td><td class="n">{{ (g.signo * g.subtotal)|pesos }}</td><td class="n">{{ (g.signo * g.iva)|pesos }}</td>
+      <td class="n">{{ (g.signo * g.iva_desc_valor)|pesos }}</td></tr>{% endfor %}</table>
+  {% else %}<p class="vacio">Sin gastos en el bimestre.</p>{% endif %}
+</div>
+{% endblock %}

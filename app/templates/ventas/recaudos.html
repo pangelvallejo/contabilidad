@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block titulo %}Recaudos{% endblock %}
+{% block contenido %}
+<div class="encabezado">
+  <div><h1>Recaudos {{ anio }}</h1><p class="sub">Pagos recibidos de clientes y facturas a las que se aplicaron.</p></div>
+  <div class="acciones"><a class="btn primario" href="/recaudos/nuevo">Registrar recaudo</a></div>
+</div>
+<form class="filtros"><div><label>Año</label><input type="number" name="anio" value="{{ anio }}" style="width:90px"></div><button>Ver</button></form>
+<div class="tarjeta tabla-scroll">
+  {% if recaudos %}
+  <table>
+    <tr><th>Fecha</th><th>Cliente</th><th>Banco</th><th>Referencia</th><th>Aplicado a</th><th class="n">Valor</th><th class="n">Sin aplicar</th><th></th></tr>
+    {% for r in recaudos %}
+    <tr><td>{{ r.fecha|fecha }}</td><td>{{ r.cliente.nombre }}</td><td>{{ r.banco.nombre }}{% if r.medio_electronico %} <span class="etiqueta ok" title="Medio electrónico (art. 912 E.T.)">electrónico</span>{% endif %}</td>
+      <td>{{ r.referencia or '' }}{% if r.soporte_archivo %} <a href="/archivo/{{ r.soporte_archivo }}" target="_blank">soporte</a>{% endif %}</td>
+      <td>{% for a in r.aplicaciones %}<a href="/ventas/{{ a.documento.id }}">{{ a.documento.numero }}</a> ({{ a.valor|pesos }}){{ ', ' if not loop.last }}{% endfor %}</td>
+      <td class="n">{{ r.valor|pesos }}</td><td class="n">{{ r.sin_aplicar|pesos if r.sin_aplicar else '' }}</td>
+      <td><form method="post" action="/recaudos/{{ r.id }}/eliminar"><button class="peq peligro" data-confirmar="¿Eliminar este recaudo? Las facturas volverán a quedar pendientes.">Eliminar</button></form></td></tr>
+    {% endfor %}
+    <tr class="total"><td colspan="5">Total</td><td class="n">{{ total|pesos }}</td><td colspan="2"></td></tr>
+  </table>
+  {% else %}<p class="vacio">No hay recaudos registrados.</p>{% endif %}
+</div>
+{% endblock %}

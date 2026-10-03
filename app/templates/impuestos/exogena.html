@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block titulo %}Exógena {{ anio }}{% endblock %}
+{% block contenido %}
+<div class="encabezado">
+  <div><h1>Información exógena · año gravable {{ anio }}</h1>
+    <p class="sub">Información base por tercero para los formatos 1001, 1005, 1006, 1007, 1008 y 1009. Antes de presentar, confirme si la firma está obligada a reportar, la versión vigente de cada formato y las cuantías menores de la resolución del año. Luego súbala al prevalidador de la DIAN.</p></div>
+  <div class="acciones"><a class="btn primario" href="?anio={{ anio }}&xlsx=1">Descargar Excel</a></div>
+</div>
+<form class="filtros"><div><label>Año</label><input type="number" name="anio" value="{{ anio }}" style="width:90px"></div><button>Ver</button></form>
+{% if incompletos %}
+<div class="tarjeta">
+  <h2>Terceros con datos incompletos ({{ incompletos|length }})</h2>
+  <ul>{% for t, falta in incompletos %}<li><a href="/terceros/{{ t.id }}?volver=/impuestos/exogena?anio={{ anio }}">{{ t.nombre }}</a> — falta {{ falta|join(', ') }}</li>{% endfor %}</ul>
+</div>
+{% endif %}
+{% for nombre, (enc, filas) in hojas.items() %}
+<div class="tarjeta tabla-scroll">
+  <h2>{{ nombre }} <span class="nota">({{ filas|length }} registros)</span></h2>
+  {% if filas %}<table><tr>{% for e in enc %}<th>{{ e }}</th>{% endfor %}</tr>
+    {% for f in filas %}<tr>{% for v in f %}<td class="{{ 'n' if v is number }}">{{ v|pesos if v is number and v.__class__.__name__ == 'Decimal' else v }}</td>{% endfor %}</tr>{% endfor %}</table>
+  {% else %}<p class="vacio">Sin información.</p>{% endif %}
+</div>
+{% endfor %}
+{% endblock %}

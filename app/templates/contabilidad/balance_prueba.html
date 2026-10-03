@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block titulo %}Balance de prueba{% endblock %}
+{% block contenido %}
+<div class="encabezado">
+  <div><h1>Balance de prueba</h1><p class="sub">{{ desde|fecha }} a {{ hasta|fecha }}.
+    {% if tot_d == tot_c %}<span class="etiqueta ok">Cuadrado</span>{% else %}<span class="etiqueta crit">Descuadre {{ (tot_d - tot_c)|pesos }}</span>{% endif %}</p></div>
+  <div class="acciones"><a class="btn" href="?{{ request.query_string.decode() }}&xlsx=1">Exportar a Excel</a></div>
+</div>
+<form class="filtros">{% include "contabilidad/_periodo.html" %}
+  <div><label>Nivel</label><select name="nivel">{% for n, t in [(1,'Clase'),(2,'Grupo'),(4,'Cuenta'),(6,'Subcuenta'),(8,'Auxiliar')] %}<option value="{{ n }}" {{ 'selected' if n == nivel }}>{{ t }}</option>{% endfor %}</select></div>
+  <button>Ver</button></form>
+<div class="tarjeta tabla-scroll">
+  <table>
+    <tr><th>Cuenta</th><th>Nombre</th><th class="n">Saldo inicial</th><th class="n">Débitos</th><th class="n">Créditos</th><th class="n">Saldo final</th></tr>
+    {% for f in filas %}
+    <tr class="nivel-{{ f.nivel }}"><td><a href="/contabilidad/mayor?cuenta={{ f.cuenta.codigo }}&desde={{ desde.isoformat() }}&hasta={{ hasta.isoformat() }}">{{ f.cuenta.codigo }}</a></td>
+      <td>{{ f.cuenta.nombre }}</td><td class="n">{{ f.saldo_inicial|pesos }}</td><td class="n">{{ f.debitos|pesos }}</td>
+      <td class="n">{{ f.creditos|pesos }}</td><td class="n">{{ f.saldo_final|pesos }}</td></tr>
+    {% else %}<tr><td colspan="6" class="vacio">Sin movimientos.</td></tr>{% endfor %}
+    <tr class="total"><td colspan="3">Sumas iguales</td><td class="n">{{ tot_d|pesos }}</td><td class="n">{{ tot_c|pesos }}</td><td></td></tr>
+  </table>
+</div>
+{% endblock %}

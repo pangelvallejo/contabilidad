@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block titulo %}Certificados de reteIVA{% endblock %}
+{% block contenido %}
+<h1>Certificados de reteIVA</h1>
+<p class="sub">Facturas en las que el cliente practicó la retención del 15% del IVA. Pendientes: {{ n_pendientes }} por {{ total_pendiente|pesos }}.</p>
+<div class="tarjeta tabla-scroll">
+  {% if docs %}
+  <table>
+    <tr><th>Factura</th><th>Cliente</th><th>Fecha retención</th><th>Bimestre</th><th class="n">ReteIVA</th><th>Certificado</th></tr>
+    {% for d in docs %}
+    {% set f = d.reteiva_fecha or d.fecha %}
+    <tr><td><a href="/ventas/{{ d.id }}">{{ d.numero }}</a></td><td>{{ d.cliente.nombre }}</td><td>{{ f|fecha }}</td>
+      <td>{{ (f.month + 1) // 2 }} de {{ f.year }}</td><td class="n">{{ d.reteiva_valor|pesos }}</td>
+      <td>{% if d.cert_recibido %}<span class="etiqueta ok">Recibido</span>{% if d.cert_archivo %} <a href="/archivo/{{ d.cert_archivo }}" target="_blank">ver</a>{% endif %}
+        {% else %}<span class="etiqueta adv">Pendiente</span> <a href="/ventas/{{ d.id }}">adjuntar</a>{% endif %}</td></tr>
+    {% endfor %}
+  </table>
+  {% else %}<p class="vacio">No hay facturas con reteIVA.</p>{% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block titulo %}Estado de resultados{% endblock %}
+{% block contenido %}
+<h1>Estado de resultados</h1>
+<p class="sub">{{ desde|fecha_larga }} a {{ hasta|fecha_larga }}</p>
+<form class="filtros">{% include "contabilidad/_periodo.html" %}<button>Ver</button></form>
+{% macro detalle(filas) %}{% for c, v in filas %}<tr><td style="padding-left:24px">{{ c.codigo }} {{ c.nombre }}</td><td class="n">{{ v|pesos }}</td></tr>{% endfor %}{% endmacro %}
+<div class="tarjeta" style="max-width:760px">
+  <table class="liquidacion">
+    <tr class="grupo"><td>Ingresos operacionales</td><td class="n">{{ er.ingresos_op|pesos }}</td></tr>
+    {{ detalle(er.det_ingresos_op) }}
+    <tr class="grupo"><td>(−) Gastos operacionales de administración</td><td class="n">{{ er.gastos_admin|pesos }}</td></tr>
+    {{ detalle(er.det_gastos_admin) }}
+    {% if er.gastos_ventas %}<tr class="grupo"><td>(−) Gastos operacionales de ventas</td><td class="n">{{ er.gastos_ventas|pesos }}</td></tr>{{ detalle(er.det_gastos_ventas) }}{% endif %}
+    <tr class="res"><td>Utilidad operacional</td><td class="n">{{ er.utilidad_operacional|pesos }}</td></tr>
+    {% if er.ingresos_no_op %}<tr class="grupo"><td>(+) Ingresos no operacionales</td><td class="n">{{ er.ingresos_no_op|pesos }}</td></tr>{{ detalle(er.det_ingresos_no_op) }}{% endif %}
+    {% if er.gastos_no_op %}<tr class="grupo"><td>(−) Gastos no operacionales</td><td class="n">{{ er.gastos_no_op|pesos }}</td></tr>{{ detalle(er.det_gastos_no_op) }}{% endif %}
+    <tr class="res"><td>Utilidad antes de impuestos</td><td class="n">{{ er.antes_impuestos|pesos }}</td></tr>
+    <tr><td>(−) Impuesto unificado SIMPLE</td><td class="n">{{ er.impuesto|pesos }}</td></tr>
+    <tr class="res"><td>Utilidad neta</td><td class="n">{{ er.utilidad_neta|pesos }}</td></tr>
+  </table>
+  {% if not er.impuesto %}<p class="nota">El impuesto SIMPLE se causa al cierre del año desde <a href="/impuestos/f260">Declaración SIMPLE</a>; mientras tanto los anticipos quedan como activo.</p>{% endif %}
+</div>
+{% endblock %}
