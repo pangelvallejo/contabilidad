@@ -24,5 +24,7 @@ def cliente_web(app):
 
 @pytest.fixture()
 def s(app):
+    """La sesión del hilo (el mismo objeto que usan las rutas): con transacciones BEGIN IMMEDIATE, dos sesiones
+    abiertas en el mismo hilo se bloquearían entre sí."""
     from app.db import Session
-    return Session()
+    return Session

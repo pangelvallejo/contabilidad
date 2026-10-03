@@ -5,7 +5,7 @@ from datetime import date
 from decimal import Decimal
 
 from . import cartera, contab, impuestos, reportes
-from .models import CERO, Asiento, Gasto, PagoImpuesto, Vencimiento
+from .models import CERO, Asiento, Gasto, Vencimiento
 
 CTA_DEPRECIACION_GASTO = {"1524": "516015", "1528": "516020"}
 CTA_DEPRECIACION_ACUM = {"1524": "159215", "1528": "159220"}
@@ -197,7 +197,7 @@ def resumen_activos(session):
 # ------------------------------------------------------------------ cierre de ejercicio
 
 def cerrar_anio(session, anio):
-    """Asiento de cierre al 31-12: cancela ingresos y gastos contra 360505/361005 y bloquea el año."""
+    """Asiento de cierre al 31-12: cancela ingresos y gastos contra 370505/371005 y bloquea el año."""
     fin = date(anio, 12, 31)
     sumas = reportes._sumas_por_cuenta(session, date(anio, 1, 1), fin, incluir_cierre=False)
     lineas = []

@@ -36,7 +36,7 @@
   <button class="primario">Guardar</button>
 </form>
 
-<div class="tarjeta" id="banco">
+<div class="tarjeta tabla-scroll" id="banco">
   <h2>Cuentas bancarias</h2>
   {% for b in bancos %}<form method="post" id="fb{{ b.id }}"><input type="hidden" name="accion" value="banco"><input type="hidden" name="id" value="{{ b.id }}"></form>{% endfor %}
   <form method="post" id="fb-nuevo"><input type="hidden" name="accion" value="banco"></form>
@@ -81,18 +81,18 @@
   <h2>Facturas de proveedores por correo</h2>
   <p class="nota">El programa revisa el buzón cada 15 minutos y registra los XML/ZIP adjuntos. Para Gmail: active la verificación en dos pasos y cree una
     <b>contraseña de aplicación</b> (Cuenta de Google → Seguridad → Contraseñas de aplicaciones); use esa clave aquí, no la del correo.</p>
-  <form method="post"><input type="hidden" name="accion" value="empresa">
+  <form method="post"><input type="hidden" name="accion" value="empresa"><input type="hidden" name="seccion" value="correo">
     <div class="campos">
       <div><label>Proveedor / servidor</label><input name="correo_servidor" value="{{ v.correo_servidor or 'gmail' }}" placeholder="gmail, outlook o servidor:puerto"></div>
       <div><label>Correo</label><input name="correo_usuario" value="{{ v.correo_usuario }}" placeholder="facturas@gmail.com"></div>
-      <div><label>Contraseña de aplicación</label><input type="password" name="correo_clave" value="{{ v.correo_clave }}"></div>
+      <div><label>Contraseña de aplicación</label><input type="password" name="correo_clave" autocomplete="new-password" placeholder="{{ 'Guardada (deje vacío para conservarla)' if guardados.correo_clave else 'Sin configurar' }}"></div>
       <div><label>Carpeta / etiqueta</label><input name="correo_carpeta" value="{{ v.correo_carpeta or 'INBOX' }}"></div>
       <div><label>Revisar los últimos (días)</label><input type="number" name="correo_dias" value="{{ v.correo_dias or 30 }}"></div>
       <div><label>Solo asuntos que contengan (opcional)</label><input name="correo_filtro" value="{{ v.correo_filtro }}"></div>
     </div>
     <button class="primario">Guardar</button>
-    <button name="accion" value="probar_correo">Probar conexión</button>
-    <button name="accion" value="revisar_correo">Revisar correo ahora</button>
+    <button name="accion" value="probar_correo" data-espera="Probando…">Probar conexión</button>
+    <button name="accion" value="revisar_correo" data-espera="Revisando…">Revisar correo ahora</button>
   </form>
   {% if estado_tareas.ultimo_correo %}<p class="nota">Última revisión automática: {{ estado_tareas.ultimo_correo[0].strftime('%d/%m %H:%M') }} · {{ estado_tareas.ultimo_correo[1].importados }} importado(s){% if estado_tareas.ultimo_correo[1].error %} · {{ estado_tareas.ultimo_correo[1].error }}{% endif %}</p>{% endif %}
 </div>
@@ -101,7 +101,7 @@
   <h2>Carpeta vigilada</h2>
   <p class="nota">Deje en esta carpeta los ZIP o XML que descargue (de la DIAN o del correo) y el programa los importa solo cada 2 minutos.
     Los procesados pasan a <code>importados\</code>; los que fallan a <code>errores\</code> con un archivo de texto que explica por qué.</p>
-  <form method="post"><input type="hidden" name="accion" value="empresa">
+  <form method="post"><input type="hidden" name="accion" value="empresa"><input type="hidden" name="seccion" value="carpeta">
     <div class="campos"><div class="campo ancho"><label>Ruta de la carpeta</label><input name="carpeta_vigilada" value="{{ v.carpeta_vigilada }}" placeholder="C:\Users\usuario\Downloads\Facturas"></div></div>
     <button class="primario">Guardar</button>
     <button name="accion" value="revisar_carpeta">Revisar carpeta ahora</button>
@@ -114,7 +114,7 @@
   <p>Se crea una copia automática cada 24 horas mientras el programa está abierto (base de datos y todos los soportes) en:<br>
     <code>{{ carpeta_respaldo }}</code></p>
   <p class="nota">Último respaldo: {{ v.ultimo_respaldo or 'nunca' }}. Se conservan los últimos {{ v.respaldos_a_conservar or 30 }}.</p>
-  <button class="primario" name="accion" value="respaldo">Crear respaldo ahora</button>
+  <button class="primario" name="accion" value="respaldo" data-espera="Creando respaldo…">Crear respaldo ahora</button>
 </form>
 <div class="tarjeta" id="restaurar">
   <h2>Restaurar un respaldo</h2>
@@ -133,24 +133,24 @@
   <h2>Versión y actualizaciones</h2>
   <p>Versión instalada: <b>{{ version }}</b>.{% if actualizacion %} <span class="etiqueta adv">Disponible {{ actualizacion }}</span>{% endif %}</p>
   <form method="post" class="filtros">
-    <button name="accion" value="buscar_actualizacion">Buscar actualizaciones</button>
+    <button name="accion" value="buscar_actualizacion" data-espera="Consultando…">Buscar actualizaciones</button>
     {% if actualizacion %}<button class="primario" name="accion" value="aplicar_actualizacion" data-confirmar="Se hará un respaldo, se descargará la versión {{ actualizacion }} y el programa se reiniciará. ¿Continuar?">Actualizar a {{ actualizacion }}</button>{% endif %}
     <button name="accion" value="reiniciar" data-confirmar="¿Reiniciar el programa ahora?">Reiniciar el programa</button>
   </form>
-  <form method="post" style="margin-top:10px"><input type="hidden" name="accion" value="empresa">
+  <form method="post" style="margin-top:10px"><input type="hidden" name="accion" value="empresa"><input type="hidden" name="seccion" value="sistema">
     <div class="campos">
       <div><label>Repositorio de actualizaciones</label><input name="actualizaciones_repo" value="{{ v.actualizaciones_repo or 'pangelvallejo/contabilidad' }}"></div>
-      <div><label>Token de GitHub (solo si el repositorio es privado)</label><input type="password" name="github_token" value="{{ v.github_token }}"></div>
+      <div><label>Token de GitHub (solo si el repositorio es privado)</label><input type="password" name="github_token" autocomplete="new-password" placeholder="{{ 'Guardado (deje vacío para conservarlo)' if guardados.github_token else 'Sin configurar' }}"></div>
     </div><button>Guardar</button></form>
 </div>
 
 <div class="tarjeta" id="red">
   <h2>Acceso desde el celular o otro equipo de la red</h2>
   <p class="nota">Con esto activado, el programa también se puede abrir desde el teléfono conectado al mismo Wi-Fi en <b>http://{{ ip_local }}:{{ puerto }}/</b> (pide la contraseña). Desde este computador nunca pide clave. Requiere reiniciar el programa.</p>
-  <form method="post"><input type="hidden" name="accion" value="empresa">
+  <form method="post"><input type="hidden" name="accion" value="empresa"><input type="hidden" name="seccion" value="red">
     <div class="campos">
       <div><label>Permitir acceso desde la red</label><select name="acceso_red"><option value="no" {{ 'selected' if v.acceso_red != 'si' }}>No</option><option value="si" {{ 'selected' if v.acceso_red == 'si' }}>Sí</option></select></div>
-      <div><label>Contraseña de acceso</label><input type="password" name="clave_acceso" value="{{ v.clave_acceso }}"></div>
+      <div><label>Contraseña de acceso</label><input type="password" name="clave_acceso" autocomplete="new-password" placeholder="{{ 'Guardada (deje vacío para conservarla)' if guardados.clave_acceso else 'Sin configurar' }}"></div>
     </div><button class="primario">Guardar</button></form>
 </div>
 

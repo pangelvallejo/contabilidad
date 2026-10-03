@@ -86,23 +86,27 @@ def preparar_actualizacion(contenido_zip: bytes, destino: Path) -> Path:
         raise ValueError("El paquete descargado no contiene el programa (carpeta app/).")
     origen = inicio.parent.parent  # la carpeta que contiene app/, iniciar.bat, etc.
     excluir = ["contabilidad.db"]
+    # Instalación con Python propio: no se toca su entorno (.venv). Portable: se copia también la carpeta python
+    # del paquete, que trae las librerías de la versión nueva (Contabilidad.bat no ejecuta pip).
+    no_copiar = [".venv", "__pycache__", ".git"]
     if not instalacion_portable():
         excluir.append("Contabilidad.bat")  # ese iniciador solo sirve con el Python incluido
+        no_copiar.append("python")
     iniciador = "Contabilidad.bat" if instalacion_portable() else "iniciar.bat"
     script = destino / "aplicar_actualizacion.bat"
     # Copia todo menos los datos del usuario y el entorno de Python ya instalado; luego reinicia.
     # chcp 65001: el archivo está en UTF-8 para que funcionen rutas con tildes (C:\Users\Ángel).
-    script.write_text(
+    contenido = (
         "@echo off\r\n"
         "chcp 65001 >nul\r\n"
         "timeout /t 3 /nobreak >nul\r\n"
-        f'robocopy "{origen}" "{RAIZ}" /E /XD .venv python __pycache__ .git /XF {" ".join(excluir)} /NFL /NDL /NJH /NJS >nul\r\n'
+        f'robocopy "{origen}" "{RAIZ}" /E /XD {" ".join(no_copiar)} /XF {" ".join(excluir)} /NFL /NDL /NJH /NJS >nul\r\n'
         "if errorlevel 8 (\r\n"
         "  echo No se pudieron copiar los archivos de la actualizacion. Cierre el programa y vuelva a intentarlo.\r\n"
         "  pause\r\n"
         ")\r\n"
-        f'start "" /d "{RAIZ}" "{RAIZ / iniciador}"\r\n',
-        encoding="utf-8")
+        f'start "" /d "{RAIZ}" "{RAIZ / iniciador}"\r\n')
+    script.write_bytes(contenido.encode("utf-8"))  # bytes: evita que Windows duplique el retorno de carro
     return script
 
 
@@ -124,7 +128,9 @@ def _cerrar_base():
 
 def reiniciar(script: Path | None = None):
     """Lanza el script indicado (o el iniciador) en una ventana nueva y cierra este proceso."""
-    _cerrar_base()
+    from .respaldo import _lock
+    with _lock:  # si el hilo de tareas está creando un respaldo, esperar a que termine
+        _cerrar_base()
     if sys.platform == "win32":
         objetivo = script or next((RAIZ / n for n in ("Contabilidad.bat", "iniciar.bat") if (RAIZ / n).exists()), None)
         if objetivo is None:

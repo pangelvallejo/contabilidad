@@ -36,7 +36,7 @@ página de *Releases* del repositorio, descomprímalo en `Documentos\Contabilida
    **“Add python.exe to PATH”**.
 2. Descargue esta carpeta (botón *Code → Download ZIP* en GitHub) y descomprímala, por ejemplo en
    `Documentos\Contabilidad`.
-3. Doble clic en **`iniciar.bat`**. La primera vez instala lo necesario (1–2 minutos); después abre el
+3. Doble clic en **`iniciar.bat`**. Cada vez que arranca comprueba que las librerías estén instaladas (la primera vez tarda 1–2 minutos); después abre el
    programa en el navegador en `http://127.0.0.1:5050`.
 
 Opcional: clic derecho en `crear_acceso_directo.ps1` → *Ejecutar con PowerShell* para tener un acceso

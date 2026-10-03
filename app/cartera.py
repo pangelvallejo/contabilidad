@@ -2,6 +2,8 @@
 from datetime import date
 from decimal import Decimal
 
+from sqlalchemy import func
+
 from .models import CERO, AplicacionRecaudo, DocumentoVenta, Recaudo
 
 EDADES = [("Por vencer", None, 0), ("1-30", 1, 30), ("31-60", 31, 60), ("61-90", 61, 90), ("+90", 91, None)]
@@ -24,13 +26,41 @@ def saldo_documento(session, doc, al: date | None = None) -> Decimal:
     return saldo
 
 
-def estado_documento(session, doc, hoy=None):
+def saldos_en_lote(session, docs, al: date | None = None) -> dict:
+    """Saldo de muchos documentos con dos consultas agrupadas (evita una consulta por factura en los listados)."""
+    ids = [doc.id for doc in docs]
+    if not ids:
+        return {}
+    q_nc = (session.query(DocumentoVenta.referencia_id, func.sum(DocumentoVenta.total))
+            .filter(DocumentoVenta.referencia_id.in_(ids), DocumentoVenta.tipo == "NC",
+                    DocumentoVenta.anulada.is_(False)))
+    q_ab = (session.query(AplicacionRecaudo.documento_id, func.sum(AplicacionRecaudo.valor)).join(Recaudo)
+            .filter(AplicacionRecaudo.documento_id.in_(ids)))
+    if al is not None:
+        q_nc = q_nc.filter(DocumentoVenta.fecha <= al)
+        q_ab = q_ab.filter(Recaudo.fecha <= al)
+    notas = {k: Decimal(str(v)) for k, v in q_nc.group_by(DocumentoVenta.referencia_id)}
+    abonos = {k: Decimal(str(v)) for k, v in q_ab.group_by(AplicacionRecaudo.documento_id)}
+    res = {}
+    for doc in docs:
+        if doc.anulada or doc.tipo == "NC":
+            res[doc.id] = CERO
+            continue
+        saldo = doc.total
+        if doc.reteiva_aplica and (al is None or (doc.reteiva_fecha or doc.fecha) <= al):
+            saldo -= doc.reteiva_valor
+        res[doc.id] = saldo - notas.get(doc.id, CERO) - abonos.get(doc.id, CERO)
+    return res
+
+
+def estado_documento(session, doc, hoy=None, saldo=None):
     hoy = hoy or date.today()
     if doc.anulada:
         return "Anulada"
     if doc.tipo == "NC":
         return "Nota crédito"
-    saldo = saldo_documento(session, doc)
+    if saldo is None:
+        saldo = saldo_documento(session, doc)
     if saldo <= 0:
         return "Pagada"
     abonado = doc.total - (doc.reteiva_valor if doc.reteiva_aplica else 0) - saldo
@@ -45,12 +75,9 @@ def documentos_abiertos(session, cliente_id=None, al=None):
         q = q.filter(DocumentoVenta.cliente_id == cliente_id)
     if al:
         q = q.filter(DocumentoVenta.fecha <= al)
-    res = []
-    for doc in q.order_by(DocumentoVenta.fecha, DocumentoVenta.id):
-        s = saldo_documento(session, doc, al)
-        if s > 0:
-            res.append((doc, s))
-    return res
+    docs = q.order_by(DocumentoVenta.fecha, DocumentoVenta.id).all()
+    saldos = saldos_en_lote(session, docs, al)
+    return [(doc, saldos[doc.id]) for doc in docs if saldos[doc.id] > 0]
 
 
 def anticipos_cliente(session, cliente_id):

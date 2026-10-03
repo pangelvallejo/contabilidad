@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="es"><head><meta charset="utf-8"><title>{{ titulo }}</title>
+<meta http-equiv="refresh" content="{{ segundos }};url=/">
+<link rel="stylesheet" href="{{ url_for('static', filename='estilos.css') }}">
+<link rel="icon" href="{{ url_for('static', filename='icono.svg') }}" type="image/svg+xml">
+</head><body>
+<main style="max-width:520px;margin:80px auto">
+  <div class="tarjeta">
+    <h1>{{ titulo }}</h1>
+    <p class="sub">Espere unos segundos. Esta página volverá al tablero sola; si no carga, pulse <a href="/">aquí</a> o vuelva a abrir el programa desde el acceso directo.</p>
+    <p class="nota">Si se abre una ventana negra, es el programa arrancando: no la cierre.</p>
+  </div>
+</main>
+<script>
+  let intentos = 0;
+  const sondear = () => fetch('/', {cache: 'no-store'}).then(r => { if (r.ok) location.href = '/'; else throw 0; })
+    .catch(() => { if (++intentos < 40) setTimeout(sondear, 2000); });
+  setTimeout(sondear, 4000);
+</script>
+</body></html>

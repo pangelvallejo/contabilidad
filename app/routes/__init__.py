@@ -17,7 +17,7 @@ def fecha_arg(nombre, defecto=None):
 
 
 def periodo():
-    """Rango desde/hasta de la consulta; por defecto el año en curso hasta hoy."""
+    """Rango desde/hasta de la consulta; por defecto el año en curso completo."""
     hoy = date.today()
     desde = fecha_arg("desde", date(hoy.year, 1, 1))
     hasta = fecha_arg("hasta", date(hoy.year, 12, 31))
@@ -38,6 +38,14 @@ def dinero(nombre):
         return d(texto)
     except Exception as e:  # noqa: BLE001 — Decimal lanza InvalidOperation
         raise ValueError(f"El valor '{texto}' no es un número válido (use 1.234.567,89).") from e
+
+
+def entero_requerido(nombre, mensaje):
+    """Entero obligatorio del formulario; si falta o no es numérico, un mensaje entendible en vez del error técnico."""
+    valor = request.form.get(nombre, "").strip()
+    if not valor.lstrip("-").isdigit():
+        raise ValueError(mensaje)
+    return int(valor)
 
 
 def check(nombre):

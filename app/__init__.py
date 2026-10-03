@@ -9,7 +9,7 @@ from .db import Session, init_engine, sincronizar_esquema
 
 warnings.filterwarnings("ignore", message=".*Decimal objects natively.*")
 
-VERSION = "1.2.0"
+VERSION = "1.2.1"
 
 
 def create_app(datos_dir=None, respaldo_automatico=False):
@@ -91,6 +91,11 @@ def create_app(datos_dir=None, respaldo_automatico=False):
         sesion.clear()
         return redirect("/")
 
+    @app.route("/favicon.ico")
+    def favicon():
+        from flask import redirect, url_for
+        return redirect(url_for("static", filename="icono.svg"))
+
     @app.route("/archivo/<path:relativa>")
     def archivo(relativa):
         from .archivos import ruta_absoluta
@@ -100,7 +105,8 @@ def create_app(datos_dir=None, respaldo_automatico=False):
             abort(404)
         if not ruta.exists():
             abort(404)
-        return send_file(ruta)
+        # XML y ZIP se descargan en vez de mostrarse: un XML recibido de un tercero no debe ejecutarse en el navegador.
+        return send_file(ruta, as_attachment=ruta.suffix.lower() in (".xml", ".zip", ".html", ".htm", ".svg"))
 
     from .routes import (ajustes, bancos, buscar, contabilidad, gastos, impuestos, inicio, planeacion, terceros,
                          ventas)

@@ -5,12 +5,15 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block titulo %}Contabilidad{% endblock %} · {{ empresa_nombre }}</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='estilos.css') }}">
+  <link rel="icon" href="{{ url_for('static', filename='icono.svg') }}" type="image/svg+xml">
 </head>
 <body>
 <div class="marco">
   <nav class="lateral">
     <div class="marca">{{ empresa_nombre }}<small>Contabilidad · Régimen SIMPLE</small></div>
+    <button type="button" class="menu-boton" onclick="document.querySelector('nav.lateral').classList.toggle('abierta')">☰ Menú</button>
     {% set ruta = request.path %}
+    <div class="menu">
     <form action="/buscar" style="padding:0 14px 8px"><input name="q" placeholder="Buscar…" value="{{ request.args.get('q', '') if ruta == '/buscar' else '' }}" style="font-size:13px;padding:5px 8px"></form>
     <a href="/" class="{{ 'activo' if ruta == '/' }}">Tablero</a>
     <h4>Ingresos</h4>
@@ -20,7 +23,7 @@
     <a href="/cartera" class="{{ 'activo' if ruta.startswith('/cartera') }}">Cartera por cobrar</a>
     <a href="/certificados" class="{{ 'activo' if ruta.startswith('/certificados') }}">Certificados reteIVA</a>
     <h4>Gastos</h4>
-    <a href="/gastos" class="{{ 'activo' if ruta == '/gastos' or ruta.startswith('/gastos/') and ruta not in ('/gastos/importar', '/gastos/nuevo') }}">Gastos</a>
+    <a href="/gastos" class="{{ 'activo' if ruta == '/gastos' or ruta.startswith('/gastos/') and ruta not in ('/gastos/importar', '/gastos/nuevo', '/gastos/revisar') }}">Gastos</a>
     <a href="/gastos/importar" class="{{ 'activo' if ruta == '/gastos/importar' }}">Importar XML de proveedores</a>
     <a href="/gastos/nuevo" class="{{ 'activo' if ruta == '/gastos/nuevo' }}">Registrar gasto</a>
     <a href="/gastos/revisar" class="{{ 'activo' if ruta == '/gastos/revisar' }}">Revisar importados</a>
@@ -51,6 +54,7 @@
     <a href="/historial" class="{{ 'activo' if ruta.startswith('/historial') }}">Historial de cambios</a>
     <a href="/configuracion/" class="{{ 'activo' if ruta.startswith('/configuracion') }}">Configuración</a>
     {% if session.get('autenticado') %}<a href="/salir">Cerrar sesión</a>{% endif %}
+    </div>
   </nav>
   <main>
     {% with mensajes = get_flashed_messages(with_categories=true) %}
@@ -63,7 +67,9 @@
 // Confirmación para acciones destructivas
 document.addEventListener('submit', e => {
   const msg = e.submitter && e.submitter.dataset.confirmar;
-  if (msg && !confirm(msg)) e.preventDefault();
+  if (msg && !confirm(msg)) { e.preventDefault(); return; }
+  const b = e.submitter;
+  if (b && b.dataset.espera) { setTimeout(() => { b.disabled = true; b.textContent = b.dataset.espera; }, 0); }
 });
 </script>
 {% block scripts %}{% endblock %}

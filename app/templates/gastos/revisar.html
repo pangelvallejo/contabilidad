@@ -6,7 +6,7 @@
 {% if gastos %}
 <form class="tarjeta tabla-scroll" method="post">
   <table>
-    <tr><th><input type="checkbox" id="todos" title="Marcar todos"></th><th>Fecha</th><th>Proveedor</th><th>Descripción</th><th class="n">Base</th><th class="n">IVA</th>
+    <tr><th><input type="checkbox" id="todos" title="Marcar todos" checked></th><th>Fecha</th><th>Proveedor</th><th>Descripción</th><th class="n">Base</th><th class="n">IVA</th>
       <th>Categoría</th><th>IVA desc.</th><th>Pago</th><th>Mensual</th><th></th></tr>
     {% for g in gastos %}
     <tr><td><input type="hidden" name="id" value="{{ g.id }}"><input type="checkbox" name="ok_{{ g.id }}" class="ok" checked></td>

@@ -32,6 +32,8 @@ def _texto(v):
 
 
 SENSIBLES = ("clave", "token", "password", "contrasena")
+# Marcas internas que cambian solas (respaldo automático, aviso de versión): no son acciones del usuario.
+CONFIG_SILENCIOSA = {"ultimo_respaldo", "actualizacion_disponible"}
 
 
 def _cambios(obj):
@@ -60,6 +62,8 @@ def _registrar(session, _flush_context, _instances):
             nuevos.append(Bitacora(accion="crear", entidad=nombre, entidad_id=None, descripcion=desc(obj)[:300]))
             obj._bitacora_pendiente = nuevos[-1]
     for obj in list(session.dirty):
+        if isinstance(obj, Config) and obj.clave in CONFIG_SILENCIOSA:
+            continue
         if type(obj) in VIGILADOS and session.is_modified(obj):
             cambios = _cambios(obj)
             if cambios:

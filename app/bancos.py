@@ -1,7 +1,7 @@
 """Importación de extractos bancarios (CSV o Excel) y conciliación con los movimientos registrados.
 
 El lector reconoce las columnas por su nombre (fecha, descripción, valor o débito/crédito) sin importar
-el banco; si el archivo no trae encabezados reconocibles, el usuario indica las columnas en la pantalla.
+el banco; si el archivo no trae encabezados reconocibles, la importación lo informa y no carga nada.
 """
 import csv
 import hashlib
@@ -182,9 +182,11 @@ def _ya_conciliados(session):
     return {(m.origen_tipo, m.origen_id) for m in session.query(MovimientoBanco).filter_by(estado="conciliado")}
 
 
-def candidatos(session, mov: MovimientoBanco, dias=5):
-    """Movimientos registrados en el programa que podrían corresponder a la línea del extracto."""
-    usados = _ya_conciliados(session)
+def candidatos(session, mov: MovimientoBanco, dias=5, usados=None):
+    """Movimientos registrados en el programa que podrían corresponder a la línea del extracto.
+    `usados` (pares ya conciliados) puede pasarse calculado una vez para muchas líneas."""
+    if usados is None:
+        usados = _ya_conciliados(session)
     desde, hasta = mov.fecha - timedelta(days=dias), mov.fecha + timedelta(days=dias)
     res = []
     cuenta = mov.banco.cuenta

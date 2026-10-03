@@ -76,8 +76,8 @@ h2 { font-size: 16px; margin: 0 0 12px; }
 
 .tarjeta { background: var(--superficie); border: 1px solid var(--borde); border-radius: var(--radio); padding: 18px; margin-bottom: 18px; }
 .rejilla { display: grid; gap: 16px; }
-.rejilla.k4 { grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); }
-.rejilla.k2 { grid-template-columns: repeat(auto-fit, minmax(380px, 1fr)); }
+.rejilla.k4 { grid-template-columns: repeat(auto-fit, minmax(min(190px, 100%), 1fr)); }
+.rejilla.k2 { grid-template-columns: repeat(auto-fit, minmax(min(380px, 100%), 1fr)); }
 .kpi { background: var(--superficie); border: 1px solid var(--borde); border-radius: var(--radio); padding: 14px 16px; }
 .kpi .etq { color: var(--texto-2); font-size: 12.5px; }
 .kpi .val { font-size: 22px; font-weight: 650; margin-top: 4px; font-variant-numeric: tabular-nums; }
@@ -136,6 +136,7 @@ input.n { text-align: right; }
 .punto.critico { background: var(--crit); } .punto.advertencia { background: #d99a00; } .punto.info { background: var(--acento-2); }
 
 .liquidacion td:first-child { color: var(--texto-2); }
+.liquidacion td { white-space: normal; word-break: break-word; }
 .liquidacion tr.res td { font-weight: 700; font-size: 15px; }
 .nota { color: var(--texto-3); font-size: 12.5px; }
 .zona-carga { border: 2px dashed var(--borde); border-radius: var(--radio); padding: 28px; text-align: center; background: var(--superficie-2); }
@@ -156,10 +157,20 @@ input.n { text-align: right; }
 .hbar .relleno { height: 12px; background: var(--serie-1); border-radius: 0 4px 4px 0; min-width: 2px; }
 .hbar .v { text-align: right; font-variant-numeric: tabular-nums; color: var(--texto-2); }
 
+.menu-boton { display: none; }
 @media (max-width: 800px) {
   .marco { flex-direction: column; }
-  nav.lateral { width: 100%; height: auto; position: static; }
+  nav.lateral { width: 100%; height: auto; position: static; padding: 10px 0; }
+  nav.lateral .marca { padding: 4px 18px 8px; }
+  nav.lateral .menu-boton {
+    display: block; margin: 0 18px 6px; width: calc(100% - 36px); background: rgba(255,255,255,.14);
+    color: #fff; border: 1px solid rgba(255,255,255,.25); padding: 8px; border-radius: 6px; font-size: 14px;
+  }
+  nav.lateral .menu { display: none; }
+  nav.lateral.abierta .menu { display: block; }
   main { padding: 16px; }
+  .tarjeta { padding: 14px; }
+  .kpi .val { font-size: 19px; }
 }
 @media print {
   nav.lateral, .encabezado .acciones, form.filtros, .no-imprimir { display: none !important; }

@@ -7,7 +7,7 @@ from .. import bancos, cartera, contab, reportes
 from ..db import Session
 from ..models import (CERO, Banco, CategoriaGasto, Cuenta, Gasto, MovimientoBanco, PagoGasto, Recaudo,
                       Tercero)
-from . import check, dinero, fecha_arg
+from . import check, entero_requerido, fecha_arg
 
 bp = Blueprint("bancos", __name__, url_prefix="/bancos")
 
@@ -45,7 +45,8 @@ def conciliacion():
     if estado != "todos":
         q = q.filter(MovimientoBanco.estado == estado)
     movs = q.order_by(MovimientoBanco.fecha.desc(), MovimientoBanco.id.desc()).limit(300).all()
-    sugerencias = {m.id: bancos.candidatos(s, m) for m in movs if m.estado == "pendiente"}
+    usados = bancos._ya_conciliados(s)
+    sugerencias = {m.id: bancos.candidatos(s, m, usados=usados) for m in movs if m.estado == "pendiente"}
     categorias = {m.id: bancos.sugerir_categoria_bancaria(m.descripcion) for m in movs if m.estado == "pendiente"}
     corte = fecha_arg("corte", date.today())
     pendientes = s.query(MovimientoBanco).filter_by(banco_id=banco.id, estado="pendiente").count()
@@ -68,6 +69,7 @@ def accion(id):
         if accion == "pendiente":
             bancos.deshacer(s, mov)
             s.commit()
+            flash("Movimiento devuelto a pendiente.", "ok")
             return redirect(url_for("bancos.conciliacion", banco=mov.banco_id,
                                     estado=request.form.get("volver_estado", "pendiente")))
         if mov.estado != "pendiente":
@@ -79,8 +81,10 @@ def accion(id):
             if (tipo, int(oid)) in bancos._ya_conciliados(s):
                 raise ValueError("Ese movimiento ya está vinculado a otra línea del extracto.")
             mov.origen_tipo, mov.origen_id, mov.estado = tipo, int(oid), "conciliado"
+            flash("Movimiento vinculado.", "ok")
         elif accion == "ignorar":
             mov.estado = "ignorado"
+            flash("Movimiento ignorado.", "ok")
         elif accion == "gasto":
             categoria = s.get(CategoriaGasto, request.form.get("categoria_id", type=int) or 0)
             if categoria is None:
@@ -97,9 +101,12 @@ def accion(id):
             s.refresh(g)
             contab.contabilizar_gasto(s, g)
             mov.origen_tipo, mov.origen_id, mov.estado, mov.creado_aqui = "gasto", g.id, "conciliado", True
+            flash(f"Gasto registrado en {categoria.nombre} y conciliado.", "ok")
         elif accion == "pago_proveedor":
             g = s.get(Gasto, request.form.get("gasto_id", type=int) or 0)
-            if g is None or mov.valor >= 0 or -mov.valor > g.saldo:
+            if g is None:
+                raise ValueError("Elija el proveedor y luego la factura que se pagó con este movimiento.")
+            if mov.valor >= 0 or -mov.valor > g.saldo:
                 raise ValueError("El valor supera el saldo de la factura del proveedor.")
             p = PagoGasto(fecha=mov.fecha, cuenta_pago=mov.banco.cuenta, valor=-mov.valor)
             s.add(p)
@@ -107,10 +114,13 @@ def accion(id):
             s.flush()
             contab.contabilizar_pago_gasto(s, p)
             mov.origen_tipo, mov.origen_id, mov.estado, mov.creado_aqui = "pagogasto", p.id, "conciliado", True
+            flash(f"Pago aplicado a {g.numero or 'la factura'}; saldo pendiente {g.saldo:,.0f}.", "ok")
         elif accion == "recaudo":
             if mov.valor <= 0:
                 raise ValueError("Solo las entradas de dinero se registran como recaudo.")
-            cliente_id = int(request.form["cliente_id"])
+            cliente_id = entero_requerido("cliente_id", "Seleccione el cliente que hizo el pago.")
+            if s.get(Tercero, cliente_id) is None:
+                raise ValueError("Seleccione el cliente que hizo el pago.")
             rec = Recaudo(fecha=mov.fecha, cliente_id=cliente_id, banco_id=mov.banco_id, valor=mov.valor,
                           medio_electronico=check("medio_electronico"), referencia=(mov.referencia or mov.descripcion)[:80],
                           notas="Conciliación bancaria")
@@ -120,6 +130,8 @@ def accion(id):
             s.flush()
             contab.contabilizar_recaudo(s, rec)
             mov.origen_tipo, mov.origen_id, mov.estado, mov.creado_aqui = "recaudo", rec.id, "conciliado", True
+            flash("Recaudo registrado y aplicado a las facturas más antiguas." if rec.aplicaciones
+                  else "Recaudo registrado como anticipo (el cliente no tiene facturas pendientes).", "ok")
         elif accion == "ingreso":
             # Rendimientos, reintegros u otros ingresos sin factura: asiento banco contra la cuenta elegida
             cuenta = request.form.get("cuenta", "421005")
@@ -132,6 +144,7 @@ def accion(id):
                                        descripcion=f"Banco: {mov.descripcion}"[:250], tercero_id=None,
                                        lineas=[(mov.banco.cuenta, mov.valor, 0, None, None), (cuenta, 0, mov.valor, None, None)])
             mov.origen_tipo, mov.origen_id, mov.estado, mov.creado_aqui = "asiento", a.id, "conciliado", True
+            flash("Ingreso registrado.", "ok")
         s.commit()
     except Exception as e:  # noqa: BLE001
         s.rollback()

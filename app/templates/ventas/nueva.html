@@ -29,7 +29,7 @@
 {% endblock %}
 {% block scripts %}
 <script>
-const num = v => parseFloat(String(v).replace(/\./g, '').replace(',', '.')) || 0;
+const num = v => { v = String(v || '').trim(); if (v.includes(',')) v = v.replace(/\./g, '').replace(',', '.'); else if ((v.match(/\./g) || []).length > 1 || /\.\d{3}$/.test(v)) v = v.replace(/\./g, ''); return parseFloat(v) || 0; };
 const fmt = v => v.toLocaleString('es-CO', {maximumFractionDigits: 2});
 const base = document.getElementById('base'), iva = document.getElementById('iva'), total = document.getElementById('total');
 base.addEventListener('input', () => { iva.value = Math.round(num(base.value) * {{ tarifa_iva }}); calc(); });

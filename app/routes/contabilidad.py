@@ -139,16 +139,20 @@ def paquete():
     """Un solo Excel con todos los libros del periodo, para el contador o revisor."""
     s = Session()
     desde, hasta = periodo()
-    from ..models import DocumentoVenta, Gasto, Recaudo
+    from sqlalchemy.orm import selectinload
+    from ..models import AplicacionRecaudo, DocumentoVenta, Gasto, Recaudo
     from .. import cartera, impuestos
     asientos = reportes.libro_diario(s, desde, hasta)
     bp_filas, td, tc = reportes.balance_de_prueba(s, desde, hasta)
     er = reportes.estado_resultados(s, desde, hasta)
     bg = reportes.balance_general(s, hasta)
-    ventas = (s.query(DocumentoVenta).filter(DocumentoVenta.fecha.between(desde, hasta))
-              .order_by(DocumentoVenta.fecha).all())
-    gastos = s.query(Gasto).filter(Gasto.fecha.between(desde, hasta)).order_by(Gasto.fecha).all()
-    recaudos = s.query(Recaudo).filter(Recaudo.fecha.between(desde, hasta)).order_by(Recaudo.fecha).all()
+    ventas = (s.query(DocumentoVenta).options(selectinload(DocumentoVenta.cliente))
+              .filter(DocumentoVenta.fecha.between(desde, hasta)).order_by(DocumentoVenta.fecha).all())
+    gastos = (s.query(Gasto).options(selectinload(Gasto.proveedor), selectinload(Gasto.categoria))
+              .filter(Gasto.fecha.between(desde, hasta)).order_by(Gasto.fecha).all())
+    recaudos = (s.query(Recaudo).options(selectinload(Recaudo.cliente), selectinload(Recaudo.banco),
+                                         selectinload(Recaudo.aplicaciones).selectinload(AplicacionRecaudo.documento))
+                .filter(Recaudo.fecha.between(desde, hasta)).order_by(Recaudo.fecha).all())
     iva = impuestos.resumen_iva(s, desde, hasta)
     cart, _ = cartera.cartera_por_edades(s, hasta)
     hojas = {
@@ -262,6 +266,8 @@ def asiento(id=None):
                                detalles[i] if i < len(detalles) else ""))
             if len(lineas) < 2:
                 raise contab.ErrorContable("Agregue al menos dos líneas.")
+            if sum((l[1] for l in lineas), CERO) == 0:
+                raise contab.ErrorContable("Indique al menos un valor distinto de cero.")
             validas = {c.codigo for c in _cuentas_movimiento(s)}
             for cta, *_ in lineas:
                 if cta not in validas:
@@ -269,6 +275,8 @@ def asiento(id=None):
             nuevo = contab.guardar_asiento(s, origen=None, tipo="AJ", fecha=fecha_arg("fecha", date.today()),
                                            descripcion=request.form.get("descripcion") or "Asiento manual",
                                            tercero_id=None, lineas=lineas, asiento=a)
+            if nuevo is None:
+                raise contab.ErrorContable("El asiento no tiene movimientos.")
             s.commit()
             flash("Asiento guardado.", "ok")
             return redirect(url_for("contabilidad.asiento", id=nuevo.id))

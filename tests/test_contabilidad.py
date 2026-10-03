@@ -3,8 +3,6 @@ import zipfile
 from datetime import date
 from decimal import Decimal
 
-import pytest
-
 from ubl import EMPRESA, documento, factura_compra, factura_venta
 
 CLIENTE = ("900123456", "7", "CLIENTE DEMO S.A.S.")
@@ -563,7 +561,7 @@ def test_formularios_no_fallan_con_datos_invalidos(cliente_web, s):
 
 def test_bloqueo_de_periodo_e_historial(cliente_web, s):
     from app import contab
-    from app.models import Bitacora, DocumentoVenta, Gasto
+    from app.models import Bitacora, Gasto
     importar(s, "1.xml", factura_venta("ALC-1", "2026-09-01", CLIENTE, 1_000_000))
     importar(s, "g.xml", factura_compra("P-1", "2026-09-05", ARRENDADOR, 100_000, 19_000, descripcion="ARRIENDO"))
     # al pagar el 2593 del bimestre 5 queda bloqueado hasta el 31-10-2026
@@ -804,13 +802,13 @@ def test_acceso_red_actualizacion_y_restauracion(cliente_web, s, tmp_path):
 
 def test_segunda_auditoria_cierre_y_depreciacion(cliente_web, s):
     from app import contab, impuestos, planeacion, reportes
-    from app.models import Asiento, Bitacora, Gasto, Tercero
+    from app.models import Asiento, Bitacora, Gasto
     _escenario(s)  # ingresos 15M en sep/oct 2026
     importar(s, "pc.xml", factura_compra("PC-1", "2026-03-10", ("800000009", "1", "TIENDA PC"), 3_000_000, 570_000,
                                          descripcion="Computador portatil"))
     pc = s.query(Gasto).filter_by(numero="PC-1").one()
     # Nota crédito del proveedor sobre el activo reduce la base depreciable
-    from ubl import contenedor, documento
+    from ubl import documento
     nc = documento(tipo="CreditNote", numero="NC-PC", cufe="cude-pc", fecha="2026-03-15",
                    emisor=("800000009", "1", "TIENDA PC"), receptor=EMPRESA, base=1_000_000, iva=190_000,
                    descripcion="Computador portatil", referencia=("PC-1", "cufe-pc-1"))
@@ -832,10 +830,11 @@ def test_segunda_auditoria_cierre_y_depreciacion(cliente_web, s):
     a = contab.guardar_asiento(s, origen=None, tipo="AJ", fecha=date(2027, 2, 1), descripcion="x", tercero_id=None,
                                lineas=[("11200501", 100, 0, None, None), ("310505", 0, 100, None, None)])
     s.commit()
+    aid = a.id
     contab.set_config(s, "periodo_bloqueado_hasta", "2027-02-28")
     s.commit()
-    assert cliente_web.post(f"/contabilidad/asiento/{a.id}", data={"accion": "eliminar"}).status_code == 302
-    assert s.get(Asiento, a.id) is not None
+    assert cliente_web.post(f"/contabilidad/asiento/{aid}", data={"accion": "eliminar"}).status_code == 302
+    assert s.get(Asiento, aid) is not None
     contab.set_config(s, "periodo_bloqueado_hasta", "2026-12-31")
     s.commit()
     # Marcar certificado recibido y una reteIVA posterior sobre una factura del periodo bloqueado sí se permite
@@ -864,9 +863,9 @@ def test_segunda_auditoria_cierre_y_depreciacion(cliente_web, s):
     assert planeacion.anio_cerrado(s, 2026)
     assert impuestos.ingresos_brutos(s, date(2026, 1, 1), date(2026, 12, 31)) == ingresos_antes
     assert impuestos.declaracion_simple(s, 2026).impuesto > 0
-    simple = s.query(Asiento).filter_by(origen="simple:2026").one()
+    simple_id = s.query(Asiento).filter_by(origen="simple:2026").one().id
     assert cliente_web.post("/impuestos/f260?anio=2026").status_code == 302
-    assert s.query(Asiento).filter_by(origen="simple:2026").one().id == simple.id
+    assert s.query(Asiento).filter_by(origen="simple:2026").one().id == simple_id
     assert reportes.saldo_cuenta(s, "540505", date(2026, 12, 31)) == 0  # cerrado contra 370505
     assert reportes.saldo_cuenta(s, "370505") < 0 and reportes.saldo_cuenta(s, "360505") == 0
     assert reportes.balance_general(s, date(2027, 3, 31))["cuadre"] == 0
@@ -968,7 +967,7 @@ def test_segunda_auditoria_bancos_y_sistema(cliente_web, s):
 
 
 def test_tercera_auditoria_nc_proveedor_reteiva_y_validaciones(cliente_web, s):
-    from app import contab, reportes
+    from app import reportes
     from app.models import Banco, DocumentoVenta, Gasto, MovimientoBanco
     from ubl import documento
     # La NC del proveedor descuenta el saldo de la factura afectada
@@ -1004,10 +1003,10 @@ def test_tercera_auditoria_nc_proveedor_reteiva_y_validaciones(cliente_web, s):
     s.expire_all()
     assert s.get(MovimientoBanco, m.id).estado == "conciliado"
     # Validaciones de dominio y errores que antes daban 500
-    doc = s.query(DocumentoVenta).one()
-    cliente_web.post(f"/ventas/{doc.id}", data={"accion": "guardar", "reteiva_aplica": "on", "reteiva_valor": "-5"})
+    doc_id = s.query(DocumentoVenta).one().id
+    cliente_web.post(f"/ventas/{doc_id}", data={"accion": "guardar", "reteiva_aplica": "on", "reteiva_valor": "-5"})
     s.expire_all()
-    assert s.get(DocumentoVenta, doc.id).reteiva_valor == D("142500")
+    assert s.get(DocumentoVenta, doc_id).reteiva_valor == D("142500")
     assert cliente_web.post("/gastos/nuevo", data={"tipo_soporte": "ZZ", "fecha": "2026-12-01", "categoria_id": "1",
                                                    "subtotal": "100"}).status_code == 200
     assert cliente_web.post("/gastos/revisar", data={"id": ["abc"], "ok_abc": "on", "categoria_abc": "1"}).status_code == 302

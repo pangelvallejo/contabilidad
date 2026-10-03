@@ -56,15 +56,18 @@ def main():
                            "-r", str(carpeta / "requirements.txt")])
     (py_dir / "get-pip.py").unlink()
     # Prueba de humo: el paquete debe poder importar el programa con su propio Python
-    subprocess.check_call([str(python), "-c", "import app, flask, sqlalchemy, openpyxl, fpdf; print('paquete OK', app.VERSION)"],
+    subprocess.check_call([str(python), "-B", "-c", "import app, flask, sqlalchemy, openpyxl, fpdf; print('paquete OK', app.VERSION)"],
                           cwd=str(carpeta))
+    for cache in carpeta.rglob("__pycache__"):
+        shutil.rmtree(cache, ignore_errors=True)
 
-    (carpeta / "Contabilidad.bat").write_text(
-        "@echo off\r\n"
-        "title Contabilidad Angel Lecompte\r\n"
-        'cd /d "%~dp0"\r\n'
-        "python\\python.exe -m app\r\n"
-        "pause\r\n", encoding="utf-8")
+    # write_bytes: en Windows, write_text convertiría "\n" en "\r\n" y el .bat quedaría con "\r\r\n".
+    (carpeta / "Contabilidad.bat").write_bytes(
+        b"@echo off\r\n"
+        b"title Contabilidad Angel Lecompte\r\n"
+        b'cd /d "%~dp0"\r\n'
+        b"python\\python.exe -m app\r\n"
+        b"pause\r\n")
     salida = dist / f"Contabilidad-{version()}-windows.zip"
     if salida.exists():
         salida.unlink()

@@ -9,7 +9,7 @@ from ..db import Session
 from .. import formato
 from ..formato import pesos
 from ..models import CERO, Asiento, Banco, DocumentoVenta, LineaVenta, Recaudo, Tercero
-from . import XLSX, anio_arg, check, descargar, dinero, fecha_arg, paginar, paginar_lista
+from . import XLSX, anio_arg, check, descargar, dinero, entero_requerido, fecha_arg, paginar, paginar_lista
 
 bp = Blueprint("ventas", __name__)
 
@@ -27,7 +27,8 @@ def lista():
     if cliente_id:
         q = q.filter(DocumentoVenta.cliente_id == cliente_id)
     docs = q.order_by(DocumentoVenta.fecha.desc(), DocumentoVenta.id.desc()).all()
-    filas = [(doc, cartera.saldo_documento(s, doc), cartera.estado_documento(s, doc)) for doc in docs]
+    saldos = cartera.saldos_en_lote(s, docs)
+    filas = [(doc, saldos[doc.id], cartera.estado_documento(s, doc, saldo=saldos[doc.id])) for doc in docs]
     estado = request.args.get("estado")
     if estado:
         filas = [f for f in filas if f[2] == estado]
@@ -70,7 +71,11 @@ def nueva():
     s = Session()
     if request.method == "POST":
         try:
-            cliente = s.get(Tercero, int(request.form["cliente_id"]))
+            cliente = s.get(Tercero, entero_requerido("cliente_id", "Seleccione el cliente."))
+            if cliente is None:
+                raise ValueError("Seleccione el cliente.")
+            if fecha_arg("fecha") is None:
+                raise ValueError("Indique la fecha del documento.")
             base = dinero("base")
             iva = dinero("iva")
             if request.form.get("tipo", "FV") not in ("FV", "NC", "ND"):
@@ -95,10 +100,10 @@ def nueva():
                 doc.reteiva_aplica = True
                 doc.reteiva_valor = contab.redondear(iva * contab.d(TARIFA_RETEIVA), "1")
                 doc.reteiva_fecha = doc.fecha
-            doc.pdf_archivo = archivos.guardar_upload("ventas", request.files.get("pdf"))
             s.add(doc)
             s.flush()
             contab.contabilizar_venta(s, doc)
+            doc.pdf_archivo = archivos.guardar_upload("ventas", request.files.get("pdf"))  # al final: si algo falla no queda un PDF huérfano
             s.commit()
             flash(f"{doc.numero} registrada.", "ok")
             return redirect(url_for("ventas.detalle", id=doc.id))
@@ -189,7 +194,7 @@ def pago_rapido(id):
         if saldo <= 0:
             raise ValueError("La factura no tiene saldo pendiente.")
         rec = Recaudo(fecha=fecha_arg("fecha", date.today()), cliente_id=doc.cliente_id,
-                      banco_id=int(request.form["banco_id"]), valor=saldo,
+                      banco_id=entero_requerido("banco_id", "Seleccione el banco donde se recibió el pago."), valor=saldo,
                       medio_electronico=check("medio_electronico"), referencia=f"Pago {doc.numero}")
         s.add(rec)
         cartera.registrar_aplicaciones(rec, {doc: saldo})
@@ -229,8 +234,10 @@ def _abiertos_para(s, cliente_id, rec=None):
 
 def _guardar_recaudo(s, rec, cliente_id):
     rec.fecha = fecha_arg("fecha", date.today())
+    if not cliente_id or s.get(Tercero, cliente_id) is None:
+        raise ValueError("Seleccione el cliente.")
     rec.cliente_id = cliente_id
-    rec.banco_id = int(request.form["banco_id"])
+    rec.banco_id = entero_requerido("banco_id", "Seleccione el banco donde se recibió el dinero.")
     rec.valor = dinero("valor")
     rec.medio_electronico = check("medio_electronico")
     rec.referencia = request.form.get("referencia") or None
