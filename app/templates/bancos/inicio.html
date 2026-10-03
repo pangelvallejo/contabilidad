@@ -28,7 +28,7 @@
       {% for f in filas %}
       <tr{% if not f.banco.activo %} style="opacity:.6"{% endif %}>
         <td>{{ f.banco.nombre }}{% if not f.banco.activo %} <span class="etiqueta Anulada">inactivo</span>{% endif %}</td>
-        <td>{{ f.banco.numero or '' }}{% if f.banco.tipo %} · {{ f.banco.tipo }}{% endif %}</td>
+        <td>{{ [f.banco.numero, f.banco.tipo]|select|join(' · ') }}</td>
         <td>{{ f.banco.cuenta }}</td>
         <td>{{ f.ultimo_extracto|fecha if f.ultimo_extracto else '—' }}</td>
         <td class="n">{{ f.pendientes or '' }}</td>

@@ -114,7 +114,8 @@ def accion(id):
             s.flush()
             contab.contabilizar_pago_gasto(s, p)
             mov.origen_tipo, mov.origen_id, mov.estado, mov.creado_aqui = "pagogasto", p.id, "conciliado", True
-            flash(f"Pago aplicado a {g.numero or 'la factura'}; saldo pendiente {g.saldo:,.0f}.", "ok")
+            from ..formato import pesos
+            flash(f"Pago aplicado a {g.numero or 'la factura'}; saldo pendiente {pesos(g.saldo)}.", "ok")
         elif accion == "recaudo":
             if mov.valor <= 0:
                 raise ValueError("Solo las entradas de dinero se registran como recaudo.")
@@ -311,7 +312,8 @@ def otro_ingreso(id=None):
             if soporte:
                 oi.soporte_archivo = soporte
             s.commit()
-            flash(("Ingreso registrado" if nuevo else "Ingreso actualizado") + f": {oi.concepto}, {oi.valor:,.0f}.", "ok")
+            from ..formato import pesos
+            flash(("Ingreso registrado" if nuevo else "Ingreso actualizado") + f": {oi.concepto}, {pesos(oi.valor)}.", "ok")
             return redirect(url_for("bancos.otros_ingresos", anio=oi.fecha.year))
         except Exception as e:  # noqa: BLE001
             s.rollback()
