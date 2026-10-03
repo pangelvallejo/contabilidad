@@ -56,7 +56,10 @@ def d(valor) -> Decimal:
             valor = valor.replace(".", "").replace(",", ".")
         elif valor.count(".") > 1 or (valor.count(".") == 1 and len(valor.split(".")[1]) == 3):
             valor = valor.replace(".", "")
-    return Decimal(str(valor))
+    res = Decimal(str(valor))
+    if not res.is_finite():
+        raise ValueError(f"'{valor}' no es un número.")
+    return res
 
 
 def redondear(valor, unidad="0.01") -> Decimal:

@@ -24,18 +24,20 @@ def excel(hojas: dict) -> bytes:
             celda.font = Font(bold=True, color="FFFFFF")
             celda.fill = PatternFill("solid", fgColor="1F3A5F")
             celda.alignment = Alignment(wrap_text=True, vertical="center")
-        for fila in filas:
-            ws.append([float(v) if isinstance(v, Decimal) else v for v in fila])
+        # Una sola pasada por celda (formato al crearla): un libro diario de 20.000 líneas sale en segundos.
+        for r, fila in enumerate(filas, start=2):
+            for i, v in enumerate(fila, start=1):
+                if isinstance(v, Decimal):
+                    v = float(v)
+                c = ws.cell(row=r, column=i, value=v)
+                if isinstance(v, float):
+                    c.number_format = FORMATO_PESOS
+                elif isinstance(v, date):
+                    c.number_format = "dd/mm/yyyy"
         for i, enc in enumerate(encabezados, start=1):
             letra = get_column_letter(i)
             ancho = max([len(str(enc))] + [len(str(f[i - 1])) for f in filas[:200] if i - 1 < len(f)])
             ws.column_dimensions[letra].width = min(max(10, ancho + 2), 60)
-            for fila_celdas in ws.iter_rows(min_row=2, min_col=i, max_col=i):
-                c = fila_celdas[0]
-                if isinstance(c.value, float):
-                    c.number_format = FORMATO_PESOS
-                elif isinstance(c.value, date):
-                    c.number_format = "dd/mm/yyyy"
         ws.freeze_panes = "A2"
     buf = io.BytesIO()
     wb.save(buf)

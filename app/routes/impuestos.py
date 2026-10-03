@@ -7,7 +7,7 @@ from .. import archivos, bancos, contab, exogena, exportar, impuestos
 from ..config import BIMESTRES, SIMPLE_TARIFA_ANUAL, SIMPLE_TARIFA_BIMESTRAL
 from ..db import Session
 from ..models import Banco, PagoImpuesto, Vencimiento
-from . import XLSX, anio_arg, check, descargar, destino_seguro, dinero, fecha_arg
+from . import XLSX, anio_arg, check, descargar, destino_seguro, dinero, entero_requerido, fecha_arg
 
 bp = Blueprint("impuestos", __name__, url_prefix="/impuestos")
 
@@ -60,16 +60,17 @@ def simple():
 def registrar_pago():
     s = Session()
     try:
-        p = PagoImpuesto(formulario=request.form.get("formulario", "2593"), anio=int(request.form["anio"]),
+        p = PagoImpuesto(formulario=request.form.get("formulario", "2593"),
+                         anio=entero_requerido("anio", "Indique el año del pago."),
                          bimestre=request.form.get("bimestre", type=int), fecha=fecha_arg("fecha", date.today()),
                          valor_simple=dinero("valor_simple"), valor_iva=dinero("valor_iva"),
-                         banco_id=int(request.form["banco_id"]),
+                         banco_id=entero_requerido("banco_id", "Seleccione el banco con el que pagó."),
                          numero_formulario=request.form.get("numero_formulario") or None)
-        p.archivo = archivos.guardar_upload("impuestos", request.files.get("archivo"))
         if p.total <= 0 or p.valor_simple < 0 or p.valor_iva < 0:
             raise ValueError("Los valores pagados deben ser positivos.")
         if p.formulario not in ("2593", "260", "300") or (p.formulario == "2593" and p.bimestre not in BIMESTRES):
             raise ValueError("Formulario o bimestre no válido.")
+        p.archivo = archivos.guardar_upload("impuestos", request.files.get("archivo"))
         s.add(p)
         s.flush()
         s.refresh(p)

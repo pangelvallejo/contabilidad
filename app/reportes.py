@@ -5,6 +5,7 @@ from datetime import date
 from decimal import Decimal
 
 from sqlalchemy import func
+from sqlalchemy.orm import joinedload, selectinload
 
 from . import contab
 from .models import CERO, Asiento, Cuenta, Gasto, Movimiento
@@ -150,7 +151,7 @@ def balance_general(session, corte: date):
     resultado = _saldo_prefijo(sp, "4", "C") - _saldo_prefijo(sp, "5", "D") - _saldo_prefijo(sp, "6", "D")
     cerrado = (session.query(Asiento).filter(Asiento.origen == f"cierre:{corte.year}", Asiento.fecha <= corte)
                .first() is not None)
-    if cerrado:  # el resultado ya quedó en 3605/3610 con el asiento de cierre
+    if cerrado:  # el resultado ya quedó en 370505/371005 con el asiento de cierre
         resultado = CERO
     return {
         "activo": activo, "det_activo": _detalle(session, s, ["1"]),
@@ -167,6 +168,8 @@ def libro_diario(session, desde, hasta, tipo=None):
     q = session.query(Asiento).filter(Asiento.fecha.between(desde, hasta))
     if tipo:
         q = q.filter(Asiento.tipo == tipo)
+    q = q.options(selectinload(Asiento.lineas).joinedload(Movimiento.cuenta_rel),
+                  selectinload(Asiento.lineas).joinedload(Movimiento.tercero), joinedload(Asiento.tercero))
     return q.order_by(Asiento.fecha, Asiento.tipo, Asiento.numero).all()
 
 
@@ -175,6 +178,7 @@ def libro_mayor(session, cuenta: str, desde, hasta, tercero_id=None):
     q_prev = (session.query(func.sum(Movimiento.debito), func.sum(Movimiento.credito)).join(Asiento)
               .filter(Movimiento.cuenta.like(f"{cuenta}%"), Asiento.fecha < desde))
     q = (session.query(Movimiento).join(Asiento)
+         .options(joinedload(Movimiento.asiento), joinedload(Movimiento.tercero), joinedload(Movimiento.cuenta_rel))
          .filter(Movimiento.cuenta.like(f"{cuenta}%"), Asiento.fecha.between(desde, hasta)))
     if tercero_id:
         q_prev = q_prev.filter(Movimiento.tercero_id == tercero_id)

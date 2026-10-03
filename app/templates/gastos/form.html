@@ -3,7 +3,7 @@
 {% block contenido %}
 <div class="encabezado">
   <div><h1>{{ 'Gasto ' ~ (g.numero or tipos[g.tipo_soporte]) if g else 'Registrar gasto' }}</h1>
-    <p class="sub">{% if g %}{{ g.proveedor.nombre if g.proveedor else '' }} · importado por {{ g.origen }}{% if not g.revisado %} · <span class="etiqueta adv">Revise la categoría y la forma de pago y guarde</span>{% endif %}
+    <p class="sub">{% if g %}{{ g.proveedor.nombre if g.proveedor else '' }} · origen: {{ {'manual': 'registro manual', 'banco': 'conciliación bancaria', 'xml': 'archivo XML', 'correo': 'correo', 'carpeta': 'carpeta vigilada'}.get(g.origen, g.origen) }}{% if not g.revisado %} · <span class="etiqueta adv">Revise la categoría y la forma de pago y guarde</span>{% endif %}
       {% else %}Para gastos sin XML: cuentas de cobro, recibos, tiquetes, peajes, o facturas que no le llegaron por correo.{% endif %}</p></div>
   {% if g %}<div class="acciones">
     {% if g.xml_archivo %}<a class="btn" href="/archivo/{{ g.xml_archivo }}" target="_blank">Ver XML</a>{% endif %}

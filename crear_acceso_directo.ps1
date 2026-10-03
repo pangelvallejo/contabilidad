@@ -1,5 +1,7 @@
 # Crea un acceso directo en el escritorio que abre el programa.
-$destino = Join-Path $PSScriptRoot "iniciar.bat"
+# Usa Contabilidad.bat (paquete con Python incluido) si existe; si no, iniciar.bat (requiere Python instalado).
+$destino = Join-Path $PSScriptRoot "Contabilidad.bat"
+if (-not (Test-Path $destino)) { $destino = Join-Path $PSScriptRoot "iniciar.bat" }
 $escritorio = [Environment]::GetFolderPath("Desktop")
 $shell = New-Object -ComObject WScript.Shell
 $acceso = $shell.CreateShortcut((Join-Path $escritorio "Contabilidad Angel Lecompte.lnk"))

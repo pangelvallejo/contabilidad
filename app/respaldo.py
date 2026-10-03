@@ -45,12 +45,16 @@ def crear_respaldo(session) -> Path:
                 origen.backup(dest)
             dest.close()
             origen.close()
-            with zipfile.ZipFile(nombre, "w", zipfile.ZIP_DEFLATED) as z:
+            temporal = nombre.with_suffix(".zip.tmp")  # se renombra al final: nunca queda un .zip a medio escribir
+            with zipfile.ZipFile(temporal, "w", zipfile.ZIP_DEFLATED) as z:
                 z.write(copia, "contabilidad.db")
                 if config.ADJUNTOS_DIR.exists():
                     for f in config.ADJUNTOS_DIR.rglob("*"):
                         if f.is_file():
                             z.write(f, Path("adjuntos") / f.relative_to(config.ADJUNTOS_DIR))
+            temporal.replace(nombre)
+        for viejo in sorted(destino.glob("respaldo_*.zip.tmp")):
+            viejo.unlink(missing_ok=True)
         for viejo in sorted(destino.glob("respaldo_*.zip"))[:-conservar]:
             viejo.unlink(missing_ok=True)
         set_config(session, "ultimo_respaldo", datetime.now().isoformat(timespec="seconds"))

@@ -56,9 +56,19 @@ def _servidor(nombre):
 def conectar(session):
     c = configuracion(session)
     host, puerto = _servidor(c["correo_servidor"])
-    imap = imaplib.IMAP4_SSL(host, puerto, timeout=30)
+    imap = imaplib.IMAP4_SSL(host, puerto, timeout=15)
     imap.login(c["correo_usuario"], c["correo_clave"])
     return imap, c
+
+
+def explicar_error(e: Exception) -> str:
+    """Mensaje entendible para los errores más comunes al conectar al buzón."""
+    texto = str(e)
+    if isinstance(e, imaplib.IMAP4.error) and ("AUTHENTICATIONFAILED" in texto.upper() or "Invalid credentials" in texto):
+        return "usuario o contraseña rechazados. En Gmail debe usar una contraseña de aplicación, no la del correo."
+    if isinstance(e, (OSError, TimeoutError)):
+        return "no hay conexión con el servidor (revise internet, el nombre del servidor y el puerto)."
+    return texto
 
 
 def probar(session) -> str:
@@ -78,7 +88,7 @@ def revisar(session, limite=50) -> ResultadoCorreo:
     try:
         imap, c = conectar(session)
     except Exception as e:  # noqa: BLE001
-        res.error = f"No se pudo conectar al correo: {e}"
+        res.error = f"No se pudo conectar al correo: {explicar_error(e)}"
         return res
     try:
         estado, datos = imap.select(c["correo_carpeta"] or "INBOX", readonly=True)

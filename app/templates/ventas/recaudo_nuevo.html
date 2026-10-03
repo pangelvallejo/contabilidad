@@ -25,7 +25,7 @@
 
   <h2>Facturas pendientes</h2>
   {% if abiertos %}
-  <table>
+  <div class="tabla-scroll"><table>
     <tr><th>Factura</th><th>Fecha</th><th>Vence</th><th class="n">Total</th><th class="n">ReteIVA</th><th class="n">Saldo</th><th class="n" style="width:170px">Aplicar</th></tr>
     {% for doc, saldo in abiertos %}
     <tr><td><a href="/ventas/{{ doc.id }}" target="_blank">{{ doc.numero }}</a></td><td>{{ doc.fecha|fecha }}</td><td>{{ doc.vencimiento|fecha }}</td>
@@ -34,7 +34,7 @@
       <td><input class="n aplicar" name="aplicar_{{ doc.id }}" data-saldo="{{ saldo }}" value="{{ form.get('aplicar_' ~ doc.id, '') }}"></td></tr>
     {% endfor %}
     <tr class="total"><td colspan="6">Total aplicado / sin aplicar</td><td class="n"><span id="aplicado">0</span> / <span id="resto">0</span></td></tr>
-  </table>
+  </table></div>
   <p class="nota">Si el cliente le retuvo IVA y aún no lo ha marcado, hágalo en la factura antes de registrar el pago para que el saldo cuadre.</p>
   <button type="button" id="auto">Repartir automáticamente (más antiguas primero)</button>
   {% else %}<p class="vacio">Este cliente no tiene facturas pendientes; el valor quedará como anticipo.</p>{% endif %}
@@ -44,7 +44,7 @@
 {% endblock %}
 {% block scripts %}
 <script>
-const num = v => parseFloat(String(v).replace(/\./g, '').replace(',', '.')) || 0;
+const num = v => { v = String(v || '').trim(); if (v.includes(',')) v = v.replace(/\./g, '').replace(',', '.'); else if ((v.match(/\./g) || []).length > 1 || /\.\d{3}$/.test(v)) v = v.replace(/\./g, ''); return parseFloat(v) || 0; };
 const fmt = v => v.toLocaleString('es-CO', {maximumFractionDigits: 2});
 const valor = document.getElementById('valor');
 const campos = Array.from(document.querySelectorAll('.aplicar'));

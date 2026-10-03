@@ -4,10 +4,12 @@ from datetime import date
 from flask import Blueprint, abort, flash, redirect, render_template, request, url_for
 
 from .. import archivos, bancos, contab, exportar, importacion, planeacion
+from sqlalchemy.orm import selectinload
+
 from ..db import Session
 from ..models import (CERO, TIPOS_SOPORTE, Asiento, Banco, CategoriaGasto, Gasto, PagoGasto,
                       Tercero)
-from . import XLSX, anio_arg, check, descargar, dinero, fecha_arg, paginar_lista
+from . import XLSX, anio_arg, check, descargar, dinero, entero_requerido, fecha_arg, paginar_lista
 
 bp = Blueprint("gastos", __name__)
 
@@ -41,7 +43,9 @@ def lista():
         q = q.filter(Gasto.soporte_archivo.is_(None), Gasto.xml_archivo.is_(None))
     if request.args.get("por_pagar"):
         q = q.filter(Gasto.forma_pago == "credito")
-    gastos = q.order_by(Gasto.fecha.desc(), Gasto.id.desc()).all()
+    gastos = (q.options(selectinload(Gasto.proveedor), selectinload(Gasto.categoria), selectinload(Gasto.pagos),
+                        selectinload(Gasto.notas_credito))
+              .order_by(Gasto.fecha.desc(), Gasto.id.desc()).all())
     if request.args.get("por_pagar"):
         gastos = [g for g in gastos if g.saldo > 0]
     if request.args.get("xlsx"):
@@ -101,7 +105,9 @@ def _llenar_gasto(s, g):
     g.fecha = fecha_arg("fecha", date.today())
     g.vencimiento = fecha_arg("vencimiento")
     g.proveedor_id = _proveedor_desde_form(s)
-    g.categoria_id = int(request.form["categoria_id"])
+    g.categoria_id = entero_requerido("categoria_id", "Seleccione la categoría del gasto.")
+    if s.get(CategoriaGasto, g.categoria_id) is None:
+        raise ValueError("La categoría indicada no existe.")
     g.descripcion = request.form.get("descripcion") or None
     g.subtotal = dinero("subtotal")
     g.iva = dinero("iva")
@@ -245,7 +251,9 @@ def detalle(id):
                 flash("Pago registrado.", "ok")
                 return redirect(url_for("gastos.detalle", id=id))
             if accion == "borrar_pago":
-                p = s.get(PagoGasto, int(request.form["pago_id"]))
+                p = s.query(PagoGasto).filter_by(id=request.form.get("pago_id", type=int) or 0, gasto_id=g.id).first()
+                if p is None:
+                    raise ValueError("El pago ya no existe.")
                 bancos.liberar(s, "pagogasto", p.id)
                 contab.borrar_asientos(s, f"pagogasto:{p.id}")
                 s.delete(p)

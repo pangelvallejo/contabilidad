@@ -22,15 +22,28 @@ CAMPOS_EMPRESA = ["empresa_nombre", "empresa_nit", "empresa_dv", "empresa_direcc
                   "iva_arrastre_saldo_favor", "acceso_red", "clave_acceso", "actualizaciones_repo", "github_token"]
 
 
+SECRETOS = {"correo_clave", "github_token", "clave_acceso"}
+
+
+def _reiniciando(script=None, titulo="Reiniciando el programa…"):
+    """Responde una página de espera y reinicia un instante después, cuando la respuesta ya salió."""
+    import threading
+    threading.Timer(1.5, sistema.reiniciar, args=(script,)).start()
+    return render_template("reiniciando.html", titulo=titulo, segundos=25 if script else 10)
+
+
 @bp.route("/", methods=["GET", "POST"])
 def inicio():
     s = Session()
     if request.method == "POST":
         accion = (request.form.getlist("accion") or [""])[-1]  # el botón pulsado va después del campo oculto
-        if accion == "empresa":
+        if accion in ("empresa", "probar_correo", "revisar_correo", "revisar_carpeta"):
+            # Los botones de prueba también guardan lo escrito: se prueba lo que el usuario ve en pantalla.
             for campo in CAMPOS_EMPRESA:
                 if campo in request.form:
                     valor = request.form.get(campo, "").strip()
+                    if campo in SECRETOS and not valor:
+                        continue  # el campo se muestra vacío por seguridad; vacío = conservar la guardada
                     if campo in ("empresa_nit", "empresa_dv"):
                         valor = re.sub(r"\D", "", valor)
                     if campo == "periodo_bloqueado_hasta" and valor:
@@ -50,8 +63,10 @@ def inicio():
                     contab.set_config(s, "respaldos_a_conservar", str(max(1, int(request.form["respaldos_a_conservar"]))))
                 except ValueError:
                     contab.set_config(s, "respaldos_a_conservar", "30")
+            if accion != "empresa":
+                s.commit()
             flash("Datos guardados.", "ok")
-        elif accion == "banco":
+        if accion == "banco":
             bid = request.form.get("id", type=int)
             b = s.get(Banco, bid) if bid else None
             if not request.form.get("nombre", "").strip():
@@ -90,7 +105,7 @@ def inicio():
             try:
                 flash(correo.probar(s), "ok")
             except Exception as e:  # noqa: BLE001
-                flash(f"No se pudo conectar: {e}", "error")
+                flash(f"No se pudo conectar al correo: {correo.explicar_error(e)}", "error")
         elif accion == "revisar_correo":
             res = correo.revisar(s)
             if res.error:
@@ -121,8 +136,7 @@ def inicio():
                 flash(f"No se pudo preparar la restauración: {e}", "error")
         elif accion == "reiniciar":
             s.commit()
-            flash("Reiniciando…", "info")
-            sistema.reiniciar()
+            return _reiniciando()
         elif accion == "buscar_actualizacion":
             try:
                 info = sistema.verificar_actualizacion(s)
@@ -143,7 +157,7 @@ def inicio():
                 script = sistema.descargar_actualizacion(s, info)
                 respaldo.crear_respaldo(s)
                 s.commit()
-                sistema.reiniciar(script)
+                return _reiniciando(script, f"Instalando la versión {info['version']}…")
             except Exception as e:  # noqa: BLE001
                 flash(f"No se pudo actualizar: {e}", "error")
         elif accion == "respaldo":
@@ -157,11 +171,15 @@ def inicio():
         except Exception as e:  # noqa: BLE001
             s.rollback()
             flash(f"No se pudo guardar: {e}", "error")
-        return redirect(url_for("ajustes.inicio") + "#" + (accion or ""))
+        seccion = request.form.get("seccion") or (accion or "")
+        return redirect(url_for("ajustes.inicio") + "#" + seccion)
     valores = {c: contab.config(s, c, "") for c in CAMPOS_EMPRESA + ["ultimo_respaldo"]}
+    guardados = {c: bool(valores[c]) for c in SECRETOS}
+    for c in SECRETOS:
+        valores[c] = ""  # nunca se devuelven al navegador (podría abrirse desde otro equipo de la red)
     anio = date.today().year
     uvts = [(a, impuestos.uvt(a, s), bool(contab.config(s, f"uvt_{a}"))) for a in (anio, anio + 1)]
-    return render_template("ajustes.html", v=valores, bancos=s.query(Banco).order_by(Banco.id).all(),
+    return render_template("ajustes.html", v=valores, guardados=guardados, bancos=s.query(Banco).order_by(Banco.id).all(),
                            categorias=s.query(CategoriaGasto).order_by(CategoriaGasto.nombre).all(),
                            cuentas_gasto=s.query(Cuenta).filter(Cuenta.movimiento.is_(True),
                                                                  or_(Cuenta.codigo.like("5%"),
