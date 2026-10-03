@@ -55,6 +55,12 @@ def main():
     subprocess.check_call([str(python), "-m", "pip", "install", "-q", "--no-warn-script-location",
                            "-r", str(carpeta / "requirements.txt")])
     (py_dir / "get-pip.py").unlink()
+    # Los aceleradores compilados de estas librerías no están firmados y el "Control de aplicaciones inteligente"
+    # de Windows 11 los bloquea; se retiran y queda la versión en Python puro (misma funcionalidad).
+    subprocess.check_call([str(python), "-B", "-c",
+                           "from app.entorno import retirar_binarios, CON_VERSION_PURA; "
+                           "print('binarios retirados:', [(n, retirar_binarios(n)) for n in CON_VERSION_PURA])"],
+                          cwd=str(carpeta))
     # Prueba de humo: el paquete debe poder importar el programa con su propio Python
     subprocess.check_call([str(python), "-B", "-c", "import app, flask, sqlalchemy, openpyxl, fpdf; print('paquete OK', app.VERSION)"],
                           cwd=str(carpeta))

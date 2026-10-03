@@ -5,11 +5,17 @@ from datetime import date
 from flask import Flask, abort, send_file
 
 from . import config, formato
-from .db import Session, init_engine, sincronizar_esquema
+from .entorno import asegurar_librerias
+
+asegurar_librerias()  # antes de importar SQLAlchemy: si Windows bloquea sus DLL, usar la versión en Python puro
+
+from .db import Session, init_engine, sincronizar_esquema  # noqa: E402
 
 warnings.filterwarnings("ignore", message=".*Decimal objects natively.*")
+# Si Windows bloquea Pillow, fpdf2 avisa que no podrá insertar imágenes: el programa no las usa.
+warnings.filterwarnings("ignore", message="Pillow could not be imported.*")
 
-VERSION = "1.2.1"
+VERSION = "1.2.2"
 
 
 def create_app(datos_dir=None, respaldo_automatico=False):
