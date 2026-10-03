@@ -630,7 +630,7 @@ def test_carpeta_vigilada_duplicar_y_lote(cliente_web, s, tmp_path):
     contab.set_config(s, "carpeta_vigilada", str(carpeta))
     s.commit()
     (carpeta / "a.xml").write_text(factura_compra("V-1", "2026-09-06", ARRENDADOR, 100_000, 19_000,
-                                                  descripcion="ARRENDAMIENTO"))
+                                                  descripcion="ARRENDAMIENTO"), encoding="utf-8")
     (carpeta / "malo.xml").write_text("no es xml", encoding="utf-8")
     res = vigilancia.revisar(s)
     assert [ok for _, ok, _ in res] == [True, False]
