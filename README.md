@@ -44,6 +44,18 @@ directo en el escritorio.
 
 Mientras use el programa, deje abierta la ventana negra (puede minimizarla); ciérrela para salir.
 
+### Si Windows bloquea el programa al abrirlo
+
+Si la ventana muestra `DLL load failed ... An Application Control policy has blocked this file`, es el
+"Control de aplicaciones inteligente" de Windows 11 (o una política de la empresa) que impide cargar componentes
+sin firma de algunas librerías. Desde la versión 1.2.2 el programa lo detecta solo, retira esos componentes y
+sigue con su versión en Python puro (la primera vez muestra un aviso). Si usa una versión anterior, actualícela
+o borre los archivos `.pyd` de las carpetas `sqlalchemy`, `markupsafe` y `fontTools` dentro de
+`.venv\Lib\site-packages` (o `python\Lib\site-packages` en el paquete portable) y vuelva a abrirlo.
+
+Conviene instalar el programa fuera de OneDrive (por ejemplo en `C:\Contabilidad`): OneDrive sincroniza miles
+de archivos de las librerías sin necesidad, y los respaldos ya se copian solos a la carpeta que usted elija.
+
 ### Dónde quedan los datos
 
 En `C:\Users\<usuario>\ContabilidadAngelLecompte\` (base de datos `contabilidad.db` y carpeta
