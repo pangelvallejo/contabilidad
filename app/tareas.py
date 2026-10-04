@@ -86,7 +86,7 @@ def texto_resumen(session, anio, mes) -> str:
             f"Cartera por cobrar al cierre: {pesos(r.cartera)} (vencida: {pesos(r.cartera_vencida)})\n"
             f"Cuentas por pagar a proveedores: {pesos(r.por_pagar)}\n"
             f"Caja y bancos: {pesos(r.efectivo)}\n"
-            f"Recibo 2593 estimado del bimestre en curso: {pesos(r.simple_estimado)}\n\n"
+            f"Recibo 2593 estimado del bimestre que incluye el mes: {pesos(r.simple_estimado)}\n\n"
             "Generado automáticamente por el programa de contabilidad.")
 
 

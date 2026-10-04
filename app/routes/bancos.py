@@ -142,6 +142,8 @@ def accion(id):
             if cta is None or not cta.movimiento or not cta.activa or cta.codigo[0] not in "234":
                 raise ValueError("Cuenta no válida.")
             if cta.codigo.startswith("4"):
+                if cta.codigo[:4] in ("4135", "4155", "4175"):
+                    raise ValueError("Los honorarios se registran con la factura emitida; use intereses, reintegros o diversos.")
                 oi = OtroIngreso(fecha=mov.fecha, banco_id=mov.banco_id, cuenta=cuenta, valor=mov.valor,
                                  descuentos=CERO, concepto=(mov.descripcion or cta.nombre)[:160],
                                  referencia=(mov.referencia or "")[:80] or None, notas="Conciliación bancaria")

@@ -245,7 +245,7 @@ def cotizacion_pdf(empresa, cot) -> bytes:
         pdf.ln(alto)
     pdf.ln(2)
     pdf.set_font("helvetica", "B", 10)
-    for etiqueta, v in (("Subtotal honorarios", cot.subtotal), ("IVA 19 %", cot.iva), ("TOTAL", cot.total)):
+    for etiqueta, v in (("Subtotal honorarios", cot.subtotal), ("IVA", cot.iva), ("TOTAL", cot.total)):
         pdf.cell(145, 6, etiqueta, align="R")
         pdf.cell(50, 6, _latin1(pesos(v)), align="R")
         pdf.ln()

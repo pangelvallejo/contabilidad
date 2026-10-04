@@ -96,8 +96,10 @@ def enviar(session, para, asunto, cuerpo, adjuntos=()):
     c = configuracion(session)
     if not c["activo"]:
         raise ValueError("Configure el correo (usuario y contraseña de aplicación) en Configuración → Correo.")
-    if not para or "@" not in para:
-        raise ValueError("El destinatario no tiene un correo válido.")
+    if not para or not re.fullmatch(r"[^\s@<>,;]+@[^\s@<>,;]+\.[^\s@<>,;]+", para.strip()):
+        raise ValueError(f"El destinatario '{para}' no es un correo válido.")
+    para = para.strip()
+    asunto = " ".join(str(asunto).split())  # sin saltos de línea en la cabecera
     remitente = contab.config(session, "empresa_nombre", "") or c["correo_usuario"]
     msg = EmailMessage()
     msg["From"] = formataddr((remitente, c["correo_usuario"]))
@@ -122,6 +124,10 @@ def enviar(session, para, asunto, cuerpo, adjuntos=()):
                 smtp.send_message(msg)
     except smtplib.SMTPAuthenticationError as e:
         raise ValueError("El servidor de correo rechazó el usuario o la contraseña de aplicación.") from e
+    except smtplib.SMTPRecipientsRefused as e:
+        raise ValueError(f"El servidor rechazó el destinatario {para}.") from e
+    except smtplib.SMTPSenderRefused as e:
+        raise ValueError("El servidor rechazó la cuenta remitente.") from e
     except (OSError, smtplib.SMTPException) as e:
         raise ValueError(f"No se pudo enviar el correo: {explicar_error(e)}") from e
     return True

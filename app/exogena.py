@@ -64,7 +64,7 @@ def generar(session, anio):
     f1007_otros = defaultdict(lambda: CERO)  # (concepto, tercero_id) -> valor
     sin_tercero = []
     for oi in session.query(OtroIngreso).filter(OtroIngreso.fecha.between(inicio, fin)):
-        concepto = "4003" if oi.cuenta.startswith("4210") else "4002"
+        concepto = "4003" if oi.cuenta.startswith("4210") else ("4001" if oi.cuenta.startswith("41") else "4002")
         if oi.tercero_id is None:
             sin_tercero.append(oi)
             continue
@@ -115,8 +115,9 @@ def generar(session, anio):
               | {t for (_, t) in f1007_otros})
     incompletos = [(terceros[t], faltantes(terceros[t])) for t in usados if faltantes(terceros[t])]
     if sin_tercero:
+        from .formato import pesos
         total = sum((oi.valor for oi in sin_tercero), CERO)
-        incompletos.append((Tercero(nit="", nombre=f"{len(sin_tercero)} ingreso(s) sin factura por {total:,.0f} sin "
+        incompletos.append((Tercero(nit="", nombre=f"{len(sin_tercero)} ingreso(s) sin factura por {pesos(total)} sin "
                                                    "tercero (indíquelo en Bancos → Ingresos sin factura)"),
                             ["tercero"]))
     return hojas, incompletos

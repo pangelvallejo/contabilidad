@@ -58,7 +58,7 @@ def test_flujo_efectivo_cuadra_y_clasifica(cliente_web, s):
     assert fe["cuadre"] == 0
     conceptos = {n: v for sec in fe["secciones"] for n, v in sec["filas"]}
     assert conceptos["Recaudos de clientes"] == Decimal("1190000")
-    assert conceptos["Pagos a proveedores y gastos"] == Decimal("-200000")
+    assert conceptos["Pagos a proveedores y gastos (incluido su IVA)"] == Decimal("-200000")
     assert fe["saldo_final"] == Decimal("990000")
     assert cliente_web.get("/informes/flujo-efectivo?desde=2026-01-01&hasta=2026-12-31&pdf=1").status_code == 200
     html = cliente_web.get("/informes/flujo-efectivo?desde=2026-01-01&hasta=2026-12-31").get_data(as_text=True)
@@ -144,9 +144,11 @@ def test_presupuesto_vs_real(cliente_web, s):
     assert "Presupuesto 2026 guardado" in r.get_data(as_text=True)
     pr = informes.presupuesto_vs_real(s, 2026, date(2026, 6, 30))
     ing = pr["filas"][0]
-    assert ing["anual"] == Decimal("12000000") and ing["esperado"] == Decimal("6000000") and ing["real"] == Decimal("1000000")
+    factor = Decimal(181) / Decimal(365)  # prorrateo por días transcurridos
+    assert ing["anual"] == Decimal("12000000") and ing["esperado"] == contab.redondear(Decimal("12000000") * factor)
+    assert ing["real"] == Decimal("1000000")
     gasto = next(f for f in pr["filas"] if f["clave"] == f"categoria:{cat.id}")
-    assert gasto["esperado"] == Decimal("1200000") and gasto["real"] == Decimal("500000")
+    assert gasto["esperado"] == contab.redondear(Decimal("2400000") * factor) and gasto["real"] == Decimal("500000")
     assert cliente_web.get("/informes/presupuesto?anio=2026&xlsx=1").status_code == 200
 
 

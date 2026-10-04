@@ -134,7 +134,7 @@ def comparativo():
 def comparativo_balance():
     s = Session()
     corte = fecha_arg("corte", date.today())
-    modo = request.args.get("modo", "anio")
+    modo = "anio"  # misma fecha del año anterior
     c = informes.comparativo_balance(s, corte, modo)
     if request.args.get("pdf"):
         return _pdf(s, "Estado de situación financiera comparativo", f"Al {corte:%d/%m/%Y} frente al {c['corte2']:%d/%m/%Y}",
@@ -291,18 +291,24 @@ def asuntos():
     if request.method == "POST":
         try:
             aid = request.form.get("id", type=int)
-            a = (s.get(Asunto, aid) if aid else None) or Asunto()
+            existente = s.get(Asunto, aid) if aid else None
+            if aid and existente is None:
+                raise ValueError("El asunto ya no existe.")
+            a = existente or Asunto()
             if request.form.get("accion") == "borrar":
-                if aid and (s.query(Gasto).filter_by(asunto_id=aid).count()
-                            or s.query(informes.DocumentoVenta).filter_by(asunto_id=aid).count()):
-                    raise ValueError("El asunto tiene facturas o gastos asociados; ciérrelo en vez de eliminarlo.")
-                if aid:
+                from ..models import Cotizacion
+                if existente and (s.query(Gasto).filter_by(asunto_id=aid).count()
+                                  or s.query(informes.DocumentoVenta).filter_by(asunto_id=aid).count()
+                                  or s.query(Cotizacion).filter_by(asunto_id=aid).count()):
+                    raise ValueError("El asunto tiene facturas, gastos o cotizaciones asociados; ciérrelo en vez de eliminarlo.")
+                if existente:
                     s.delete(a)
                     s.commit()
                     flash("Asunto eliminado.", "ok")
                 return redirect(url_for("informes.asuntos"))
             a.cliente_id = request.form.get("cliente_id", type=int)
-            if not a.cliente_id or s.get(Tercero, a.cliente_id) is None:
+            cliente = s.get(Tercero, a.cliente_id) if a.cliente_id else None
+            if cliente is None or not cliente.es_cliente:
                 raise ValueError("Seleccione el cliente.")
             a.nombre = request.form.get("nombre", "").strip()
             if not a.nombre:
@@ -343,10 +349,17 @@ def presupuesto():
     anio = anio_arg()
     if request.method == "POST":
         try:
-            anio = int(request.form.get("anio") or anio)
+            anio_txt = request.form.get("anio", "").strip()
+            if not anio_txt.isdigit() or not 2000 <= int(anio_txt) <= 2100:
+                raise ValueError("El año no es válido.")
+            anio = int(anio_txt)
             valores = {"ingresos": dinero("ingresos")}
+            from ..models import CategoriaGasto
+            validas = {f"categoria:{c.id}" for c in s.query(CategoriaGasto)}
             for k in request.form:
                 if k.startswith("categoria:"):
+                    if k not in validas:
+                        raise ValueError("Una de las categorías del formulario ya no existe.")
                     valores[k] = dinero(k)
             informes.guardar_presupuesto(s, anio, valores)
             s.commit()
@@ -376,7 +389,10 @@ def regimenes():
     anio = anio_arg()
     if request.method == "POST":
         try:
-            contab.set_config(s, "ica_por_mil", str(dinero("ica_por_mil")))
+            ica = dinero("ica_por_mil")
+            if ica < 0 or ica > 100:
+                raise ValueError("La tarifa de ICA debe estar entre 0 y 100 por mil.")
+            contab.set_config(s, "ica_por_mil", str(ica))
             s.commit()
             flash("Tarifa de ICA guardada.", "ok")
         except Exception as e:  # noqa: BLE001
@@ -399,7 +415,13 @@ def conciliacion():
         abort(404)
     corte = fecha_arg("corte", date.today())
     saldo_txt = request.args.get("saldo_extracto", "").strip()
-    saldo = contab.d(saldo_txt) if saldo_txt else None
+    saldo = None
+    if saldo_txt:
+        try:
+            saldo = contab.d(saldo_txt)
+        except Exception:  # noqa: BLE001
+            flash("El saldo del extracto no es un número válido (use 1.234.567,89).", "error")
+            saldo_txt = ""
     inf = informes.informe_conciliacion(s, banco, corte, saldo)
     if request.args.get("pdf"):
         filas = [{"celdas": ["Saldo según libros (contabilidad)", inf["saldo_libros"]], "estilo": "total"}]

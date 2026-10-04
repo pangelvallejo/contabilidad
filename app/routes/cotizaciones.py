@@ -36,9 +36,12 @@ def lista():
     q = s.query(Cotizacion).filter(Cotizacion.fecha.between(date(anio, 1, 1), date(anio, 12, 31)))
     if estado:
         q = q.filter(Cotizacion.estado == estado)
+    from sqlalchemy.orm import selectinload
+    q = q.options(selectinload(Cotizacion.cliente), selectinload(Cotizacion.lineas))
     cots = q.order_by(Cotizacion.fecha.desc(), Cotizacion.id.desc()).all()
     resumen = {}
-    for c in s.query(Cotizacion).filter(Cotizacion.fecha.between(date(anio, 1, 1), date(anio, 12, 31))):
+    for c in (s.query(Cotizacion).options(selectinload(Cotizacion.lineas))
+              .filter(Cotizacion.fecha.between(date(anio, 1, 1), date(anio, 12, 31)))):
         r = resumen.setdefault(c.estado, [0, contab.CERO])
         r[0] += 1
         r[1] += c.subtotal
@@ -59,7 +62,10 @@ def _llenar(s, cot):
     cot.titulo = request.form.get("titulo", "").strip()
     if not cot.titulo:
         raise ValueError("Indique el título de la propuesta.")
-    cot.validez_dias = request.form.get("validez_dias", type=int) or 30
+    validez = request.form.get("validez_dias", "").strip()
+    cot.validez_dias = int(validez) if validez.isdigit() else 30
+    if not 1 <= cot.validez_dias <= 365:
+        raise ValueError("La validez debe estar entre 1 y 365 días.")
     cot.condiciones = request.form.get("condiciones", "").strip() or None
     cot.notas = request.form.get("notas", "").strip() or None
     descripciones = request.form.getlist("descripcion")
@@ -68,15 +74,20 @@ def _llenar(s, cot):
     cot.lineas.clear()
     for i, desc in enumerate(descripciones):
         desc = desc.strip()
-        valor = contab.d(valores[i] if i < len(valores) else 0)
+        try:
+            valor = contab.d(valores[i] if i < len(valores) else 0)
+            iva_pct = contab.d(ivas[i] if i < len(ivas) and ivas[i].strip() != "" else 19)
+        except Exception as e:  # noqa: BLE001
+            raise ValueError(f"El valor o el IVA de la línea {i + 1} no es un número válido.") from e
         if not desc and not valor:
             continue
         if not desc:
             raise ValueError(f"La línea {i + 1} no tiene descripción.")
         if valor <= 0:
             raise ValueError(f"El valor de la línea {i + 1} debe ser mayor que cero.")
-        cot.lineas.append(LineaCotizacion(descripcion=desc, valor=valor,
-                                          iva_pct=contab.d(ivas[i] if i < len(ivas) and ivas[i] != "" else 19)))
+        if iva_pct not in (0, 5, 19):
+            raise ValueError(f"El IVA de la línea {i + 1} debe ser 0, 5 o 19 %.")
+        cot.lineas.append(LineaCotizacion(descripcion=desc, valor=valor, iva_pct=iva_pct))
     if not cot.lineas:
         raise ValueError("Agregue al menos una línea con honorarios.")
 
@@ -91,6 +102,8 @@ def editar(id=None):
     if request.method == "POST":
         accion = request.form.get("accion", "guardar")
         try:
+            if cot is None and accion != "guardar":
+                raise ValueError("Primero guarde la cotización.")
             if accion == "borrar":
                 s.delete(cot)
                 s.commit()
@@ -100,11 +113,12 @@ def editar(id=None):
                 cot.estado = accion
                 if accion == "facturada":
                     fid = request.form.get("factura_id", type=int)
-                    if fid and s.get(DocumentoVenta, fid) is None:
-                        raise ValueError("La factura indicada no existe.")
+                    factura = s.get(DocumentoVenta, fid) if fid else None
+                    if fid and (factura is None or factura.cliente_id != cot.cliente_id or factura.tipo != "FV"):
+                        raise ValueError("La factura debe ser una factura de venta del mismo cliente.")
                     cot.factura_id = fid
-                    if cot.asunto_id and fid:
-                        s.get(DocumentoVenta, fid).asunto_id = cot.asunto_id
+                    if cot.asunto_id and factura is not None and not factura.asunto_id:
+                        factura.asunto_id = cot.asunto_id
                 s.commit()
                 flash(f"Cotización marcada como {ESTADOS[accion].lower()}.", "ok")
                 return redirect(url_for("cotizaciones.editar", id=cot.id))
@@ -113,8 +127,9 @@ def editar(id=None):
                     raise ValueError("El cliente no tiene correo registrado. Agréguelo en Clientes y proveedores.")
                 pdf = exportar.cotizacion_pdf(exportar._empresa_dict(s), cot)
                 emp = contab.config(s, "empresa_nombre", "")
+                from ..formato import pesos
                 cuerpo = (f"Estimados señores {cot.cliente.nombre}:\n\nAdjunto la propuesta de honorarios {cot.numero}: "
-                          f"{cot.titulo}, por {contab.redondear(cot.total, '1'):,.0f} pesos (IVA incluido), válida hasta el "
+                          f"{cot.titulo}, por {pesos(cot.total)} (IVA incluido), válida hasta el "
                           f"{cot.vence:%d/%m/%Y}.\n\nQuedo atento a sus comentarios.\n\nCordialmente,\n{emp}")
                 correo.enviar(s, cot.cliente.email, f"Propuesta de honorarios {cot.numero} · {emp}", cuerpo,
                               [(f"{cot.numero}.pdf", pdf, "application/pdf")])
@@ -124,6 +139,8 @@ def editar(id=None):
                 flash(f"Propuesta enviada a {cot.cliente.email}.", "ok")
                 return redirect(url_for("cotizaciones.editar", id=cot.id))
             nueva = cot is None
+            if cot is not None and cot.estado != "borrador":
+                raise ValueError("La cotización ya fue enviada; pulse \"Reabrir\" para editarla.")
             cot = cot or Cotizacion(numero=_siguiente_numero(s), estado="borrador")
             _llenar(s, cot)
             s.add(cot)

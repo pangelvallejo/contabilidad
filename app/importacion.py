@@ -118,6 +118,7 @@ def importar_venta(session, doc: DocumentoDIAN, leido) -> DocumentoVenta:
             raise ValueError(f"La nota crédito afecta la factura {doc.referencia_numero or '(sin referencia)'}, "
                              "que no está registrada. Importe primero esa factura.")
         v.referencia = ref
+        v.asunto_id = ref.asunto_id
     rete_xml = doc.retenciones.get("ReteIVA")
     if tipo != "NC" and (rete_xml or cliente.aplica_reteiva):
         v.reteiva_aplica = True

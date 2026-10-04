@@ -11,9 +11,10 @@ def fecha_arg(nombre, defecto=None):
     if not valor:
         return defecto
     try:
-        return date.fromisoformat(valor)
+        f = date.fromisoformat(valor)
     except ValueError:
         return defecto
+    return f if 2000 <= f.year <= 2100 else defecto
 
 
 def periodo():

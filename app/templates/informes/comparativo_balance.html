@@ -4,9 +4,7 @@
 <h1>Estado de situación financiera comparativo</h1>
 <p class="sub">Al {{ corte|fecha }} frente al {{ c.corte2|fecha }}. "% activo" es la participación de cada cuenta sobre el activo total.</p>
 <div class="acciones"><a class="btn" href="?corte={{ corte }}&modo={{ modo }}&pdf=1">PDF</a></div>
-<form class="filtros"><div><label>Fecha de corte</label><input type="date" name="corte" value="{{ corte }}"></div>
-  <div><label>Comparar con</label><select name="modo"><option value="anio" {{ 'selected' if modo == 'anio' }}>Misma fecha del año anterior</option></select></div>
-  <button>Ver</button></form>
+<form class="filtros"><div><label>Fecha de corte</label><input type="date" name="corte" value="{{ corte }}"></div><button>Ver</button></form>
 <div class="tarjeta tabla-scroll">
   <table>
     <tr><th>Concepto</th><th class="n">Actual</th><th class="n">Anterior</th><th class="n">Variación</th><th class="n">Var. %</th><th class="n">% activo</th></tr>
