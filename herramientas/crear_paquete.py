@@ -57,10 +57,17 @@ def main():
     (py_dir / "get-pip.py").unlink()
     # Los aceleradores compilados de estas librerías no están firmados y el "Control de aplicaciones inteligente"
     # de Windows 11 los bloquea; se retiran y queda la versión en Python puro (misma funcionalidad).
+    # Se hace sin importar las librerías: en Windows una DLL cargada no se puede borrar.
     subprocess.check_call([str(python), "-B", "-c",
-                           "from app.entorno import retirar_binarios, CON_VERSION_PURA; "
-                           "print('binarios retirados:', [(n, retirar_binarios(n)) for n in CON_VERSION_PURA])"],
+                           "import importlib.util, pathlib; q = 0\n"
+                           "for n in ('sqlalchemy', 'markupsafe', 'fontTools'):\n"
+                           "    c = pathlib.Path(list(importlib.util.find_spec(n).submodule_search_locations)[0])\n"
+                           "    for b in list(c.rglob('*.pyd')) + list(c.rglob('*.so')): b.unlink(); q += 1\n"
+                           "print('binarios retirados:', q)"],
                           cwd=str(carpeta))
+    restantes = [p for p in py_dir.rglob("*.pyd") if any(k in p.parts for k in ("sqlalchemy", "markupsafe", "fontTools"))]
+    if restantes:
+        raise SystemExit(f"Quedaron binarios sin retirar: {restantes[:3]}")
     # Prueba de humo: el paquete debe poder importar el programa con su propio Python
     subprocess.check_call([str(python), "-B", "-c", "import app, flask, sqlalchemy, openpyxl, fpdf; print('paquete OK', app.VERSION)"],
                           cwd=str(carpeta))
