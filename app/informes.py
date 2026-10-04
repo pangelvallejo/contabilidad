@@ -28,14 +28,25 @@ def _pct(parte, total):
 # ------------------------------------------------------------------ flujo de efectivo (método directo)
 
 CONCEPTOS_FLUJO = [
-    # (clave, nombre, actividad, prefijos de la contrapartida)
-    ("clientes", "Recaudos de clientes", "operacion", ("13", "28")),
-    ("otros_ingresos", "Otros ingresos recibidos (intereses, reintegros)", "operacion", ("4",)),
-    ("proveedores", "Pagos a proveedores y gastos", "operacion", ("22", "23", "25", "26", "5", "6")),
-    ("impuestos", "Impuestos pagados (SIMPLE, IVA)", "operacion", ("24", "1355")),
-    ("activos", "Compra de activos fijos", "inversion", ("15", "16", "12")),
-    ("socios", "Socios: aportes, préstamos y reembolsos", "financiacion", ("21", "31", "32", "33", "36", "37")),
+    # (clave, nombre, actividad)
+    ("clientes", "Recaudos de clientes", "operacion"),
+    ("otros_ingresos", "Otros ingresos recibidos (intereses, reintegros)", "operacion"),
+    ("proveedores", "Pagos a proveedores y gastos (incluido su IVA)", "operacion"),
+    ("impuestos", "Impuestos pagados (recibos 2593, declaraciones)", "operacion"),
+    ("activos", "Compra de activos fijos", "inversion"),
+    ("socios", "Socios: aportes, préstamos y reembolsos", "financiacion"),
 ]
+# Para asientos manuales o de conciliación se clasifica por la cuenta de contrapartida,
+# del prefijo más específico al más general.
+PREFIJOS_FLUJO = [("1355", "impuestos"), ("1330", "proveedores"), ("13", "clientes"), ("28", "clientes"),
+                  ("4", "otros_ingresos"), ("2355", "socios"), ("22", "proveedores"), ("23", "proveedores"),
+                  ("24", "impuestos"), ("25", "proveedores"), ("26", "proveedores"), ("5", "proveedores"),
+                  ("6", "proveedores"), ("15", "activos"), ("16", "activos"), ("12", "activos"),
+                  ("21", "socios"), ("3", "socios")]
+# Los asientos que genera el programa se clasifican por su origen (más fiable que la cuenta: el IVA de una
+# compra de contado es parte del pago al proveedor, no un impuesto pagado).
+ORIGEN_FLUJO = {"recaudo": "clientes", "otroingreso": "otros_ingresos", "gasto": "proveedores",
+                "pagogasto": "proveedores", "impuesto": "impuestos"}
 ACTIVIDADES = [("operacion", "Actividades de operación"), ("inversion", "Actividades de inversión"),
                ("financiacion", "Actividades de financiación"), ("otros", "Otros movimientos")]
 
@@ -55,15 +66,19 @@ def flujo_de_efectivo(session, desde: date, hasta: date):
         efectivo = sum((m.debito - m.credito for m in a.lineas if m.cuenta.startswith(PREFIJO_EFECTIVO)), CERO)
         if efectivo == 0:  # traslado entre cuentas propias
             continue
+        origen = (a.origen or "").partition(":")[0]
+        por_origen = ORIGEN_FLUJO.get(origen)
+        if por_origen in ("proveedores",) and any(m.cuenta.startswith("15") for m in a.lineas):
+            por_origen = "activos"  # compra o pago de un activo fijo
         for m in a.lineas:
             if m.cuenta.startswith(PREFIJO_EFECTIVO):
                 continue
             aporte = m.credito - m.debito
-            if m.cuenta.startswith("2355"):
-                conceptos["socios"] += aporte
+            if por_origen:
+                conceptos[por_origen] += aporte
                 continue
-            for clave, _, _, prefijos in CONCEPTOS_FLUJO:
-                if any(m.cuenta.startswith(p) for p in prefijos):
+            for prefijo, clave in PREFIJOS_FLUJO:
+                if m.cuenta.startswith(prefijo):
                     conceptos[clave] += aporte
                     break
             else:
@@ -72,7 +87,7 @@ def flujo_de_efectivo(session, desde: date, hasta: date):
     saldo_final = reportes.saldo_cuenta(session, PREFIJO_EFECTIVO, hasta)
     secciones = []
     for clave_act, nombre_act in ACTIVIDADES:
-        filas = [(nombre, conceptos[clave]) for clave, nombre, act, _ in CONCEPTOS_FLUJO if act == clave_act]
+        filas = [(nombre, conceptos[clave]) for clave, nombre, act in CONCEPTOS_FLUJO if act == clave_act]
         if clave_act == "otros":
             filas = [("Otros movimientos", conceptos["otros"])]
         filas = [f for f in filas if f[1]]
@@ -91,7 +106,8 @@ def cambios_patrimonio(session, anio: int):
     desde, hasta = date(anio, 1, 1), date(anio, 12, 31)
     cuentas = {c.codigo: c for c in session.query(Cuenta).filter(Cuenta.codigo.like("3%"))}
     previas = reportes._sumas_por_cuenta(session, hasta=_dia_anterior(desde))
-    periodo = reportes._sumas_por_cuenta(session, desde, hasta)
+    # Sin el asiento de cierre del propio año: el resultado se presenta en su fila, no trasladado a 3705/3710.
+    periodo = reportes._sumas_por_cuenta(session, desde, hasta, incluir_cierre=False)
     grupos = sorted({c[:4] for c in list(previas) + list(periodo) if c.startswith("3")})
     filas = []
     for g in grupos:
@@ -124,10 +140,14 @@ def periodo_comparable(desde: date, hasta: date, modo="anio"):
         dias = (hasta - desde).days
         h = _dia_anterior(desde)
         return h - timedelta(days=dias), h
+    return _anio_anterior(desde), _anio_anterior(hasta)
+
+
+def _anio_anterior(f: date) -> date:
     try:
-        return desde.replace(year=desde.year - 1), hasta.replace(year=hasta.year - 1)
+        return f.replace(year=f.year - 1)
     except ValueError:  # 29 de febrero
-        return desde.replace(year=desde.year - 1, day=28), hasta.replace(year=hasta.year - 1, day=28)
+        return f.replace(year=f.year - 1, day=28)
 
 
 def _filas_er(er):
@@ -247,7 +267,10 @@ def indicadores(session, anio: int, corte: date | None = None):
     cartera_total = tot_cartera["total"]
     vencida = cartera_total - tot_cartera["Por vencer"]
     ingresos_dia = ingresos / Decimal(dias) if dias else CERO
-    dso = (cartera_total / ingresos_dia).quantize(Decimal("1")) if ingresos_dia else None
+    # La cartera incluye IVA y los ingresos no: se compara en la misma base (sin IVA).
+    from .config import TARIFA_IVA
+    cartera_sin_iva = cartera_total / (1 + Decimal(str(TARIFA_IVA)))
+    dso = (cartera_sin_iva / ingresos_dia).quantize(Decimal("1")) if ingresos_dia else None
     meses = Decimal(corte.month) if corte.year == anio else Decimal(12)
     er_ant = reportes.estado_resultados(session, *periodo_comparable(inicio, corte))
     ingresos_ant = er_ant["ingresos_op"] + er_ant["ingresos_no_op"]
@@ -274,7 +297,7 @@ def indicadores(session, anio: int, corte: date | None = None):
         {"grupo": "Liquidez", "nombre": "Meses de gastos cubiertos", "valor": (efectivo / gasto_mensual).quantize(Decimal("0.1")) if gasto_mensual else None,
          "formato": "veces", "ayuda": "Efectivo / gasto promedio mensual: cuántos meses aguanta el despacho sin facturar."},
         {"grupo": "Cartera", "nombre": "Días promedio de cobro (DSO)", "valor": dso, "formato": "dias",
-         "ayuda": "Cartera pendiente / ingreso diario promedio. Cuántos días tardan en pagarle en promedio."},
+         "ayuda": "Cartera pendiente (sin IVA) / ingreso diario promedio. Cuántos días tardan en pagarle en promedio."},
         {"grupo": "Cartera", "nombre": "Cartera vencida sobre total", "valor": _pct(vencida, cartera_total), "formato": "pct",
          "ayuda": "Parte de la cartera que ya pasó su fecha de vencimiento."},
         {"grupo": "Impuestos", "nombre": "Carga tributaria estimada (SIMPLE + IVA neto)", "valor": _pct(proy.carga_total, proy.ingresos_proyectados) if proy.ingresos_proyectados else None,
@@ -431,7 +454,8 @@ def presupuesto_vs_real(session, anio: int, corte: date | None = None):
     elif corte.year < anio:
         corte = date(anio, 1, 1)
     meses = corte.month
-    factor = Decimal(meses) / Decimal(12)
+    inicio_anio, fin_anio = date(anio, 1, 1), date(anio, 12, 31)
+    factor = Decimal((corte - inicio_anio).days + 1) / Decimal((fin_anio - inicio_anio).days + 1)
     pres = presupuesto_del_anio(session, anio)
     inicio = date(anio, 1, 1)
     ingresos_real = impuestos.ingresos_brutos(session, inicio, corte)
@@ -492,8 +516,9 @@ def comparar_regimenes(session, anio: int, corte: date | None = None):
             "renta": renta, "ica": ica, "ica_por_mil": ica_por_mil, "renta_neta": renta_neta, "ordinario": ordinario,
             "simple": simple, "tarifa_simple": proy.tarifa, "diferencia": ordinario - simple,
             "tarifa_renta": TARIFA_RENTA_ORDINARIA, "margen": _pct(utilidad_fiscal, ingresos),
-            # Punto de indiferencia: margen de utilidad a partir del cual el ordinario cuesta lo mismo que el SIMPLE
-            "margen_indiferencia": _pct(simple, ingresos * TARIFA_RENTA_ORDINARIA) if ingresos else None}
+            # Punto de indiferencia: margen m tal que 0,35·(ingresos·m − ICA) + ICA = SIMPLE
+            "margen_indiferencia": _pct(simple - (1 - TARIFA_RENTA_ORDINARIA) * ica, ingresos * TARIFA_RENTA_ORDINARIA)
+            if ingresos else None}
 
 
 # ------------------------------------------------------------------ informe de conciliación bancaria
@@ -562,5 +587,5 @@ def resumen_mensual(session, anio: int, mes: int) -> ResumenMes:
     r.efectivo = reportes.saldo_cuenta(session, PREFIJO_EFECTIVO, fin)
     r.por_pagar = cuentas_por_pagar_edades(session, fin)[1]["total"]
     bim = impuestos.bimestre_de(fin)
-    r.simple_estimado = impuestos.recibo_2593(session, anio, bim).total
+    r.simple_estimado = impuestos.recibo_2593(session, anio, bim).total  # del bimestre que incluye el mes
     return r

@@ -27,7 +27,8 @@ def _contexto_form(s):
             "opciones_pago": opciones_pago(s), "tipos": TIPOS_SOPORTE,
             "facturas_proveedor": s.query(Gasto).filter(Gasto.tipo_soporte != "NC", Gasto.proveedor_id.isnot(None))
             .order_by(Gasto.fecha.desc()).limit(300).all(),
-            "asuntos": s.query(Asunto).filter_by(estado="abierto").order_by(Asunto.nombre).all()}
+            "asuntos": s.query(Asunto).options(selectinload(Asunto.cliente)).filter_by(estado="abierto")
+            .order_by(Asunto.nombre).all()}
 
 
 @bp.route("/gastos")

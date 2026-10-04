@@ -98,6 +98,7 @@ def nueva():
                 ref = s.get(DocumentoVenta, doc.referencia_id)
                 if ref is None or ref.cliente_id != cliente.id:
                     raise ValueError("La factura afectada debe ser del mismo cliente.")
+                doc.asunto_id = doc.asunto_id or ref.asunto_id
             doc.lineas.append(LineaVenta(descripcion=request.form.get("descripcion") or "Honorarios", base=base,
                                          iva_pct=contab.d(TARIFA_IVA * 100) if iva else 0, iva=iva))
             if doc.tipo != "NC" and cliente.aplica_reteiva:

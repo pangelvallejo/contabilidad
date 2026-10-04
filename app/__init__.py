@@ -15,7 +15,7 @@ warnings.filterwarnings("ignore", message=".*Decimal objects natively.*")
 # Si Windows bloquea Pillow, fpdf2 avisa que no podrá insertar imágenes: el programa no las usa.
 warnings.filterwarnings("ignore", message="Pillow could not be imported.*")
 
-VERSION = "1.4.0"
+VERSION = "1.4.1"
 
 
 def create_app(datos_dir=None, respaldo_automatico=False):

@@ -17,6 +17,6 @@
   </table>
   {% if fe.cuadre != 0 %}<p class="mensaje advertencia">El flujo no cuadra con los saldos por {{ fe.cuadre|pesos }}: hay asientos con movimientos de caja o bancos cuya contrapartida no se pudo clasificar. Revise el libro diario.</p>{% endif %}
   {% if not fe.secciones %}<p class="vacio">Sin movimientos de efectivo en el periodo.</p>{% endif %}
-  <p class="nota">Los traslados entre cuentas propias no se muestran. Las compras de contado y los pagos a proveedores van en "Pagos a proveedores y gastos"; los recibos 2593 en "Impuestos pagados".</p>
+  <p class="nota">Los traslados entre cuentas propias no se muestran. Las compras de contado y los pagos a proveedores (con su IVA) van en "Pagos a proveedores y gastos"; los recibos 2593 y demás pagos de impuestos en "Impuestos pagados"; los préstamos del socio y sus reembolsos, en financiación.</p>
 </div>
 {% endblock %}

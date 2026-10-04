@@ -2,7 +2,7 @@
 {% block titulo %}Presupuesto{% endblock %}
 {% block contenido %}
 <div class="encabezado">
-  <div><h1>Presupuesto vs. real {{ anio }}</h1><p class="sub">Lo presupuestado para el año se compara con lo ejecutado hasta el {{ pr.corte|fecha }} ({{ pr.meses }} meses: la columna "esperado" prorratea el presupuesto anual).</p></div>
+  <div><h1>Presupuesto vs. real {{ anio }}</h1><p class="sub">Lo presupuestado para el año se compara con lo ejecutado hasta el {{ pr.corte|fecha }} (la columna "esperado" prorratea el presupuesto anual por los días transcurridos).</p></div>
   <div class="acciones"><a class="btn primario" href="?anio={{ anio }}&editar=1">Definir presupuesto</a><a class="btn" href="?anio={{ anio }}&xlsx=1">Excel</a></div>
 </div>
 <form class="filtros"><div><label>Año</label><input type="number" name="anio" value="{{ anio }}" style="width:90px"></div><div><label>Corte</label><input type="date" name="corte" value="{{ corte }}"></div><button>Ver</button></form>
