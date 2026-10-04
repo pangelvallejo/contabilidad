@@ -3,7 +3,7 @@ from datetime import date
 from decimal import Decimal
 
 from app import contab, exogena, informes, planeacion
-from app.models import (Asunto, Banco, CategoriaGasto, Cotizacion, DocumentoVenta, Gasto, LineaVenta, OtroIngreso,
+from app.models import (Asunto, Banco, CategoriaGasto, Cotizacion, DocumentoVenta, Gasto, OtroIngreso,
                         PagoImpuesto, Tercero)
 from tests.test_informes import _cliente, _escenario, _factura
 
