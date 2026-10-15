@@ -239,7 +239,13 @@ def leer_xml(contenido: bytes | str) -> DocumentoDIAN:
             doc.validado_dian = codigo.lstrip("0") == "2"
         return doc
     if nombre in TIPOS_RAIZ:
-        return _documento_ubl(raiz)
+        doc = _documento_ubl(raiz)
+        faltan = [campo for campo, valor in (("número (cbc:ID)", doc.numero), ("fecha (cbc:IssueDate)", doc.fecha),
+                                             ("NIT del emisor", doc.emisor.nit), ("NIT del receptor", doc.receptor.nit))
+                  if not valor]
+        if faltan:
+            raise ErrorXML("El XML está incompleto: falta " + ", ".join(faltan) + ".")
+        return doc
     if nombre == "ApplicationResponse":
         raise ErrorXML("Es un acuse/evento de la DIAN (ApplicationResponse), no una factura.")
     raise ErrorXML(f"Tipo de documento no reconocido: {nombre}")
@@ -273,9 +279,12 @@ def leer_archivo(nombre: str, contenido: bytes, _nivel=0) -> list[ArchivoLeido]:
             return [ArchivoLeido(nombre, None, None, None, None, "ZIP con demasiados niveles anidados")]
         try:
             z = zipfile.ZipFile(io.BytesIO(contenido))
-        except zipfile.BadZipFile:
-            return [ArchivoLeido(nombre, None, None, None, None, "ZIP dañado o no válido")]
-        entradas = [n for n in z.namelist() if _util(n) and not n.endswith("/")]
+            entradas = [n for n in z.namelist() if _util(n) and not n.endswith("/")]
+            contenidos = {n: z.read(n) for n in entradas if n.lower().endswith((".xml", ".pdf", ".zip"))}
+        except Exception as e:  # noqa: BLE001 — BadZipFile, zlib.error, RuntimeError (cifrado), NotImplementedError
+            detalle = "está protegido con contraseña" if "password" in str(e).lower() else "está dañado o no es válido"
+            return [ArchivoLeido(nombre, None, None, None, None, f"El ZIP {detalle} ({type(e).__name__}).")]
+        z.read = contenidos.__getitem__  # todo quedó leído y verificado arriba
         xmls = [n for n in entradas if n.lower().endswith(".xml")]
         pdfs = [n for n in entradas if n.lower().endswith(".pdf")]
         res = []
@@ -298,3 +307,7 @@ def leer_archivo(nombre: str, contenido: bytes, _nivel=0) -> list[ArchivoLeido]:
         return [ArchivoLeido(nombre, leer_xml(contenido), contenido, None, None)]
     except ErrorXML as e:
         return [ArchivoLeido(nombre, None, contenido, None, None, str(e))]
+    except Exception as e:  # noqa: BLE001 — XML con una estructura que el lector no previó
+        return [ArchivoLeido(nombre, None, contenido, None, None, f"No se pudo interpretar el XML ({type(e).__name__}: {e}).")]
+    except Exception as e:  # noqa: BLE001 — XML con una estructura que el lector no previó
+        return [ArchivoLeido(nombre, None, contenido, None, None, f"No se pudo interpretar el XML ({type(e).__name__}: {e}).")]

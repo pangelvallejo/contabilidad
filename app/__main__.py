@@ -7,7 +7,17 @@ from . import config, create_app
 
 
 def main():
-    app = create_app(respaldo_automatico=True)
+    try:
+        app = create_app(respaldo_automatico=True)
+    except Exception as e:  # noqa: BLE001 — base dañada, carpeta sin permiso de escritura, disco lleno
+        print(f"\n  No se pudo abrir la contabilidad: {e}\n")
+        print(f"  Datos en {config.DATOS_DIR}. Si la base está dañada, cierre esta ventana, cambie el nombre de\n"
+              "  contabilidad.db y copie en su lugar el contabilidad.db de un respaldo (ZIP de la carpeta de respaldos).")
+        try:
+            input("  Pulse Entrar para salir.")
+        except EOFError:
+            pass
+        raise SystemExit(1) from e
     from .db import Session
     from .sistema import acceso_red_activo, ip_local
     en_red = acceso_red_activo(Session())

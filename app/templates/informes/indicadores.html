@@ -9,7 +9,7 @@
   <div class="rejilla k4">
     {% for i in items %}
     <div class="kpi" title="{{ i.ayuda }}"><div class="etq">{{ i.nombre }}</div>
-      <div class="val">{% if i.valor is none %}—{% elif i.formato == 'pct' %}{{ i.valor|pct1 }}{% elif i.formato == 'pesos' %}{{ i.valor|pesos }}{% elif i.formato == 'dias' %}{{ i.valor }} días{% else %}{{ i.valor }}{% endif %}</div>
+      <div class="val">{% if i.valor is none %}—{% elif i.formato == 'pct' %}{{ i.valor|pct1 }}{% elif i.formato == 'pesos' %}{{ i.valor|pesos }}{% elif i.formato == 'dias' %}{{ i.valor }} días{% elif i.valor is number %}{{ i.valor|numero }}{% else %}{{ i.valor }}{% endif %}</div>
       <div class="det">{{ i.ayuda }}</div></div>
     {% endfor %}
   </div>

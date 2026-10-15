@@ -8,7 +8,9 @@ from decimal import Decimal, ROUND_HALF_UP
 
 from sqlalchemy import func
 
-from .models import CERO, Asiento, Config, Movimiento
+from .models import CERO, Asiento, Config, Movimiento, PagoImpuesto
+
+TOPE_VALOR = Decimal("1e15")  # 15 dígitos: lo que SQLite y Numeric(18,2) conservan sin alterar
 
 # Cuentas usadas por los asientos automáticos
 CTA_CLIENTES = "130505"
@@ -60,6 +62,8 @@ def d(valor) -> Decimal:
     res = Decimal(str(valor))
     if not res.is_finite():
         raise ValueError(f"'{valor}' no es un número.")
+    if abs(res) >= TOPE_VALOR:
+        raise ValueError(f"'{valor}' es un valor demasiado grande (el máximo es 999.999.999.999.999).")
     return res
 
 
@@ -111,18 +115,23 @@ def guardar_asiento(session, *, origen, tipo, fecha, descripcion, tercero_id, li
               if redondear(db) != 0 or redondear(cr) != 0]
     if asiento is None and origen is not None:
         asiento = session.query(Asiento).filter_by(origen=origen, tipo=tipo).one_or_none()
+    if asiento is None and not lineas:
+        return None  # no había asiento y no hay nada que registrar: no toca el periodo
     if asiento is not None and asiento.fecha == fecha and asiento.tercero_id == tercero_id:
-        actuales = [(l.cuenta, l.debito, l.credito, l.tercero_id, l.descripcion or None) for l in asiento.lineas]
-        if actuales == [(c, db, cr, t, det or None) for c, db, cr, t, det in lineas]:
+        actuales = [(l.cuenta, l.debito, l.credito, l.tercero_id) for l in asiento.lineas]
+        if actuales == [(c, db, cr, t) for c, db, cr, t, _ in lineas]:
+            # Nada cambió en cuentas ni valores: solo se actualizan los textos, sin contar como modificación
+            # del periodo (referencia de un recaudo, descripción de un gasto, notas de una factura).
             asiento.descripcion = descripcion[:250]
-            return asiento  # nada cambió en la contabilidad: no cuenta como modificación del periodo
-    verificar_periodo(session, fecha, forzar)
+            for l, (_, _, _, _, det) in zip(asiento.lineas, lineas):
+                l.descripcion = det or None
+            return asiento
     if asiento is not None:
         verificar_periodo(session, asiento.fecha, forzar)
     if not lineas:
-        if asiento is not None:
-            session.delete(asiento)
+        session.delete(asiento)
         return None
+    verificar_periodo(session, fecha, forzar)
     total_d = sum(l[1] for l in lineas)
     total_c = sum(l[2] for l in lineas)
     if total_d != total_c:
@@ -233,6 +242,20 @@ def contabilizar_pago_gasto(session, p):
 
 # ------------------------------------------------------------------ impuestos
 
+def _lleva_reteiva(session, p):
+    """La reclasificación de la reteIVA del bimestre va en el primer pago 2593 registrado para ese bimestre."""
+    primero = (session.query(PagoImpuesto).filter_by(formulario="2593", anio=p.anio, bimestre=p.bimestre)
+               .order_by(PagoImpuesto.id).first())
+    return primero is None or primero.id == p.id
+
+
+def recontabilizar_pagos_bimestre(session, anio, bimestre, excepto=None):
+    """Tras eliminar un pago 2593, el siguiente del mismo bimestre asume la reclasificación de la reteIVA."""
+    for otro in session.query(PagoImpuesto).filter_by(formulario="2593", anio=anio, bimestre=bimestre):
+        if otro.id != excepto:
+            contabilizar_pago_impuesto(session, otro)
+
+
 def contabilizar_pago_impuesto(session, p):
     periodo = f"bimestre {p.bimestre} de {p.anio}" if p.bimestre else str(p.anio)
     desc = f"Formulario {p.formulario} {periodo}"
@@ -243,8 +266,9 @@ def contabilizar_pago_impuesto(session, p):
         lineas = [(cta_simple, p.valor_simple, 0, None, "Anticipo SIMPLE"),
                   (CTA_IVA_PAGADO_2593, p.valor_iva, 0, None, "IVA bimestral"),
                   (p.banco.cuenta, 0, p.total, None, desc)]
-        if p.bimestre:
-            # La reteIVA que practicaron los clientes en el bimestre se aplica contra el IVA generado.
+        if p.bimestre and _lleva_reteiva(session, p):
+            # La reteIVA que practicaron los clientes en el bimestre se aplica contra el IVA generado
+            # (una sola vez por bimestre: un pago complementario o de corrección no la repite).
             from .impuestos import resumen_iva_bimestre
             rete = resumen_iva_bimestre(session, p.anio, p.bimestre).reteiva
             lineas += [(CTA_IVA_GENERADO, rete, 0, None, "ReteIVA aplicada"), (CTA_RETEIVA, 0, rete, None, "ReteIVA aplicada")]

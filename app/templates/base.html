@@ -14,7 +14,7 @@
     <button type="button" class="menu-boton" onclick="document.querySelector('nav.lateral').classList.toggle('abierta')">☰ Menú</button>
     {% set ruta = request.path %}
     <div class="menu">
-    <form action="/buscar" style="padding:0 14px 8px"><input name="q" placeholder="Buscar…" value="{{ request.args.get('q', '') if ruta == '/buscar' else '' }}" style="font-size:13px;padding:5px 8px"></form>
+    <form action="/buscar" style="padding:0 14px 8px"><input name="q" type="search" aria-label="Buscar en la contabilidad" placeholder="Buscar…" value="{{ request.args.get('q', '') if ruta == '/buscar' else '' }}" style="font-size:13px;padding:5px 8px"></form>
     <a href="/" class="{{ 'activo' if ruta == '/' }}">Tablero</a>
     <h4>Ingresos</h4>
     <a href="/ventas" class="{{ 'activo' if ruta.startswith('/ventas') and ruta != '/ventas/importar' }}">Facturas de venta</a>
@@ -64,7 +64,7 @@
     <a href="/terceros" class="{{ 'activo' if ruta.startswith('/terceros') }}">Clientes y proveedores</a>
     <a href="/historial" class="{{ 'activo' if ruta.startswith('/historial') }}">Historial de cambios</a>
     <a href="/configuracion/" class="{{ 'activo' if ruta.startswith('/configuracion') }}">Configuración</a>
-    {% if session.get('autenticado') %}<a href="/salir">Cerrar sesión</a>{% endif %}
+    {% if session.get('autenticado') %}<form method="post" action="/salir" style="display:inline"><button type="submit" class="enlace">Cerrar sesión</button></form>{% endif %}
     </div>
   </nav>
   <main>
@@ -75,6 +75,16 @@
   </main>
 </div>
 <script>
+// Cada etiqueta queda asociada al campo que la sigue (lectores de pantalla y clic en la etiqueta)
+let nId = 0;
+document.querySelectorAll('label:not([for])').forEach(l => {
+  if (l.querySelector('input,select,textarea')) return;
+  let c = l.nextElementSibling;
+  while (c && !c.matches('input,select,textarea')) c = c.querySelector && c.querySelector('input,select,textarea') || c.nextElementSibling;
+  if (!c || !c.matches || !c.matches('input,select,textarea')) return;
+  if (!c.id) c.id = 'campo-' + (++nId);
+  l.htmlFor = c.id;
+});
 // Confirmación para acciones destructivas
 document.addEventListener('submit', e => {
   const msg = e.submitter && e.submitter.dataset.confirmar;

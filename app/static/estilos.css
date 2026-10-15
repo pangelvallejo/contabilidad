@@ -6,9 +6,9 @@
   --borde: #dfe3e8;
   --texto: #14181f;
   --texto-2: #545b66;
-  --texto-3: #7a828e;
+  --texto-3: #5f6773;
   --acento: #1f3a5f;
-  --acento-2: #2a78d6;
+  --acento-2: #1f66bf;
   --serie-1: #2a78d6;
   --serie-2: #eb6834;
   --ok: #0f7a3d;
@@ -29,7 +29,7 @@
     --borde: #34352f;
     --texto: #f3f3f1;
     --texto-2: #c3c2b7;
-    --texto-3: #9a998f;
+    --texto-3: #a8a79d;
     --acento: #9ec5f4;
     --acento-2: #3987e5;
     --serie-1: #3987e5;
@@ -136,7 +136,8 @@ input.n { text-align: right; }
 .punto.critico { background: var(--crit); } .punto.advertencia { background: #d99a00; } .punto.info { background: var(--acento-2); }
 
 .liquidacion td:first-child { color: var(--texto-2); }
-.liquidacion td { white-space: normal; word-break: break-word; }
+.liquidacion td:first-child { white-space: normal; word-break: break-word; }
+.liquidacion td.n { white-space: nowrap; }
 .liquidacion tr.res td { font-weight: 700; font-size: 15px; }
 .nota { color: var(--texto-3); font-size: 12.5px; }
 .zona-carga { border: 2px dashed var(--borde); border-radius: var(--radio); padding: 28px; text-align: center; background: var(--superficie-2); }
@@ -176,4 +177,28 @@ input.n { text-align: right; }
   nav.lateral, .encabezado .acciones, form.filtros, .no-imprimir { display: none !important; }
   main { padding: 0; }
   .tarjeta { border: 0; }
+}
+
+/* Auditoría 1.4.3: móvil, contraste e impresión */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .btn.primario, :root:not([data-theme="light"]) button.primario { background: #2a6cc0; border-color: #2a6cc0; }
+}
+:root[data-theme="dark"] .btn.primario, :root[data-theme="dark"] button.primario { background: #2a6cc0; border-color: #2a6cc0; }
+#banco table, #categoria table { min-width: 720px; }
+#banco table input[name="nombre"], #categoria table input[name="nombre"] { min-width: 160px; }
+.sub code { word-break: break-all; }
+@media (max-width: 800px) {
+  .tabla-scroll { background: linear-gradient(to left, rgba(0, 0, 0, .10), transparent 18px) right / 18px 100% no-repeat; }
+  /* Conciliación: cada movimiento como tarjeta, con sus acciones debajo */
+  table.concil, table.concil tbody, table.concil tr, table.concil td { display: block; width: 100%; }
+  table.concil tr:first-child { display: none; }
+  table.concil tr { border-bottom: 1px solid var(--borde); padding: 8px 0; }
+  table.concil td { border: 0; padding: 2px 0; text-align: left; }
+  table.concil td.n { font-weight: 600; }
+  table.concil form.filtros { flex-direction: row; flex-wrap: wrap; align-items: center; }
+  table.concil form.filtros select { max-width: 100%; }
+}
+@media print {
+  .btn, button, form, .paginacion, .zona-carga { display: none !important; }
+  body { background: #fff; }
 }

@@ -7,9 +7,9 @@ from .. import archivos, bancos, contab, exportar, importacion, planeacion
 from sqlalchemy.orm import selectinload
 
 from ..db import Session
-from ..models import (CERO, TIPOS_SOPORTE, Asiento, Asunto, Banco, CategoriaGasto, Gasto, PagoGasto,
+from ..models import (CERO, TIPOS_SOPORTE, Asiento, Asunto, Banco, CategoriaGasto, Cuenta, Gasto, PagoGasto,
                       Tercero)
-from . import XLSX, anio_arg, check, descargar, dinero, entero_requerido, fecha_arg, paginar_lista
+from . import XLSX, anio_arg, check, descargar, dinero, entero_requerido, explicar, fecha_arg, paginar_lista
 
 bp = Blueprint("gastos", __name__)
 
@@ -123,8 +123,21 @@ def _llenar_gasto(s, g):
         raise ValueError("Forma de pago no válida.")
     if g.tipo_soporte == "NC":
         ref = s.get(Gasto, request.form.get("referencia_id", type=int) or 0)
-        g.referencia = ref if ref is not None and ref.tipo_soporte != "NC" else None
+        if ref is not None and ref.tipo_soporte == "NC":
+            ref = None
+        if ref is not None:
+            otras = sum((n.total for n in s.query(Gasto).filter(Gasto.referencia_id == ref.id, Gasto.id != (g.id or 0))),
+                        CERO)
+            if g.total > ref.total - otras:
+                raise ValueError("La nota crédito supera el valor pendiente de la factura del proveedor.")
+            if ref.forma_pago == "credito":
+                g.forma_pago = "credito"  # rebaja la cuenta por pagar de esa factura; no es un reintegro al banco
+        g.referencia = ref
     g.cuenta_pago = request.form.get("cuenta_pago") if g.forma_pago == "contado" else None
+    if g.forma_pago == "contado":
+        cta = s.get(Cuenta, g.cuenta_pago or "")
+        if cta is None or not cta.movimiento or not cta.codigo.startswith("11"):
+            raise ValueError("Elija la cuenta con la que se pagó (caja o un banco).")
     g.notas = request.form.get("notas") or None
     g.recurrente = check("recurrente")
     g.asunto_id = request.form.get("asunto_id", type=int) or None
@@ -163,7 +176,7 @@ def nuevo():
             return redirect(url_for("gastos.lista"))
         except Exception as e:  # noqa: BLE001
             s.rollback()
-            flash(f"No se pudo registrar: {e}", "error")
+            flash(f"No se pudo registrar: {explicar(e)}", "error")
     form = request.form
     copiar = request.args.get("copiar", type=int)
     if request.method == "GET" and copiar:
@@ -188,7 +201,7 @@ def revisar():
         ids = request.form.getlist("id")
         n = 0
         for gid in ids:
-            g = s.get(Gasto, int(gid)) if str(gid).isdigit() else None
+            g = s.get(Gasto, int(gid)) if str(gid).isdecimal() else None
             if g is None or not request.form.get(f"ok_{gid}"):
                 continue
             try:
@@ -214,7 +227,7 @@ def revisar():
                 n += 1
             except Exception as e:  # noqa: BLE001
                 s.rollback()
-                flash(f"No se pudo guardar el gasto {g.numero or gid}: {e}", "error")
+                flash(f"No se pudo guardar el gasto {g.numero or gid}: {explicar(e)}", "error")
                 return redirect(url_for("gastos.revisar"))
         s.commit()
         flash(f"{n} gasto(s) revisado(s).", "ok")
@@ -267,10 +280,12 @@ def detalle(id):
                 s.delete(p)
                 s.commit()
                 return redirect(url_for("gastos.detalle", id=id))
-            categoria_anterior = g.categoria.cuenta
+            categoria_anterior, fecha_anterior = g.categoria.cuenta, g.fecha
             _llenar_gasto(s, g)
             if categoria_anterior.startswith("15") and not s.get(CategoriaGasto, g.categoria_id).cuenta.startswith("15"):
                 planeacion.borrar_depreciaciones(s, g.id)  # dejó de ser activo
+            elif categoria_anterior.startswith("15") and g.fecha != fecha_anterior:
+                planeacion.borrar_depreciaciones(s, g.id)  # las cuotas se recalculan desde la nueva fecha de compra
             if g.forma_pago == "contado" and g.pagos:
                 raise ValueError("El gasto tiene pagos registrados; elimínelos antes de marcarlo de contado.")
             if g.forma_pago == "credito" and g.pagos and g.total < sum((p.valor for p in g.pagos), CERO):
@@ -283,7 +298,7 @@ def detalle(id):
             return redirect(url_for("gastos.detalle", id=id))
         except Exception as e:  # noqa: BLE001
             s.rollback()
-            flash(f"No se pudo guardar: {e}", "error")
+            flash(f"No se pudo guardar: {explicar(e)}", "error")
             g = s.get(Gasto, id)
     asientos = s.query(Asiento).filter(Asiento.origen.in_(
         [f"gasto:{g.id}"] + [f"pagogasto:{p.id}" for p in g.pagos])).order_by(Asiento.fecha).all()

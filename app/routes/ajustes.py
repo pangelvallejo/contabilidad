@@ -11,7 +11,7 @@ from .. import config, contab, correo, impuestos, respaldo, sistema, vigilancia
 from ..tareas import ESTADO
 from ..db import Session
 from ..models import Banco, CategoriaGasto, Cuenta
-from . import check
+from . import check, explicar
 
 bp = Blueprint("ajustes", __name__, url_prefix="/configuracion")
 
@@ -24,6 +24,16 @@ CAMPOS_EMPRESA = ["empresa_nombre", "empresa_nit", "empresa_dv", "empresa_direcc
 
 
 SECRETOS = {"correo_clave", "github_token", "clave_acceso"}
+
+
+def _ruta_valida(ruta: str) -> bool:
+    if len(ruta) > 240 or "\x00" in ruta or any(len(parte) > 200 for parte in re.split(r"[\\/]", ruta)):
+        return False
+    try:
+        Path(ruta).expanduser().exists()
+    except (OSError, ValueError):
+        return False
+    return True
 
 
 def _reiniciando(script=None, titulo="Reiniciando el programa…"):
@@ -52,6 +62,14 @@ def inicio():
                         if valor is None:
                             flash("La fecha de bloqueo no es válida; use el selector de fecha.", "error")
                             continue
+                    if campo in ("carpeta_respaldo", "carpeta_vigilada") and valor and not _ruta_valida(valor):
+                        flash(f"La ruta de {campo.replace('_', ' ')} no es válida (demasiado larga o con caracteres "
+                              "no permitidos).", "error")
+                        continue
+                    if campo in ("carpeta_respaldo", "carpeta_vigilada") and valor and not _ruta_valida(valor):
+                        flash(f"La ruta de {campo.replace('_', ' ')} no es válida (demasiado larga o con caracteres "
+                              "no permitidos).", "error")
+                        continue
                     contab.set_config(s, campo, valor)
             if request.form.get("uvt_anio") and request.form.get("uvt_valor", "").strip():
                 try:
@@ -63,7 +81,7 @@ def inicio():
                 try:
                     contab.set_config(s, "respaldos_a_conservar", str(max(1, int(request.form["respaldos_a_conservar"]))))
                 except ValueError:
-                    contab.set_config(s, "respaldos_a_conservar", "30")
+                    flash("«Respaldos a conservar» debe ser un número entero; se mantuvo el valor anterior.", "error")
             if accion != "empresa":
                 s.commit()
             flash("Datos guardados.", "ok")
@@ -123,7 +141,7 @@ def inicio():
                 destino = tareas.enviar_resumen(s, anio, mes)
                 flash(f"Resumen de {anio}-{mes:02d} enviado a {destino}.", "ok")
             except Exception as e:  # noqa: BLE001
-                flash(f"No se pudo enviar el resumen: {e}", "error")
+                flash(f"No se pudo enviar el resumen: {explicar(e)}", "error")
         elif accion == "revisar_carpeta":
             res = vigilancia.revisar(s)
             if not res:
@@ -143,7 +161,7 @@ def inicio():
                 sistema.programar_restauracion(contenido)
                 flash("Respaldo listo para restaurar. Reinicie el programa para aplicarlo (botón de abajo).", "ok")
             except Exception as e:  # noqa: BLE001
-                flash(f"No se pudo preparar la restauración: {e}", "error")
+                flash(f"No se pudo preparar la restauración: {explicar(e)}", "error")
         elif accion == "reiniciar":
             s.commit()
             return _reiniciando()
@@ -158,7 +176,7 @@ def inicio():
                     flash(f"El programa está al día (versión {sistema.version_actual()}).", "ok")
                     contab.set_config(s, "actualizacion_disponible", "")
             except Exception as e:  # noqa: BLE001
-                flash(f"No se pudo consultar: {e}", "error")
+                flash(f"No se pudo consultar: {explicar(e)}", "error")
         elif accion == "aplicar_actualizacion":
             try:
                 info = sistema.verificar_actualizacion(s)
@@ -169,18 +187,18 @@ def inicio():
                 s.commit()
                 return _reiniciando(script, f"Instalando la versión {info['version']}…")
             except Exception as e:  # noqa: BLE001
-                flash(f"No se pudo actualizar: {e}", "error")
+                flash(f"No se pudo actualizar: {explicar(e)}", "error")
         elif accion == "respaldo":
             try:
                 ruta = respaldo.crear_respaldo(s)
                 flash(f"Respaldo creado en {ruta}", "ok")
             except Exception as e:  # noqa: BLE001
-                flash(f"No se pudo crear el respaldo: {e}", "error")
+                flash(f"No se pudo crear el respaldo: {explicar(e)}", "error")
         try:
             s.commit()
         except Exception as e:  # noqa: BLE001
             s.rollback()
-            flash(f"No se pudo guardar: {e}", "error")
+            flash(f"No se pudo guardar: {explicar(e)}", "error")
         seccion = request.form.get("seccion") or (accion or "")
         return redirect(url_for("ajustes.inicio") + "#" + seccion)
     valores = {c: contab.config(s, c, "") for c in CAMPOS_EMPRESA + ["ultimo_respaldo"]}

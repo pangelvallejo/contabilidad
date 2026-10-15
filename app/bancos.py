@@ -53,7 +53,11 @@ def _numero(v):
         if not decimal_ok:
             t = t.replace(".", "")
     elif ultima_coma > ultimo_punto:
-        t = t.replace(".", "").replace(",", ".")
+        # "1,500,000" o "6,000" (miles al estilo inglés, sin decimales) frente a "1.500,50" o "250,00"
+        if len(t) - ultima_coma - 1 == 3 and "." not in t:
+            t = t.replace(",", "")
+        else:
+            t = t.replace(".", "").replace(",", ".")
     try:
         valor = Decimal(t)
     except InvalidOperation:
@@ -70,9 +74,10 @@ def _fecha(v):
     for fmt in ("%d/%m/%Y", "%Y-%m-%d", "%d-%m-%Y", "%Y/%m/%d", "%d/%m/%y", "%d.%m.%Y", "%Y%m%d", "%d/%m/%Y %H:%M",
                 "%Y-%m-%d %H:%M:%S", "%d/%m/%Y %H:%M:%S", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M", "%d-%m-%y"):
         try:
-            return datetime.strptime(t, fmt).date()
+            f = datetime.strptime(t, fmt).date()
         except ValueError:
             continue
+        return f if 2000 <= f.year <= 2100 else None  # una fecha de otro siglo es una celda mal leída
     return None
 
 
@@ -181,7 +186,7 @@ def importar_extracto(session, banco: Banco, nombre: str, contenido: bytes, mapa
 # ------------------------------------------------------------------ conciliación
 
 def _ya_conciliados(session):
-    return {(m.origen_tipo, m.origen_id) for m in session.query(MovimientoBanco).filter_by(estado="conciliado")}
+    return set(session.query(MovimientoBanco.origen_tipo, MovimientoBanco.origen_id).filter_by(estado="conciliado"))
 
 
 def candidatos(session, mov: MovimientoBanco, dias=5, usados=None):
@@ -189,7 +194,10 @@ def candidatos(session, mov: MovimientoBanco, dias=5, usados=None):
     `usados` (pares ya conciliados) puede pasarse calculado una vez para muchas líneas."""
     if usados is None:
         usados = _ya_conciliados(session)
-    desde, hasta = mov.fecha - timedelta(days=dias), mov.fecha + timedelta(days=dias)
+    try:
+        desde, hasta = mov.fecha - timedelta(days=dias), mov.fecha + timedelta(days=dias)
+    except OverflowError:  # fecha absurda guardada por una versión anterior
+        return []
     res = []
     cuenta = mov.banco.cuenta
     if mov.valor > 0:
@@ -229,11 +237,20 @@ def candidatos(session, mov: MovimientoBanco, dias=5, usados=None):
 
 
 def conciliar_automatico(session, banco_id):
+    """Vincula las líneas pendientes que tienen un único candidato, siempre que ese documento no sea también el
+    candidato de otra línea del extracto (dos consignaciones iguales el mismo día se dejan para revisión manual)."""
+    usados = _ya_conciliados(session)
+    pendientes = session.query(MovimientoBanco).filter_by(banco_id=banco_id, estado="pendiente").all()
+    opciones = {mov.id: [(c[0], c[1]) for c in candidatos(session, mov, usados=usados)] for mov in pendientes}
+    demanda = {}
+    for lista in opciones.values():
+        for clave in lista:
+            demanda[clave] = demanda.get(clave, 0) + 1
     n = 0
-    for mov in session.query(MovimientoBanco).filter_by(banco_id=banco_id, estado="pendiente"):
-        c = candidatos(session, mov)
-        if len(c) == 1:
-            mov.origen_tipo, mov.origen_id, mov.estado = c[0][0], c[0][1], "conciliado"
+    for mov in pendientes:
+        lista = opciones[mov.id]
+        if len(lista) == 1 and demanda[lista[0]] == 1:
+            mov.origen_tipo, mov.origen_id, mov.estado, mov.creado_aqui = lista[0][0], lista[0][1], "conciliado", False
             n += 1
     session.commit()
     return n
@@ -274,7 +291,7 @@ def origen_existe(session, tipo, oid) -> bool:
 def liberar(session, tipo, oid):
     """Cuando se elimina un documento, sus líneas de extracto vuelven a 'pendiente'."""
     for m in session.query(MovimientoBanco).filter_by(origen_tipo=tipo, origen_id=oid):
-        m.estado, m.origen_tipo, m.origen_id = "pendiente", None, None
+        m.estado, m.origen_tipo, m.origen_id, m.creado_aqui = "pendiente", None, None, False
 
 
 def deshacer(session, mov: MovimientoBanco):
@@ -288,6 +305,13 @@ def deshacer(session, mov: MovimientoBanco):
     if tipo == "gasto":
         g = session.get(Gasto, oid)
         if g is not None:
+            if g.notas_credito:
+                raise ValueError("El gasto creado desde el extracto tiene notas crédito asociadas; elimínelas primero.")
+            from .planeacion import borrar_depreciaciones
+            borrar_depreciaciones(session, g.id)  # si se clasificó como activo fijo, sus cuotas se van con él
+            for p in g.pagos:
+                liberar(session, "pagogasto", p.id)
+                contab.borrar_asientos(session, f"pagogasto:{p.id}")
             contab.borrar_asientos(session, f"gasto:{g.id}")
             session.delete(g)
     elif tipo == "recaudo":

@@ -31,7 +31,7 @@
 {% block scripts %}
 <script>
 const num = v => { v = String(v || '').trim(); if (v.includes(',')) v = v.replace(/\./g, '').replace(',', '.'); else if ((v.match(/\./g) || []).length > 1 || /\.\d{3}$/.test(v)) v = v.replace(/\./g, ''); return parseFloat(v) || 0; };
-const fmt = v => v.toLocaleString('es-CO', {maximumFractionDigits: 2});
+const fmt = v => v.toLocaleString('es-CO', {minimumFractionDigits: Number.isInteger(v) ? 0 : 2, maximumFractionDigits: 2});
 const base = document.getElementById('base'), iva = document.getElementById('iva'), total = document.getElementById('total');
 base.addEventListener('input', () => { iva.value = Math.round(num(base.value) * {{ tarifa_iva }}); calc(); });
 iva.addEventListener('input', calc);
@@ -39,5 +39,10 @@ function calc() { total.value = fmt(num(base.value) + num(iva.value)); }
 document.getElementById('tipo').addEventListener('change', e => {
   document.getElementById('ref').style.display = e.target.value === 'NC' ? '' : 'none';
 });
+// Solo los asuntos del cliente elegido
+const cli = document.querySelector('select[name=cliente_id]'), asu = document.querySelector('select[name=asunto_id]');
+const filtrar = () => { Array.from(asu.options).forEach(o => { if (o.value) o.hidden = o.dataset.cliente !== cli.value; });
+  if (asu.selectedOptions[0] && asu.selectedOptions[0].hidden) asu.value = ''; };
+cli.addEventListener('change', filtrar); filtrar();
 </script>
 {% endblock %}

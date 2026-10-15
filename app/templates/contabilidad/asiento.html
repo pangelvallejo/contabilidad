@@ -10,7 +10,7 @@
     <div><label>Fecha</label><input type="date" name="fecha" value="{{ (a.fecha if a else hoy).isoformat() }}" {{ 'disabled' if not editable }}></div>
     <div class="campo ancho"><label>Descripción</label><input name="descripcion" value="{{ a.descripcion if a else '' }}" {{ 'disabled' if not editable }}></div>
   </div>
-  <table id="lineas">
+  <div class="tabla-scroll"><table id="lineas">
     <tr><th style="width:34%">Cuenta</th><th>Tercero</th><th>Detalle</th><th class="n" style="width:140px">Débito</th><th class="n" style="width:140px">Crédito</th></tr>
     {% set lineas = a.lineas if a else [] %}
     {% for i in range([lineas|length + (3 if editable else 0), 2]|max) %}
@@ -27,7 +27,7 @@
     </tr>
     {% endfor %}
     <tr class="total"><td colspan="3">Sumas <span id="dif" class="etiqueta"></span></td><td class="n" id="sd"></td><td class="n" id="sc"></td></tr>
-  </table>
+  </table></div>
   {% if editable %}
   <p><button type="button" id="mas">+ Línea</button></p>
   <button class="primario">Guardar</button>
@@ -38,7 +38,7 @@
 {% block scripts %}
 <script>
 const num = v => { v = String(v || '').trim(); if (v.includes(',')) v = v.replace(/\./g, '').replace(',', '.'); else if ((v.match(/\./g) || []).length > 1 || /\.\d{3}$/.test(v)) v = v.replace(/\./g, ''); return parseFloat(v) || 0; };
-const fmt = v => v.toLocaleString('es-CO', {maximumFractionDigits: 2});
+const fmt = v => v.toLocaleString('es-CO', {minimumFractionDigits: Number.isInteger(v) ? 0 : 2, maximumFractionDigits: 2});
 function sumar() {
   const d = Array.from(document.querySelectorAll('.deb')).reduce((s, i) => s + num(i.value), 0);
   const c = Array.from(document.querySelectorAll('.cre')).reduce((s, i) => s + num(i.value), 0);

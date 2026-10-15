@@ -15,7 +15,7 @@ warnings.filterwarnings("ignore", message=".*Decimal objects natively.*")
 # Si Windows bloquea Pillow, fpdf2 avisa que no podrá insertar imágenes: el programa no las usa.
 warnings.filterwarnings("ignore", message="Pillow could not be imported.*")
 
-VERSION = "1.4.2"
+VERSION = "1.4.3"
 
 
 def create_app(datos_dir=None, respaldo_automatico=False):
@@ -78,12 +78,20 @@ def create_app(datos_dir=None, respaldo_automatico=False):
             if request.method == "POST":
                 from .contab import config as cfg
                 import hmac
-                if hmac.compare_digest(request.form.get("clave", ""), cfg(s, "clave_acceso", "")):
+                from .sistema import intentos_acceso
+                ip = request.remote_addr or ""
+                if intentos_acceso.bloqueado(ip):
+                    flash("Demasiados intentos fallidos. Espere unos minutos e inténtelo de nuevo.", "error")
+                elif hmac.compare_digest(request.form.get("clave", "").encode("utf-8"),
+                                         cfg(s, "clave_acceso", "").encode("utf-8")):
+                    intentos_acceso.limpiar(ip)
                     sesion["autenticado"] = True
                     sesion.permanent = True
                     from .routes import destino_seguro
                     return redirect(destino_seguro(request.form.get("siguiente"), "/"))
-                flash("Contraseña incorrecta.", "error")
+                else:
+                    intentos_acceso.fallo(ip)
+                    flash("Contraseña incorrecta.", "error")
             return render_template("acceso.html", siguiente=request.args.get("siguiente", "/"))
         return redirect(url_for("acceso", siguiente=request.path))
 
@@ -92,11 +100,24 @@ def create_app(datos_dir=None, respaldo_automatico=False):
         from flask import redirect
         return redirect("/")  # el control real está en before_request; desde el PC local no aplica
 
-    @app.route("/salir")
+    @app.route("/salir", methods=["POST"])
     def salir():
         from flask import redirect, session as sesion
         sesion.clear()
         return redirect("/")
+
+    @app.after_request
+    def _cabeceras(respuesta):
+        respuesta.headers.setdefault("X-Content-Type-Options", "nosniff")
+        respuesta.headers.setdefault("X-Frame-Options", "SAMEORIGIN")
+        respuesta.headers.setdefault("Referrer-Policy", "same-origin")
+        return respuesta
+
+    @app.errorhandler(OverflowError)
+    def _fuera_de_rango(_e):
+        # Un número gigantesco en la URL o en un filtro (99999999999999999999) no cabe en SQLite.
+        from werkzeug.exceptions import NotFound
+        return NotFound()
 
     @app.route("/favicon.ico")
     def favicon():
@@ -108,9 +129,9 @@ def create_app(datos_dir=None, respaldo_automatico=False):
         from .archivos import ruta_absoluta
         try:
             ruta = ruta_absoluta(relativa)
-        except ValueError:
-            abort(404)
-        if not ruta.exists():
+            if not ruta.exists():
+                abort(404)
+        except (ValueError, OSError):  # ruta inválida o nombre demasiado largo
             abort(404)
         # XML y ZIP se descargan en vez de mostrarse: un XML recibido de un tercero no debe ejecutarse en el navegador.
         return send_file(ruta, as_attachment=ruta.suffix.lower() in (".xml", ".zip", ".html", ".htm", ".svg"))

@@ -6,6 +6,9 @@ reportar, la versión vigente de cada formato y las cuantías menores de la reso
 from collections import defaultdict
 from datetime import date
 
+from sqlalchemy.orm import joinedload, selectinload
+
+
 from . import cartera
 from .models import CERO, DocumentoVenta, Gasto, OtroIngreso, Tercero
 
@@ -38,7 +41,8 @@ def faltantes(t: Tercero):
 
 def generar(session, anio):
     inicio, fin = date(anio, 1, 1), date(anio, 12, 31)
-    gastos = session.query(Gasto).filter(Gasto.fecha.between(inicio, fin), Gasto.proveedor_id.isnot(None)).all()
+    gastos = (session.query(Gasto).options(joinedload(Gasto.categoria))
+              .filter(Gasto.fecha.between(inicio, fin), Gasto.proveedor_id.isnot(None)).all())
     ventas = (session.query(DocumentoVenta)
               .filter(DocumentoVenta.fecha.between(inicio, fin), DocumentoVenta.anulada.is_(False)).all())
 
@@ -75,10 +79,10 @@ def generar(session, anio):
         f1008[doc.cliente_id] += saldo
 
     f1009 = defaultdict(lambda: CERO)
-    for g in session.query(Gasto).filter(Gasto.fecha <= fin, Gasto.forma_pago == "credito",
-                                         Gasto.proveedor_id.isnot(None)):
-        pagado = sum((p.valor for p in g.pagos if p.fecha <= fin), CERO)
-        saldo = g.total - pagado if g.tipo_soporte != "NC" else -g.total
+    for g in (session.query(Gasto).options(selectinload(Gasto.pagos), selectinload(Gasto.notas_credito))
+              .filter(Gasto.fecha <= fin, Gasto.forma_pago == "credito", Gasto.tipo_soporte != "NC",
+                      Gasto.proveedor_id.isnot(None))):
+        saldo = g.saldo_al(fin)  # la misma fórmula que la pantalla del gasto y cuentas por pagar
         if saldo:
             f1009[g.proveedor_id] += saldo
     f1009 = {t: v for t, v in f1009.items() if v > 0}  # un saldo a favor con el proveedor no es cuenta por pagar
@@ -114,6 +118,14 @@ def generar(session, anio):
     usados = ({t for (_, t) in f1001} | set(f1005) | set(f1006) | set(f1007) | set(f1008) | set(f1009)
               | {t for (_, t) in f1007_otros})
     incompletos = [(terceros[t], faltantes(terceros[t])) for t in usados if faltantes(terceros[t])]
+    sin_proveedor = session.query(Gasto).filter(Gasto.fecha.between(inicio, fin), Gasto.proveedor_id.is_(None),
+                                                Gasto.tipo_soporte != "NC").all()
+    if sin_proveedor:
+        from .formato import pesos
+        total = sum((g.total for g in sin_proveedor), CERO)
+        incompletos.append((Tercero(nit="", nombre=f"{len(sin_proveedor)} gasto(s) por {pesos(total)} sin proveedor "
+                                                   "(indíquelo en cada gasto para incluirlos en el 1001)"),
+                            ["tercero"]))
     if sin_tercero:
         from .formato import pesos
         total = sum((oi.valor for oi in sin_tercero), CERO)

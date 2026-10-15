@@ -7,7 +7,7 @@ from flask import Blueprint, abort, flash, redirect, render_template, request, u
 from .. import contab, exportar, informes
 from ..db import Session
 from ..models import CERO, Asunto, Banco, Gasto, Tercero
-from . import XLSX, anio_arg, descargar, dinero, fecha_arg, periodo
+from . import XLSX, anio_arg, descargar, dinero, explicar, fecha_arg, periodo
 
 bp = Blueprint("informes", __name__, url_prefix="/informes")
 
@@ -270,7 +270,7 @@ def reembolsables():
         ids = request.form.getlist("id")
         n = 0
         for gid in ids:
-            g = s.get(Gasto, int(gid)) if gid.isdigit() else None
+            g = s.get(Gasto, int(gid)) if gid.isdecimal() else None
             if g is not None and g.reembolsable and not g.reembolsado:
                 g.reembolsado = True
                 n += 1
@@ -322,7 +322,7 @@ def asuntos():
             flash("Asunto guardado.", "ok")
         except Exception as e:  # noqa: BLE001
             s.rollback()
-            flash(f"No se pudo guardar: {e}", "error")
+            flash(f"No se pudo guardar: {explicar(e)}", "error")
         return redirect(url_for("informes.asuntos"))
     estado = request.args.get("estado", "abierto")
     q = s.query(Asunto)
@@ -350,7 +350,7 @@ def presupuesto():
     if request.method == "POST":
         try:
             anio_txt = request.form.get("anio", "").strip()
-            if not anio_txt.isdigit() or not 2000 <= int(anio_txt) <= 2100:
+            if not anio_txt.isdecimal() or not 2000 <= int(anio_txt) <= 2100:
                 raise ValueError("El año no es válido.")
             anio = int(anio_txt)
             valores = {"ingresos": dinero("ingresos")}
@@ -366,7 +366,7 @@ def presupuesto():
             flash(f"Presupuesto {anio} guardado.", "ok")
         except Exception as e:  # noqa: BLE001
             s.rollback()
-            flash(f"No se pudo guardar: {e}", "error")
+            flash(f"No se pudo guardar: {explicar(e)}", "error")
         return redirect(url_for("informes.presupuesto", anio=anio))
     corte = fecha_arg("corte", date.today())
     pr = informes.presupuesto_vs_real(s, anio, corte)
@@ -397,7 +397,7 @@ def regimenes():
             flash("Tarifa de ICA guardada.", "ok")
         except Exception as e:  # noqa: BLE001
             s.rollback()
-            flash(f"No se pudo guardar: {e}", "error")
+            flash(f"No se pudo guardar: {explicar(e)}", "error")
         return redirect(url_for("informes.regimenes", anio=anio))
     corte = fecha_arg("corte", date.today())
     c = informes.comparar_regimenes(s, anio, corte)

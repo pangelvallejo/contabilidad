@@ -31,7 +31,8 @@
 <script>
 const num = v => { v = String(v || '').trim(); if (v.includes(',')) v = v.replace(/\./g, '').replace(',', '.'); else if ((v.match(/\./g) || []).length > 1 || /\.\d{3}$/.test(v)) v = v.replace(/\./g, ''); return parseFloat(v) || 0; };
 const valor = document.getElementById('valor'), desc = document.getElementById('descuentos'), neto = document.getElementById('neto');
-const calc = () => neto.value = (num(valor.value) - num(desc.value)).toLocaleString('es-CO', {maximumFractionDigits: 2});
+const fmt = v => v.toLocaleString('es-CO', {minimumFractionDigits: Number.isInteger(v) ? 0 : 2, maximumFractionDigits: 2});
+const calc = () => neto.value = fmt(num(valor.value) - num(desc.value));
 valor.addEventListener('input', calc); desc.addEventListener('input', calc); calc();
 const sel = document.getElementById('tercero');
 const nuevo = () => ['nuevo-tercero', 'nuevo-tercero-2'].forEach(i => document.getElementById(i).style.display = sel.value === 'nuevo' ? '' : 'none');

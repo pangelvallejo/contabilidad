@@ -39,8 +39,17 @@ def configuracion(session):
 
 def _decodificar(texto):
     partes = []
-    for valor, cod in decode_header(texto or ""):
-        partes.append(valor.decode(cod or "utf-8", "replace") if isinstance(valor, bytes) else valor)
+    try:
+        trozos = decode_header(texto or "")
+    except Exception:  # noqa: BLE001 — cabecera malformada
+        return str(texto or "")
+    for valor, cod in trozos:
+        if isinstance(valor, bytes):
+            try:
+                valor = valor.decode(cod or "utf-8", "replace")
+            except LookupError:  # charset desconocido o 'unknown-8bit'
+                valor = valor.decode("utf-8", "replace")
+        partes.append(valor)
     return "".join(partes)
 
 
@@ -82,7 +91,7 @@ def _smtp(c):
     if propio:
         partes = propio.split(":")
         host = partes[0]
-        puerto = int(partes[1]) if len(partes) > 1 and partes[1].isdigit() else 465
+        puerto = int(partes[1]) if len(partes) > 1 and partes[1].isdecimal() else 465
         return host, puerto, (partes[2] == "ssl") if len(partes) > 2 else puerto == 465
     nombre = (c.get("correo_servidor") or "gmail").strip().lower()
     if nombre in SMTP:
@@ -144,6 +153,34 @@ def probar(session) -> str:
         imap.logout()
 
 
+def _adjuntos(msg):
+    """Adjuntos a importar. Si el XML y el PDF vienen sueltos (no en ZIP), se empaquetan juntos en un ZIP en
+    memoria para que el PDF quede guardado como soporte del documento, igual que cuando llegan comprimidos."""
+    xmls, pdfs, zips = [], [], []
+    for parte in msg.walk():
+        nombre = _decodificar(parte.get_filename() or "")
+        if not nombre or not re.search(r"\.(zip|xml|pdf)$", nombre, re.I):
+            continue
+        contenido = parte.get_payload(decode=True)
+        if not contenido:
+            continue
+        nombre = nombre.replace("\\", "/").rsplit("/", 1)[-1]
+        destino = zips if nombre.lower().endswith(".zip") else (xmls if nombre.lower().endswith(".xml") else pdfs)
+        destino.append((nombre, contenido))
+    res = list(zips)
+    if xmls and pdfs:
+        import io
+        import zipfile
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+            for nombre, contenido in xmls + pdfs:
+                z.writestr(nombre, contenido)
+        res.append((xmls[0][0][:-4] + ".zip", buf.getvalue()))
+    else:
+        res.extend(xmls)
+    return res
+
+
 def revisar(session, limite=50) -> ResultadoCorreo:
     """Busca mensajes recientes con adjuntos XML/ZIP y los importa como gastos."""
     res = ResultadoCorreo()
@@ -170,9 +207,12 @@ def revisar(session, limite=50) -> ResultadoCorreo:
         if estado != "OK":
             res.error = "La búsqueda en el buzón falló."
             return res
-        ids = datos[0].split()[-limite:]
+        ids = datos[0].split()
         procesados = {m.mensaje_id for m in session.query(CorreoProcesado.mensaje_id)}
-        for uid in ids:
+        nuevos = 0
+        for uid in ids:  # del más antiguo al más reciente; se procesan hasta `limite` mensajes nuevos por revisión
+            if nuevos >= limite:
+                break
             estado, partes = imap.uid("fetch", uid, "(BODY.PEEK[HEADER.FIELDS (MESSAGE-ID SUBJECT)])")
             if estado != "OK" or not partes or not isinstance(partes[0], tuple):
                 continue
@@ -181,6 +221,7 @@ def revisar(session, limite=50) -> ResultadoCorreo:
             if mid in procesados:
                 continue
             procesados.add(mid)
+            nuevos += 1
             estado, partes = imap.uid("fetch", uid, "(BODY.PEEK[])")
             if estado != "OK" or not partes or not isinstance(partes[0], tuple):
                 continue
@@ -188,13 +229,7 @@ def revisar(session, limite=50) -> ResultadoCorreo:
             asunto = _decodificar(msg.get("Subject"))
             res.revisados += 1
             lineas = []
-            for parte in msg.walk():
-                nombre = _decodificar(parte.get_filename() or "")
-                if not nombre or not re.search(r"\.(zip|xml)$", nombre, re.I):
-                    continue
-                contenido = parte.get_payload(decode=True)
-                if not contenido:
-                    continue
+            for nombre, contenido in _adjuntos(msg):
                 for r in importar_archivo(session, nombre, contenido, origen="correo"):
                     lineas.append(f"{'OK' if r.ok else 'NO'} {r.archivo}: {r.mensaje}")
                     if r.ok:

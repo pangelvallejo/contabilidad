@@ -50,9 +50,11 @@ def editar(id=None):
         try:
             from ..contab import d
             valor = d(request.form.get("retainer_mensual") or 0)
-            t.retainer_mensual = valor if valor.is_finite() and valor > 0 else None
-        except Exception:  # noqa: BLE001
-            t.retainer_mensual = None
+            t.retainer_mensual = valor if valor > 0 else None
+        except Exception as e:  # noqa: BLE001 — InvalidOperation o ValueError
+            s.rollback()
+            flash(f"El valor de honorarios mensuales no es un número válido ({e}).", "error")
+            return redirect(request.url)
         try:
             t.plazo_dias = max(0, int(request.form.get("plazo_dias") or 0))
         except ValueError:

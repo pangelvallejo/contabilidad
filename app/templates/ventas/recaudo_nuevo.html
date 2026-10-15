@@ -45,7 +45,7 @@
 {% block scripts %}
 <script>
 const num = v => { v = String(v || '').trim(); if (v.includes(',')) v = v.replace(/\./g, '').replace(',', '.'); else if ((v.match(/\./g) || []).length > 1 || /\.\d{3}$/.test(v)) v = v.replace(/\./g, ''); return parseFloat(v) || 0; };
-const fmt = v => v.toLocaleString('es-CO', {maximumFractionDigits: 2});
+const fmt = v => v.toLocaleString('es-CO', {minimumFractionDigits: Number.isInteger(v) ? 0 : 2, maximumFractionDigits: 2});
 const valor = document.getElementById('valor');
 const campos = Array.from(document.querySelectorAll('.aplicar'));
 function totales() {
@@ -55,7 +55,7 @@ function totales() {
 }
 function repartir() {
   let resto = num(valor.value);
-  campos.forEach(c => { const v = Math.min(parseFloat(c.dataset.saldo), Math.max(resto, 0)); c.value = v ? String(v).replace('.', ',') : ''; resto -= v; });
+  campos.forEach(c => { const v = Math.min(parseFloat(c.dataset.saldo), Math.max(resto, 0)); c.value = v ? fmt(v) : ''; resto -= v; });
   totales();
 }
 const auto = document.getElementById('auto');

@@ -62,14 +62,18 @@ def flujo_de_efectivo(session, desde: date, hasta: date):
     asientos = (session.query(Asiento).options(selectinload(Asiento.lineas))
                 .join(Movimiento).filter(Asiento.fecha.between(desde, hasta), Asiento.tipo != "CI",
                                          Movimiento.cuenta.like(f"{PREFIJO_EFECTIVO}%")).distinct().all())
+    from .models import CategoriaGasto, Gasto, PagoGasto
+    pagos_de_activos = {str(pid) for pid, in session.query(PagoGasto.id).join(Gasto).join(CategoriaGasto)
+                        .filter(CategoriaGasto.cuenta.like("15%"))}
     for a in asientos:
         efectivo = sum((m.debito - m.credito for m in a.lineas if m.cuenta.startswith(PREFIJO_EFECTIVO)), CERO)
         if efectivo == 0:  # traslado entre cuentas propias
             continue
-        origen = (a.origen or "").partition(":")[0]
+        origen, _, oid = (a.origen or "").partition(":")
         por_origen = ORIGEN_FLUJO.get(origen)
-        if por_origen in ("proveedores",) and any(m.cuenta.startswith("15") for m in a.lineas):
-            por_origen = "activos"  # compra o pago de un activo fijo
+        if por_origen in ("proveedores",) and (any(m.cuenta.startswith("15") for m in a.lineas)
+                                               or (origen == "pagogasto" and oid in pagos_de_activos)):
+            por_origen = "activos"  # compra o pago de un activo fijo (también el pago de uno comprado a crédito)
         for m in a.lineas:
             if m.cuenta.startswith(PREFIJO_EFECTIVO):
                 continue
@@ -137,10 +141,26 @@ def cambios_patrimonio(session, anio: int):
 def periodo_comparable(desde: date, hasta: date, modo="anio"):
     """'anio': mismas fechas del año anterior; 'anterior': el periodo inmediatamente anterior de igual duración."""
     if modo == "anterior":
+        if desde.day == 1 and hasta == _fin_de_mes(hasta):
+            # Meses completos: el mismo número de meses justo antes (abril ↔ marzo, 2028 ↔ 2027)
+            meses = (hasta.year - desde.year) * 12 + hasta.month - desde.month + 1
+            h = _dia_anterior(desde)
+            d0 = _restar_meses(desde, meses)
+            return d0, h
         dias = (hasta - desde).days
         h = _dia_anterior(desde)
         return h - timedelta(days=dias), h
     return _anio_anterior(desde), _anio_anterior(hasta)
+
+
+def _fin_de_mes(f: date) -> date:
+    siguiente = date(f.year + (f.month == 12), f.month % 12 + 1, 1)
+    return siguiente - timedelta(days=1)
+
+
+def _restar_meses(f: date, meses: int) -> date:
+    indice = f.year * 12 + (f.month - 1) - meses
+    return date(indice // 12, indice % 12 + 1, 1)
 
 
 def _anio_anterior(f: date) -> date:
@@ -315,11 +335,7 @@ EDADES_CXP = cartera.EDADES
 
 
 def saldo_gasto_al(g: Gasto, al: date) -> Decimal:
-    if g.tipo_soporte == "NC" or g.forma_pago != "credito":
-        return CERO
-    pagado = sum((p.valor for p in g.pagos if p.fecha <= al), CERO)
-    notas = sum((n.total for n in g.notas_credito if n.fecha <= al), CERO)
-    return g.total - pagado - notas
+    return g.saldo_al(al)
 
 
 def facturas_por_pagar(session, al: date | None = None, proveedor_id=None):
@@ -516,9 +532,9 @@ def comparar_regimenes(session, anio: int, corte: date | None = None):
             "renta": renta, "ica": ica, "ica_por_mil": ica_por_mil, "renta_neta": renta_neta, "ordinario": ordinario,
             "simple": simple, "tarifa_simple": proy.tarifa, "diferencia": ordinario - simple,
             "tarifa_renta": TARIFA_RENTA_ORDINARIA, "margen": _pct(utilidad_fiscal, ingresos),
-            # Punto de indiferencia: margen m tal que 0,35·(ingresos·m − ICA) + ICA = SIMPLE
-            "margen_indiferencia": _pct(simple - (1 - TARIFA_RENTA_ORDINARIA) * ica, ingresos * TARIFA_RENTA_ORDINARIA)
-            if ingresos else None}
+            # Punto de indiferencia, con la misma definición de margen que c.margen (renta líquida tras deducir el
+            # ICA): m tal que 0,35·ingresos·m + ICA = SIMPLE
+            "margen_indiferencia": _pct(simple - ica, ingresos * TARIFA_RENTA_ORDINARIA) if ingresos else None}
 
 
 # ------------------------------------------------------------------ informe de conciliación bancaria
@@ -527,8 +543,10 @@ def informe_conciliacion(session, banco: Banco, corte: date, saldo_extracto: Dec
     """Saldo según libros, partidas en libros que no aparecen en el extracto, partidas del extracto sin registrar
     y el saldo que debería mostrar el extracto."""
     saldo_libros = reportes.saldo_cuenta(session, banco.cuenta, corte)
+    # Solo cuentan las líneas del extracto hasta el corte: una partida de libros cruzada con una línea posterior
+    # todavía no aparece en el extracto de esa fecha.
     conciliados = {(m.origen_tipo, m.origen_id) for m in session.query(MovimientoBanco)
-                   .filter_by(banco_id=banco.id, estado="conciliado")}
+                   .filter_by(banco_id=banco.id, estado="conciliado").filter(MovimientoBanco.fecha <= corte)}
     en_libros_sin_extracto = []
     movs = (session.query(Movimiento).join(Asiento).options(selectinload(Movimiento.asiento))
             .filter(Movimiento.cuenta == banco.cuenta, Asiento.fecha <= corte).all())
@@ -538,11 +556,12 @@ def informe_conciliacion(session, banco: Banco, corte: date, saldo_extracto: Dec
             tipo, _, oid = a.origen.partition(":")
             if tipo == "venta" or tipo.startswith("depre") or tipo in ("simple", "cierre"):
                 continue
-            clave = (tipo, int(oid) if oid.isdigit() else None)
+            clave = (tipo, int(oid) if oid.isdecimal() else None)
         else:
             clave = ("asiento", a.id)
         if clave not in conciliados:
             en_libros_sin_extracto.append((a, m.debito - m.credito))
+    en_libros_sin_extracto.sort(key=lambda par: (par[0].fecha, par[0].id))
     pendientes = (session.query(MovimientoBanco).filter_by(banco_id=banco.id, estado="pendiente")
                   .filter(MovimientoBanco.fecha <= corte).order_by(MovimientoBanco.fecha).all())
     total_libros_sin_extracto = sum((v for _, v in en_libros_sin_extracto), CERO)

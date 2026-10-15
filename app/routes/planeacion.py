@@ -5,7 +5,8 @@ from flask import Blueprint, flash, redirect, render_template, request, url_for
 
 from .. import impuestos, planeacion
 from ..db import Session
-from . import anio_arg
+from ..formato import pesos
+from . import anio_arg, explicar
 
 bp = Blueprint("planeacion", __name__)
 
@@ -40,6 +41,12 @@ def cierre():
             anio = int(request.form.get("anio", ""))
             if not 2000 <= anio <= 2100:
                 raise ValueError
+            if request.form.get("accion") != "reabrir" and anio > date.today().year:
+                flash(f"El año {anio} todavía no ha empezado: no se puede cerrar.", "error")
+                return redirect(url_for("planeacion.cierre"))
+            if request.form.get("accion") != "reabrir" and anio == date.today().year:
+                flash(f"El año {anio} todavía no ha terminado: el cierre bloquea la contabilidad hasta el 31 de "
+                      "diciembre. Si fue un error, use «Reabrir».", "info")
         except ValueError:
             flash("Año no válido.", "error")
             return redirect(url_for("planeacion.cierre"))
@@ -51,11 +58,11 @@ def cierre():
                 planeacion.causar_depreciaciones(s, date(anio, 12, 31), forzar=True)
                 impuestos.causar_simple_anual(s, anio)
                 resultado = planeacion.cerrar_anio(s, anio)
-                flash(f"Año {anio} cerrado. Resultado del ejercicio: {resultado:,.0f}. Contabilidad bloqueada "
+                flash(f"Año {anio} cerrado. Resultado del ejercicio: {pesos(resultado)}. Contabilidad bloqueada "
                       f"hasta el 31/12/{anio}.", "ok")
         except Exception as e:  # noqa: BLE001
             s.rollback()
-            flash(f"No se pudo completar: {e}", "error")
+            flash(f"No se pudo completar: {explicar(e)}", "error")
         return redirect(url_for("planeacion.cierre", anio=anio))
     from .. import reportes
     er = reportes.estado_resultados(s, date(anio, 1, 1), date(anio, 12, 31))

@@ -9,7 +9,7 @@ from ..db import Session
 from .. import formato
 from ..formato import pesos
 from ..models import CERO, Asiento, Asunto, Banco, DocumentoVenta, LineaVenta, Recaudo, Tercero
-from . import XLSX, anio_arg, check, descargar, dinero, entero_requerido, fecha_arg, paginar, paginar_lista
+from . import XLSX, anio_arg, check, descargar, dinero, entero_requerido, explicar, fecha_arg, paginar, paginar_lista
 
 bp = Blueprint("ventas", __name__)
 
@@ -62,6 +62,8 @@ def importar():
         s = Session()
         resultados = []
         forzar = request.form.get("forzar") or None
+        if forzar not in (None, "venta", "gasto"):
+            forzar = None
         for f in request.files.getlist("archivos"):
             if f.filename:
                 resultados += importacion.importar_archivo(s, f.filename, f.read(), forzar=forzar)
@@ -85,7 +87,12 @@ def nueva():
                 raise ValueError("Tipo de documento no válido.")
             if base < 0 or iva < 0:
                 raise ValueError("Los valores no pueden ser negativos.")
-            doc = DocumentoVenta(tipo=request.form.get("tipo", "FV"), numero=request.form["numero"].strip(),
+            numero = request.form.get("numero", "").strip()
+            if not numero:
+                raise ValueError("Indique el número del documento.")
+            if s.query(DocumentoVenta).filter_by(numero=numero, cliente_id=cliente.id).first():
+                raise ValueError(f"Ya existe el documento {numero} para este cliente.")
+            doc = DocumentoVenta(tipo=request.form.get("tipo", "FV"), numero=numero,
                                  cufe=request.form.get("cufe", "").strip() or None,
                                  fecha=fecha_arg("fecha"), cliente=cliente, subtotal=base, base_gravada=base,
                                  iva=iva, total=base + iva, notas=request.form.get("notas") or None)
@@ -98,6 +105,10 @@ def nueva():
                 ref = s.get(DocumentoVenta, doc.referencia_id)
                 if ref is None or ref.cliente_id != cliente.id:
                     raise ValueError("La factura afectada debe ser del mismo cliente.")
+                if doc.total > cartera.saldo_documento(s, ref):
+                    from ..formato import pesos
+                    raise ValueError(f"La nota crédito ({pesos(doc.total)}) supera el saldo pendiente de la factura "
+                                     f"{ref.numero} ({pesos(cartera.saldo_documento(s, ref))}).")
                 doc.asunto_id = doc.asunto_id or ref.asunto_id
             doc.lineas.append(LineaVenta(descripcion=request.form.get("descripcion") or "Honorarios", base=base,
                                          iva_pct=contab.d(TARIFA_IVA * 100) if iva else 0, iva=iva))
@@ -114,7 +125,7 @@ def nueva():
             return redirect(url_for("ventas.detalle", id=doc.id))
         except Exception as e:  # noqa: BLE001
             s.rollback()
-            flash(f"No se pudo registrar: {e}", "error")
+            flash(f"No se pudo registrar: {explicar(e)}", "error")
     facturas = s.query(DocumentoVenta).filter_by(tipo="FV").order_by(DocumentoVenta.fecha.desc()).all()
     return render_template("ventas/nueva.html", clientes=_clientes(s), facturas=facturas, tarifa_iva=TARIFA_IVA,
                            form=request.form, asuntos=s.query(Asunto).filter_by(estado="abierto").order_by(Asunto.nombre).all())
@@ -142,13 +153,13 @@ def detalle(id):
                 return redirect(url_for("ventas.lista"))
             except Exception as e:  # noqa: BLE001
                 s.rollback()
-                flash(f"No se pudo eliminar: {e}", "error")
+                flash(f"No se pudo eliminar: {explicar(e)}", "error")
                 return redirect(url_for("ventas.detalle", id=id))
         try:
             _actualizar_venta(s, doc, notas_asociadas)
         except Exception as e:  # noqa: BLE001
             s.rollback()
-            flash(f"No se pudo guardar: {e}", "error")
+            flash(f"No se pudo guardar: {explicar(e)}", "error")
         return redirect(url_for("ventas.detalle", id=id))
     notas = s.query(DocumentoVenta).filter_by(referencia_id=doc.id).all()
     asientos = s.query(Asiento).filter_by(origen=f"venta:{doc.id}").all()
@@ -221,7 +232,7 @@ def pago_rapido(id):
         flash(f"Pago de {pesos(saldo)} registrado.", "ok")
     except Exception as e:  # noqa: BLE001
         s.rollback()
-        flash(f"No se pudo registrar el pago: {e}", "error")
+        flash(f"No se pudo registrar el pago: {explicar(e)}", "error")
     return redirect(url_for("ventas.detalle", id=id))
 
 
@@ -297,7 +308,7 @@ def nuevo_recaudo(id=None):
             return redirect(url_for("ventas.recaudos"))
         except Exception as e:  # noqa: BLE001
             s.rollback()
-            flash(f"No se pudo guardar: {e}", "error")
+            flash(f"No se pudo guardar: {explicar(e)}", "error")
             rec = s.get(Recaudo, id) if id else None
     form = request.form
     if rec and not form:
@@ -330,7 +341,7 @@ def eliminar_recaudo(id):
         flash("Recaudo eliminado.", "ok")
     except Exception as e:  # noqa: BLE001
         s.rollback()
-        flash(f"No se pudo eliminar: {e}", "error")
+        flash(f"No se pudo eliminar: {explicar(e)}", "error")
     return redirect(url_for("ventas.recaudos"))
 
 
@@ -423,7 +434,7 @@ def enviar_estado_cuenta(cliente_id):
         _enviar_estado_cuenta(s, cliente, corte)
         flash(f"Estado de cuenta enviado a {cliente.email}.", "ok")
     except Exception as e:  # noqa: BLE001
-        flash(f"No se pudo enviar: {e}", "error")
+        flash(f"No se pudo enviar: {explicar(e)}", "error")
     return redirect(url_for("ventas.estado_cuenta", cliente_id=cliente_id, corte=corte.isoformat()))
 
 
@@ -445,7 +456,7 @@ def recordatorios():
             _enviar_estado_cuenta(s, doc.cliente, corte)
             enviados.append(doc.cliente.nombre)
         except Exception as e:  # noqa: BLE001
-            errores.append(f"{doc.cliente.nombre}: {e}")
+            errores.append(f"{doc.cliente.nombre}: {explicar(e)}")
     if enviados:
         flash(f"Recordatorio enviado a: {', '.join(enviados)}.", "ok")
     if sin_correo:

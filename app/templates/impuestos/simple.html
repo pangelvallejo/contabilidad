@@ -47,13 +47,13 @@
   </form>
   <div class="tarjeta">
     <h2>Tarifas bimestrales · actividades profesionales y de consultoría</h2>
-    <p class="nota">Art. 908 E.T. (Ley 2277 de 2022). UVT {{ anio }}: {{ uvt|pesos }}.</p>
+    <p class="nota">Art. 908 E.T. numeral 3, Ley 2155 de 2021 (vigente por la Sentencia C-540 de 2023). UVT {{ anio }}: {{ uvt|pesos }}.</p>
     <table>
       <tr><th>Ingresos brutos del bimestre</th><th class="n">Tarifa</th></tr>
       {% set ns = namespace(desde=0) %}
       {% for hasta, t in tabla %}<tr><td>{{ ns.desde|numero }} a {{ hasta|numero }} UVT ({{ (hasta * uvt)|pesos }})</td><td class="n">{{ t|pct }}</td></tr>{% set ns.desde = hasta %}{% endfor %}
     </table>
-    <p class="nota">Para profesiones liberales el límite para permanecer en el SIMPLE es de 12.000 UVT de ingresos al año.</p>
+    <p class="nota">El tope especial de 12.000 UVT para profesiones liberales fue declarado inexequible (Sentencia C-540 de 2023); rige el límite general de 100.000 UVT de ingresos al año. Confirme cualquier cambio normativo con el contador.</p>
   </div>
 </div>
 {% endblock %}

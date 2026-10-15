@@ -24,9 +24,21 @@ def normalizar(texto: str) -> str:
     return re.sub(r"\s+", " ", texto)
 
 
+def buscar_tercero(session, nit: str):
+    """Tercero con ese NIT, aunque se haya registrado a mano con puntos o guion (900.123.456-7)."""
+    if not nit:
+        return None
+    t = session.query(Tercero).filter_by(nit=nit).first()
+    if t is None:
+        for cand in session.query(Tercero).filter(Tercero.nit.like(f"%{nit[:3]}%")):
+            if nit_limpio(cand.nit, cand.dv or "") == nit:
+                return cand
+    return t
+
+
 def tercero_desde_parte(session, parte: Parte, *, cliente=False, proveedor=False) -> Tercero:
     nit = nit_limpio(parte.nit, parte.dv) or parte.nit
-    t = session.query(Tercero).filter_by(nit=nit).one_or_none()
+    t = buscar_tercero(session, nit)
     if t is None:
         t = Tercero(nit=nit, nombre=parte.nombre or nit, plazo_dias=30)
         session.add(t)
@@ -88,17 +100,22 @@ def _guardar_adjuntos(carpeta, leido):
 
 
 def _existe(session, doc: DocumentoDIAN, direccion: str):
-    """Documento ya registrado: por CUFE o, si no trae, por número, tercero y fecha."""
+    """Documento ya registrado: por CUFE o por número, tercero y fecha (una factura digitada a mano no tiene CUFE)."""
     if doc.cufe:
-        return (session.query(DocumentoVenta).filter_by(cufe=doc.cufe).first()
-                or session.query(Gasto).filter_by(cufe=doc.cufe).first())
+        por_cufe = (session.query(DocumentoVenta).filter_by(cufe=doc.cufe).first()
+                    or session.query(Gasto).filter_by(cufe=doc.cufe).first())
+        if por_cufe is not None:
+            return por_cufe
+    if not doc.numero or not doc.fecha:
+        return None
     if direccion == "venta":
-        return (session.query(DocumentoVenta).join(Tercero, DocumentoVenta.cliente_id == Tercero.id)
-                .filter(DocumentoVenta.numero == doc.numero, DocumentoVenta.fecha == doc.fecha,
-                        Tercero.nit == nit_limpio(doc.receptor.nit, doc.receptor.dv)).first())
-    return (session.query(Gasto).join(Tercero, Gasto.proveedor_id == Tercero.id)
-            .filter(Gasto.numero == doc.numero, Gasto.fecha == doc.fecha,
-                    Tercero.nit == nit_limpio(doc.emisor.nit, doc.emisor.dv)).first())
+        t = buscar_tercero(session, nit_limpio(doc.receptor.nit, doc.receptor.dv))
+        return t and (session.query(DocumentoVenta)
+                      .filter(DocumentoVenta.numero == doc.numero, DocumentoVenta.fecha == doc.fecha,
+                              DocumentoVenta.cliente_id == t.id).first())
+    t = buscar_tercero(session, nit_limpio(doc.emisor.nit, doc.emisor.dv))
+    return t and (session.query(Gasto).filter(Gasto.numero == doc.numero, Gasto.fecha == doc.fecha,
+                                              Gasto.proveedor_id == t.id).first())
 
 
 def importar_venta(session, doc: DocumentoDIAN, leido) -> DocumentoVenta:
@@ -114,9 +131,12 @@ def importar_venta(session, doc: DocumentoDIAN, leido) -> DocumentoVenta:
             ref = session.query(DocumentoVenta).filter_by(cufe=doc.referencia_cufe).first()
         if ref is None and doc.referencia_numero:
             ref = session.query(DocumentoVenta).filter_by(numero=doc.referencia_numero, tipo="FV").first()
+        if ref is None and doc.referencia_numero:
+            raise ValueError(f"La nota crédito afecta la factura {doc.referencia_numero}, que no está registrada. "
+                             "Importe primero esa factura.")
         if ref is None:
-            raise ValueError(f"La nota crédito afecta la factura {doc.referencia_numero or '(sin referencia)'}, "
-                             "que no está registrada. Importe primero esa factura.")
+            raise ValueError("La nota crédito no indica la factura que afecta (sin BillingReference). Regístrela a "
+                             "mano en Ventas → Nueva, eligiendo la factura.")
         v.referencia = ref
         v.asunto_id = ref.asunto_id
     rete_xml = doc.retenciones.get("ReteIVA")
@@ -137,8 +157,8 @@ def importar_venta(session, doc: DocumentoDIAN, leido) -> DocumentoVenta:
 def importar_gasto(session, doc: DocumentoDIAN, leido, origen="xml") -> Gasto:
     proveedor = tercero_desde_parte(session, doc.emisor, proveedor=True)
     categoria, segura = sugerir_categoria(session, proveedor, f"{doc.descripcion} {proveedor.nombre}")
-    credito = doc.forma_pago == "2"  # forma de pago "crédito" según el XML
     vencimiento = doc.vencimiento if (doc.vencimiento and doc.vencimiento > doc.fecha) else None
+    credito = doc.forma_pago == "2" or vencimiento is not None  # "crédito" en el XML, o un plazo posterior a la emisión
     if credito and vencimiento is None:
         vencimiento = doc.fecha + timedelta(days=proveedor.plazo_dias or 30)
     g = Gasto(tipo_soporte="NC" if doc.tipo == "NC" else ("DS" if doc.tipo == "DS" else "FE"),
@@ -207,6 +227,10 @@ def importar_archivo(session, nombre: str, contenido: bytes, forzar: str | None 
                     msg = f"Gasto {g.numero} de {g.proveedor.nombre} por {pesos(g.total)} → {g.categoria.nombre}"
                     if not g.revisado:
                         msg += " (revisar categoría)"
+                    if g.tipo_soporte == "NC" and g.referencia is None:
+                        msg += " — nota crédito sin factura asociada: indique en el gasto la factura que afecta"
+                    if g.tipo_soporte == "NC" and g.referencia is None:
+                        msg += " — nota crédito sin factura asociada: indique en el gasto la factura que afecta"
                     resultados.append(Resultado(etiqueta, True, msg, f"/gastos/{g.id}"))
         except Exception as e:  # noqa: BLE001 — se informa al usuario y se sigue con los demás archivos
             resultados.append(Resultado(etiqueta, False, f"Error al registrar: {e}"))

@@ -7,7 +7,7 @@ from .. import archivos, bancos, contab, exogena, exportar, impuestos
 from ..config import BIMESTRES, SIMPLE_TARIFA_ANUAL, SIMPLE_TARIFA_BIMESTRAL
 from ..db import Session
 from ..models import Banco, PagoImpuesto, Vencimiento
-from . import XLSX, anio_arg, check, descargar, destino_seguro, dinero, entero_requerido, fecha_arg
+from . import XLSX, anio_arg, check, descargar, destino_seguro, dinero, entero_requerido, explicar, fecha_arg
 
 bp = Blueprint("impuestos", __name__, url_prefix="/impuestos")
 
@@ -90,7 +90,7 @@ def registrar_pago():
         flash("Pago registrado y contabilizado.", "ok")
     except Exception as e:  # noqa: BLE001
         s.rollback()
-        flash(f"No se pudo registrar el pago: {e}", "error")
+        flash(f"No se pudo registrar el pago: {explicar(e)}", "error")
     return redirect(destino_seguro(request.form.get("volver"), url_for("impuestos.simple")))
 
 
@@ -101,12 +101,16 @@ def eliminar_pago(id):
     try:
         bancos.liberar(s, "impuesto", p.id)
         contab.borrar_asientos(s, f"impuesto:{p.id}")
+        anio, bimestre, formulario = p.anio, p.bimestre, p.formulario
         s.delete(p)
+        s.flush()
+        if formulario == "2593" and bimestre:
+            contab.recontabilizar_pagos_bimestre(s, anio, bimestre)  # otro pago del bimestre asume la reteIVA
         s.commit()
         flash("Pago eliminado.", "ok")
     except Exception as e:  # noqa: BLE001
         s.rollback()
-        flash(f"No se pudo eliminar: {e}", "error")
+        flash(f"No se pudo eliminar: {explicar(e)}", "error")
     return redirect(destino_seguro(request.form.get("volver"), url_for("impuestos.simple")))
 
 
@@ -121,7 +125,7 @@ def f260():
             flash(f"Impuesto SIMPLE {anio} causado en la contabilidad (asiento al 31 de diciembre).", "ok")
         except Exception as e:  # noqa: BLE001
             s.rollback()
-            flash(f"No se pudo causar: {e}", "error")
+            flash(f"No se pudo causar: {explicar(e)}", "error")
         return redirect(url_for("impuestos.f260", anio=anio))
     dec = impuestos.declaracion_simple(s, anio)
     pagos = s.query(PagoImpuesto).filter_by(formulario="260", anio=anio).all()

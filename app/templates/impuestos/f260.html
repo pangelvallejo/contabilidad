@@ -6,7 +6,7 @@
     <p class="sub">Borrador por conceptos para trasladar al formulario. Verifique contra el formulario vigente antes de presentar.</p></div>
 </div>
 <form class="filtros"><div><label>Año</label><input type="number" name="anio" value="{{ anio }}" style="width:90px"></div><button>Ver</button></form>
-{% if dec.supera_limite %}<div class="mensaje critico">Los ingresos superan 12.000 UVT ({{ (12000 * uvt)|pesos }}): límite para profesiones liberales en el SIMPLE.</div>{% endif %}
+{% if dec.supera_limite %}<div class="mensaje critico">Los ingresos superan 100.000 UVT ({{ (100000 * uvt)|pesos }}), el límite general para pertenecer al SIMPLE (art. 905 E.T.). Confírmelo con el contador.</div>{% endif %}
 <div class="rejilla k2">
   <div class="tarjeta">
     <table class="liquidacion">

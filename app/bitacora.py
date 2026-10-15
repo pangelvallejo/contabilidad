@@ -26,7 +26,8 @@ IGNORAR_CAMPOS = {"creado", "importado", "xml_archivo", "pdf_archivo", "soporte_
 
 def _texto(v):
     if isinstance(v, Decimal):
-        return f"{v:,.2f}"
+        from .formato import numero
+        return numero(v)
     if isinstance(v, date):
         return v.isoformat()
     return "" if v is None else str(v)[:80]

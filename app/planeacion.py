@@ -4,6 +4,9 @@ from dataclasses import dataclass, field
 from datetime import date
 from decimal import Decimal
 
+from sqlalchemy.orm import selectinload
+
+
 from . import cartera, contab, impuestos, reportes
 from .models import CERO, Asiento, Gasto, Vencimiento
 
@@ -67,7 +70,8 @@ def flujo_de_caja(session, meses=6, hoy: date | None = None):
             f.cobros_vencidos += saldo
         else:
             f.cobros += saldo
-    for g in session.query(Gasto).filter(Gasto.forma_pago == "credito", Gasto.tipo_soporte != "NC"):
+    for g in (session.query(Gasto).options(selectinload(Gasto.pagos), selectinload(Gasto.notas_credito))
+              .filter(Gasto.forma_pago == "credito", Gasto.tipo_soporte != "NC")):
         if g.saldo > 0:
             f = fila_para(g.vencimiento or g.fecha)
             if f is not None:

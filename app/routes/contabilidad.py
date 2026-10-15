@@ -5,8 +5,9 @@ from flask import Blueprint, abort, flash, redirect, render_template, request, u
 
 from .. import contab, exportar, reportes
 from ..db import Session
+from ..formato import pesos
 from ..models import CERO, Asiento, Cuenta, Tercero
-from . import XLSX, descargar, fecha_arg, paginar_lista, periodo
+from . import XLSX, descargar, explicar, fecha_arg, paginar, periodo
 
 bp = Blueprint("contabilidad", __name__, url_prefix="/contabilidad")
 
@@ -20,14 +21,15 @@ def diario():
     s = Session()
     desde, hasta = periodo()
     tipo = request.args.get("tipo") or None
-    asientos = reportes.libro_diario(s, desde, hasta, tipo)
+    consulta = reportes.consulta_diario(s, desde, hasta, tipo)
     if request.args.get("xlsx"):
+        asientos = consulta.all()
         filas = [[a.fecha, f"{a.tipo}-{a.numero}", a.descripcion, m.cuenta, m.cuenta_rel.nombre,
                   m.tercero.nit if m.tercero else "", m.tercero.nombre if m.tercero else "", m.debito, m.credito]
                  for a in asientos for m in a.lineas]
         enc = ["Fecha", "Comprobante", "Descripción", "Cuenta", "Nombre cuenta", "NIT", "Tercero", "Débito", "Crédito"]
         return descargar(exportar.excel({"Libro diario": (enc, filas)}), f"libro_diario_{desde}_{hasta}.xlsx", XLSX)
-    asientos, pagina, paginas = paginar_lista(asientos)
+    asientos, pagina, paginas = paginar(consulta)  # pagina en SQL: no carga todo el periodo para mostrar 100
     return render_template("contabilidad/diario.html", asientos=asientos, desde=desde, hasta=hasta, tipo=tipo,
                            pagina=pagina, paginas=paginas,
                            tipos=contab.TIPOS_ASIENTO)
@@ -182,7 +184,7 @@ def paquete():
                     for g in gastos]),
         "Recaudos": (["Fecha", "Cliente", "Banco", "Valor", "Aplicado a"],
                      [[r.fecha, r.cliente.nombre, r.banco.nombre, r.valor,
-                       ", ".join(f"{a.documento.numero} ({a.valor:,.0f})" for a in r.aplicaciones)] for r in recaudos]),
+                       ", ".join(f"{a.documento.numero} ({pesos(a.valor)})" for a in r.aplicaciones)] for r in recaudos]),
         "Otros ingresos": (["Fecha", "Concepto", "Cuenta", "Banco", "Tercero", "NIT", "Valor", "Descuentos banco"],
                            [[o.fecha, o.concepto, f"{o.cuenta} {o.cuenta_rel.nombre}", o.banco.nombre,
                              o.tercero.nombre if o.tercero else "", o.tercero.nit if o.tercero else "", o.valor,
@@ -269,7 +271,7 @@ def asiento(id=None):
                     raise contab.ErrorContable(f"Monto no válido en la línea {i + 1} (use 1.234.567,89).") from e
                 if debito < 0 or credito < 0:
                     raise contab.ErrorContable(f"Los valores de la línea {i + 1} no pueden ser negativos.")
-                lineas.append((cta, debito, credito, int(tercero) if tercero.isdigit() else None,
+                lineas.append((cta, debito, credito, int(tercero) if tercero.isdecimal() else None,
                                detalles[i] if i < len(detalles) else ""))
             if len(lineas) < 2:
                 raise contab.ErrorContable("Agregue al menos dos líneas.")
@@ -289,7 +291,7 @@ def asiento(id=None):
             return redirect(url_for("contabilidad.asiento", id=nuevo.id))
         except Exception as e:  # noqa: BLE001
             s.rollback()
-            flash(f"No se pudo guardar: {e}", "error")
+            flash(f"No se pudo guardar: {explicar(e)}", "error")
             a = s.get(Asiento, id) if id else None
     return render_template("contabilidad/asiento.html", a=a, cuentas=_cuentas_movimiento(s),
                            terceros=s.query(Tercero).order_by(Tercero.nombre).all())
@@ -301,7 +303,7 @@ def puc():
     if request.method == "POST":
         codigo = request.form.get("codigo", "").strip()
         nombre = request.form.get("nombre", "").strip()
-        if not codigo.isdigit() or len(codigo) not in (6, 8, 10) or not nombre:
+        if not (codigo.isascii() and codigo.isdecimal()) or len(codigo) not in (6, 8, 10) or not nombre:
             flash("El código debe tener 6, 8 o 10 dígitos y la cuenta debe tener nombre.", "error")
         elif s.get(Cuenta, codigo):
             cta = s.get(Cuenta, codigo)

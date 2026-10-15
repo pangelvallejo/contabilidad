@@ -18,7 +18,10 @@ def revisar(session):
     """Importa los archivos nuevos de la carpeta. Devuelve lista de (archivo, ok, mensaje)."""
     base = carpeta(session)
     resultados = []
-    if base is None or not base.is_dir():
+    try:
+        if base is None or not base.is_dir():
+            return resultados
+    except (OSError, ValueError):  # ruta inválida configurada
         return resultados
     ok_dir, err_dir = base / "importados", base / "errores"
     for f in sorted(base.iterdir()):
@@ -42,9 +45,10 @@ def revisar(session):
             n += 1
         try:
             shutil.move(str(f), str(final))
-            if not exito:
+            if not exito or any(not r.ok and "Ya estaba registrado" not in r.mensaje for r in res):
+                # También cuando un ZIP trae documentos válidos y otros fallidos: el .txt dice cuáles.
                 final.with_suffix(final.suffix + ".txt").write_text(
-                    "\n".join(f"{r.archivo}: {r.mensaje}" for r in res), encoding="utf-8")
+                    "\n".join(f"{'OK' if r.ok else 'NO'} {r.archivo}: {r.mensaje}" for r in res), encoding="utf-8")
         except OSError:
             pass
         for r in res:
