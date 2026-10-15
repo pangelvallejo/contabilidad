@@ -477,3 +477,46 @@ def test_carpetas_invalidas_no_rompen_configuracion(cliente_web, s):
     assert sistema.respaldos_disponibles(s) == []
     from app import vigilancia
     assert vigilancia.revisar(s) == []
+
+
+# ------------------------------------------------------------------ auditor de código
+
+def test_exogena_1009_descuenta_nc_de_proveedor_de_contado(cliente_web, s):
+    prov = Tercero(nit="800111222", nombre="Proveedor", es_proveedor=True)
+    s.add(prov)
+    s.flush()
+    cat = s.query(CategoriaGasto).filter(CategoriaGasto.cuenta.like("51%")).first()
+    f = _gasto(s, cat, D("1190000"), date(2026, 3, 1), forma="credito", proveedor=prov)
+    s.commit()
+    fid, pid, cid = f.id, prov.id, cat.id
+    # NC registrada a mano "de contado" (valor por defecto del formulario) sobre la factura a crédito
+    r = cliente_web.post("/gastos/nuevo", data={"tipo_soporte": "NC", "fecha": "2026-03-05", "categoria_id": cat.id,
+                                                "proveedor_id": pid, "subtotal": "238.000", "iva": "0",
+                                                "forma_pago": "contado", "cuenta_pago": "110505", "referencia_id": fid},
+                         follow_redirects=True)
+    assert r.status_code == 200
+    nc = s.query(Gasto).filter_by(tipo_soporte="NC").one()
+    f = s.get(Gasto, fid)
+    assert nc.forma_pago == "credito" and nc.referencia_id == fid  # rebaja la cuenta por pagar, no el banco
+    assert f.saldo == D("952000") == f.saldo_al(date(2026, 12, 31))
+    hojas, _ = exogena.generar(s, 2026)
+    filas = hojas["1009 Cuentas por pagar"][1]
+    assert [fila[-1] for fila in filas] == [D("952000")]
+    # Una NC mayor que lo pendiente se rechaza
+    r = cliente_web.post("/gastos/nuevo", data={"tipo_soporte": "NC", "fecha": "2026-03-06", "categoria_id": cid,
+                                                "proveedor_id": pid, "subtotal": "2.000.000", "iva": "0",
+                                                "forma_pago": "credito", "referencia_id": fid}, follow_redirects=True)
+    assert "supera el valor pendiente" in r.get_data(as_text=True)
+
+
+def test_retainer_invalido_avisa_y_formatos_en_pesos(cliente_web, s):
+    c = _cliente(s)
+    s.commit()
+    cid, nit, nombre = c.id, c.nit, c.nombre
+    r = cliente_web.post(f"/terceros/{cid}", data={"nit": nit, "nombre": nombre, "es_cliente": "on",
+                                                   "retainer_mensual": "abc"}, follow_redirects=True)
+    assert "no es un número válido" in r.get_data(as_text=True) and s.get(Tercero, cid).retainer_mensual is None
+    r = cliente_web.post("/configuracion/", data={"accion": "empresa", "respaldos_a_conservar": "x"}, follow_redirects=True)
+    assert "debe ser un número entero" in r.get_data(as_text=True)
+    from app import bitacora
+    assert bitacora._texto(D("1000000.5")) == "1.000.000,50"

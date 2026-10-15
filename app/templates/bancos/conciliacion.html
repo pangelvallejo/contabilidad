@@ -23,7 +23,7 @@
 </form>
 <div class="tarjeta tabla-scroll">
   {% if movs %}
-  <table>
+  <table class="concil">
     <tr><th>Fecha</th><th>Descripción</th><th class="n">Valor</th><th>Estado</th><th>Acción</th></tr>
     {% for m in movs %}
     <tr><td>{{ m.fecha|fecha }}</td><td>{{ m.descripcion }}{% if m.referencia %} <span class="nota">{{ m.referencia }}</span>{% endif %}</td>

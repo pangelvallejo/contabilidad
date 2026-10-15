@@ -5,6 +5,7 @@ from flask import Blueprint, abort, flash, redirect, render_template, request, u
 
 from .. import contab, exportar, reportes
 from ..db import Session
+from ..formato import pesos
 from ..models import CERO, Asiento, Cuenta, Tercero
 from . import XLSX, descargar, explicar, fecha_arg, paginar, periodo
 
@@ -183,7 +184,7 @@ def paquete():
                     for g in gastos]),
         "Recaudos": (["Fecha", "Cliente", "Banco", "Valor", "Aplicado a"],
                      [[r.fecha, r.cliente.nombre, r.banco.nombre, r.valor,
-                       ", ".join(f"{a.documento.numero} ({a.valor:,.0f})" for a in r.aplicaciones)] for r in recaudos]),
+                       ", ".join(f"{a.documento.numero} ({pesos(a.valor)})" for a in r.aplicaciones)] for r in recaudos]),
         "Otros ingresos": (["Fecha", "Concepto", "Cuenta", "Banco", "Tercero", "NIT", "Valor", "Descuentos banco"],
                            [[o.fecha, o.concepto, f"{o.cuenta} {o.cuenta_rel.nombre}", o.banco.nombre,
                              o.tercero.nombre if o.tercero else "", o.tercero.nit if o.tercero else "", o.valor,

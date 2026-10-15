@@ -189,8 +189,14 @@ input.n { text-align: right; }
 .sub code { word-break: break-all; }
 @media (max-width: 800px) {
   .tabla-scroll { background: linear-gradient(to left, rgba(0, 0, 0, .10), transparent 18px) right / 18px 100% no-repeat; }
-  .tabla-scroll form.filtros { flex-direction: row; flex-wrap: wrap; align-items: center; }
-  .tabla-scroll form.filtros select { max-width: 180px; }
+  /* Conciliación: cada movimiento como tarjeta, con sus acciones debajo */
+  table.concil, table.concil tbody, table.concil tr, table.concil td { display: block; width: 100%; }
+  table.concil tr:first-child { display: none; }
+  table.concil tr { border-bottom: 1px solid var(--borde); padding: 8px 0; }
+  table.concil td { border: 0; padding: 2px 0; text-align: left; }
+  table.concil td.n { font-weight: 600; }
+  table.concil form.filtros { flex-direction: row; flex-wrap: wrap; align-items: center; }
+  table.concil form.filtros select { max-width: 100%; }
 }
 @media print {
   .btn, button, form, .paginacion, .zona-carga { display: none !important; }

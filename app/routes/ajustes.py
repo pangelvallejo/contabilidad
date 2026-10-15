@@ -81,7 +81,7 @@ def inicio():
                 try:
                     contab.set_config(s, "respaldos_a_conservar", str(max(1, int(request.form["respaldos_a_conservar"]))))
                 except ValueError:
-                    contab.set_config(s, "respaldos_a_conservar", "30")
+                    flash("«Respaldos a conservar» debe ser un número entero; se mantuvo el valor anterior.", "error")
             if accion != "empresa":
                 s.commit()
             flash("Datos guardados.", "ok")

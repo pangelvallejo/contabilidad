@@ -5,6 +5,7 @@ from flask import Blueprint, flash, redirect, render_template, request, url_for
 
 from .. import impuestos, planeacion
 from ..db import Session
+from ..formato import pesos
 from . import anio_arg, explicar
 
 bp = Blueprint("planeacion", __name__)
@@ -57,7 +58,7 @@ def cierre():
                 planeacion.causar_depreciaciones(s, date(anio, 12, 31), forzar=True)
                 impuestos.causar_simple_anual(s, anio)
                 resultado = planeacion.cerrar_anio(s, anio)
-                flash(f"Año {anio} cerrado. Resultado del ejercicio: {resultado:,.0f}. Contabilidad bloqueada "
+                flash(f"Año {anio} cerrado. Resultado del ejercicio: {pesos(resultado)}. Contabilidad bloqueada "
                       f"hasta el 31/12/{anio}.", "ok")
         except Exception as e:  # noqa: BLE001
             s.rollback()

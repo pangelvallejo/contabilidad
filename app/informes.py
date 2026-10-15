@@ -335,11 +335,7 @@ EDADES_CXP = cartera.EDADES
 
 
 def saldo_gasto_al(g: Gasto, al: date) -> Decimal:
-    if g.tipo_soporte == "NC" or g.forma_pago != "credito":
-        return CERO
-    pagado = sum((p.valor for p in g.pagos if p.fecha <= al), CERO)
-    notas = sum((n.total for n in g.notas_credito if n.fecha <= al), CERO)
-    return g.total - pagado - notas
+    return g.saldo_al(al)
 
 
 def facturas_por_pagar(session, al: date | None = None, proveedor_id=None):

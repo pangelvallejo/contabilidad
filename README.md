@@ -143,9 +143,13 @@ python -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
 .venv/bin/python -m app             # abre la app (datos en ~/ContabilidadAngelLecompte o $CONTA_DATOS)
 ```
 
-Estructura: `app/dian_xml.py` (lector UBL), `app/importacion.py` (XML → venta o gasto),
-`app/contab.py` (asientos automáticos), `app/impuestos.py` (IVA, 2593, F260, F300), `app/reportes.py`
-(libros y estados), `app/exogena.py`, `app/respaldo.py`, `app/routes/` (pantallas).
+Estructura de `app/`: `models.py` (tablas), `contab.py` (asientos automáticos y periodos), `cartera.py`
+(saldos de clientes), `dian_xml.py` (lector UBL), `importacion.py` (XML → venta o gasto), `correo.py` (IMAP y
+SMTP), `vigilancia.py` (carpeta vigilada), `bancos.py` (extractos y conciliación), `impuestos.py` (IVA, 2593,
+F260, F300), `planeacion.py` (proyección, depreciación, cierre), `reportes.py` (libros y estados), `informes.py`
+(flujo de efectivo, comparativos, indicadores, presupuesto), `exogena.py`, `exportar.py` (PDF y Excel),
+`respaldo.py`, `sistema.py` (actualizaciones, restauración, acceso en red), `tareas.py` (segundo plano),
+`bitacora.py` (historial), `entorno.py` (Windows), `seed.py` (PUC y datos iniciales), `routes/` (pantallas).
 
 ## Configuración del correo (facturas de proveedores)
 

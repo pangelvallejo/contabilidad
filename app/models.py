@@ -389,6 +389,15 @@ class Gasto(Base):
             return CERO
         return self.total - self.pagado - sum((n.total for n in self.notas_credito), CERO)
 
+    def saldo_al(self, al):
+        """Saldo por pagar a una fecha: total menos pagos y notas crédito asociadas hasta esa fecha (una sola
+        fórmula para la pantalla del gasto, cuentas por pagar, flujo de caja y exógena 1009)."""
+        if self.tipo_soporte == "NC" or self.forma_pago != "credito":
+            return CERO
+        pagado = sum((p.valor for p in self.pagos if p.fecha <= al), CERO)
+        notas = sum((n.total for n in self.notas_credito if n.fecha <= al), CERO)
+        return self.total - pagado - notas
+
 
 class PagoGasto(Base):
     __tablename__ = "pagos_gasto"

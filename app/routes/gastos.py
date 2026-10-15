@@ -123,11 +123,16 @@ def _llenar_gasto(s, g):
         raise ValueError("Forma de pago no válida.")
     if g.tipo_soporte == "NC":
         ref = s.get(Gasto, request.form.get("referencia_id", type=int) or 0)
-        g.referencia = ref if ref is not None and ref.tipo_soporte != "NC" else None
-        if g.referencia is not None:
-            otras = sum((n.total for n in g.referencia.notas_credito if n.id != g.id), CERO)
-            if g.total > g.referencia.total - otras:
+        if ref is not None and ref.tipo_soporte == "NC":
+            ref = None
+        if ref is not None:
+            otras = sum((n.total for n in s.query(Gasto).filter(Gasto.referencia_id == ref.id, Gasto.id != (g.id or 0))),
+                        CERO)
+            if g.total > ref.total - otras:
                 raise ValueError("La nota crédito supera el valor pendiente de la factura del proveedor.")
+            if ref.forma_pago == "credito":
+                g.forma_pago = "credito"  # rebaja la cuenta por pagar de esa factura; no es un reintegro al banco
+        g.referencia = ref
     g.cuenta_pago = request.form.get("cuenta_pago") if g.forma_pago == "contado" else None
     if g.forma_pago == "contado":
         cta = s.get(Cuenta, g.cuenta_pago or "")
