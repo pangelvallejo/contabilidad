@@ -31,7 +31,7 @@ def excel(hojas: dict) -> bytes:
                     v = float(v)
                 c = ws.cell(row=r, column=i, value=v)
                 if isinstance(v, float):
-                    c.number_format = FORMATO_PESOS
+                    c.number_format = "0.0" if "%" in str(encabezados[i - 1]) else FORMATO_PESOS
                 elif isinstance(v, date):
                     c.number_format = "dd/mm/yyyy"
         for i, enc in enumerate(encabezados, start=1):
@@ -165,8 +165,17 @@ def informe_pdf(empresa, titulo, subtitulo, columnas, filas, orientacion="P", no
             pdf.set_fill_color(242, 245, 249)
         relleno = estilo in ("total", "grupo") or (not estilo and i % 2 == 0)
         for (t, w, al), v in zip(columnas, celdas):
-            texto = pesos(v) if isinstance(v, Decimal) else (fecha(v) if isinstance(v, date) else str(v))
-            pdf.cell(w, 5.5, _latin1(texto)[:int(w / 1.7)], align=al, fill=relleno)
+            texto = _latin1(pesos(v) if isinstance(v, Decimal) else (fecha(v) if isinstance(v, date) else str(v)))
+            tam = 8
+            while tam > 5 and pdf.get_string_width(texto) > w - 1.5:
+                tam -= 0.5
+                pdf.set_font_size(tam)  # una cifra larga se encoge antes que perder dígitos
+            if pdf.get_string_width(texto) > w - 1.5:
+                while texto and pdf.get_string_width(texto + "…") > w - 1.5:
+                    texto = texto[:-1]
+                texto += "…"
+            pdf.cell(w, 5.5, texto, align=al, fill=relleno)
+            pdf.set_font_size(8)
         pdf.ln()
     if notas:
         pdf.ln(4)
@@ -235,14 +244,19 @@ def cotizacion_pdf(empresa, cot) -> bytes:
     pdf.set_text_color(0)
     pdf.set_font("helvetica", "", 9)
     for l in cot.lineas:
+        texto = _latin1(l.descripcion)
+        renglones = pdf.multi_cell(115, 5, texto, dry_run=True, output="LINES")
+        alto = 5 * max(1, len(renglones))
+        if pdf.get_y() + alto > pdf.page_break_trigger:
+            pdf.add_page()
         y = pdf.get_y()
-        pdf.multi_cell(115, 5, _latin1(l.descripcion), new_x="RIGHT", new_y="TOP")
-        alto = max(pdf.get_y() - y, 5)
         pdf.set_xy(pdf.l_margin + 115, y)
         pdf.cell(30, alto, _latin1(pesos(l.valor)), align="R")
         pdf.cell(25, alto, _latin1(pesos(l.iva)), align="R")
         pdf.cell(25, alto, _latin1(pesos(l.valor + l.iva)), align="R")
-        pdf.ln(alto)
+        pdf.set_xy(pdf.l_margin, y)
+        pdf.multi_cell(115, 5, texto, new_x="LMARGIN", new_y="NEXT")
+        pdf.set_y(y + alto)
     pdf.ln(2)
     pdf.set_font("helvetica", "B", 10)
     for etiqueta, v in (("Subtotal honorarios", cot.subtotal), ("IVA", cot.iva), ("TOTAL", cot.total)):

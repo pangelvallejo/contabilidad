@@ -7,17 +7,24 @@ from .. import archivos, bancos, cartera, contab, reportes
 from ..db import Session
 from ..models import (CERO, Banco, CategoriaGasto, Cuenta, Gasto, MovimientoBanco, OtroIngreso, PagoGasto, Recaudo,
                       Tercero)
-from . import check, entero_requerido, fecha_arg
+from . import check, entero_requerido, explicar, fecha_arg
 
 bp = Blueprint("bancos", __name__, url_prefix="/bancos")
 
 
 def _banco(s):
     bid = request.values.get("banco", type=int)
-    b = s.get(Banco, bid) if bid else s.query(Banco).filter_by(activo=True).order_by(Banco.id).first()
+    b = s.get(Banco, bid) if bid else (s.query(Banco).filter_by(activo=True).order_by(Banco.id).first()
+                                       or s.query(Banco).order_by(Banco.id).first())
     if b is None:
         abort(404)
     return b
+
+
+def _bancos_para_elegir(s, actual=None):
+    """Bancos activos más el que ya tiene el documento (aunque esté inactivo), para no cambiarlo sin querer."""
+    q = s.query(Banco).filter((Banco.activo.is_(True)) | (Banco.id == (actual or 0)))
+    return q.order_by(Banco.id).all()
 
 
 @bp.route("/conciliacion", methods=["GET", "POST"])
@@ -38,7 +45,7 @@ def conciliacion():
                     flash(f"{omitidas} fila(s) del archivo se omitieron (sin fecha o valor, o líneas de saldo).", "info")
             except Exception as e:  # noqa: BLE001
                 s.rollback()
-                flash(f"No se pudo importar el extracto: {e}", "error")
+                flash(f"No se pudo importar el extracto: {explicar(e)}", "error")
         return redirect(url_for("bancos.conciliacion", banco=banco.id))
     estado = request.args.get("estado", "pendiente")
     q = s.query(MovimientoBanco).filter_by(banco_id=banco.id)
@@ -52,7 +59,7 @@ def conciliacion():
     pendientes = s.query(MovimientoBanco).filter_by(banco_id=banco.id, estado="pendiente").count()
     return render_template(
         "bancos/conciliacion.html", banco=banco, movs=movs, sugerencias=sugerencias, categorias_sug=categorias,
-        estado=estado, bancos=s.query(Banco).filter_by(activo=True).all(), pendientes=pendientes,
+        estado=estado, bancos=_bancos_para_elegir(s, banco.id), pendientes=pendientes,
         saldo_libros=reportes.saldo_cuenta(s, banco.cuenta, corte), saldo_extracto=bancos.saldo_extracto(s, banco.id, corte),
         corte=corte, categorias=s.query(CategoriaGasto).filter_by(activa=True).order_by(CategoriaGasto.nombre).all(),
         clientes=s.query(Tercero).filter_by(es_cliente=True).order_by(Tercero.nombre).all(),
@@ -76,11 +83,13 @@ def accion(id):
             raise ValueError("La línea ya fue conciliada o ignorada; use 'Deshacer' primero.")
         if accion == "vincular":
             tipo, _, oid = request.form.get("origen", "").partition(":")
-            if tipo not in bancos.TIPOS_ORIGEN or not oid.isdigit() or not bancos.origen_existe(s, tipo, int(oid)):
+            if tipo not in bancos.TIPOS_ORIGEN or not oid.isdecimal() or not bancos.origen_existe(s, tipo, int(oid)):
                 raise ValueError("Seleccione un movimiento válido para vincular.")
             if (tipo, int(oid)) in bancos._ya_conciliados(s):
                 raise ValueError("Ese movimiento ya está vinculado a otra línea del extracto.")
-            mov.origen_tipo, mov.origen_id, mov.estado = tipo, int(oid), "conciliado"
+            if (tipo, int(oid)) not in {(c[0], c[1]) for c in bancos.candidatos(s, mov, dias=3660)}:
+                raise ValueError("Ese documento no coincide con la línea del extracto (valor, sentido o banco distinto).")
+            mov.origen_tipo, mov.origen_id, mov.estado, mov.creado_aqui = tipo, int(oid), "conciliado", False
             flash("Movimiento vinculado.", "ok")
         elif accion == "ignorar":
             mov.estado = "ignorado"
@@ -94,6 +103,8 @@ def accion(id):
                       descripcion=mov.descripcion, subtotal=-mov.valor, iva=CERO, iva_descontable=False,
                       total=-mov.valor, forma_pago="contado", cuenta_pago=mov.banco.cuenta, origen="banco",
                       numero=mov.referencia)
+            if g.tipo_soporte not in ("RE", "FE", "DS", "OT"):
+                raise ValueError("Tipo de soporte no válido.")
             if mov.valor >= 0:
                 raise ValueError("Solo las salidas de dinero se registran como gasto.")
             s.add(g)
@@ -106,7 +117,9 @@ def accion(id):
             g = s.get(Gasto, request.form.get("gasto_id", type=int) or 0)
             if g is None:
                 raise ValueError("Elija el proveedor y luego la factura que se pagó con este movimiento.")
-            if mov.valor >= 0 or -mov.valor > g.saldo:
+            if mov.valor >= 0:
+                raise ValueError("Solo las salidas de dinero se registran como pago a proveedor.")
+            if -mov.valor > g.saldo:
                 raise ValueError("El valor supera el saldo de la factura del proveedor.")
             p = PagoGasto(fecha=mov.fecha, cuenta_pago=mov.banco.cuenta, valor=-mov.valor)
             s.add(p)
@@ -159,10 +172,12 @@ def accion(id):
                                            lineas=[(mov.banco.cuenta, mov.valor, 0, None, None), (cuenta, 0, mov.valor, None, None)])
                 mov.origen_tipo, mov.origen_id, mov.estado, mov.creado_aqui = "asiento", a.id, "conciliado", True
                 flash("Movimiento registrado.", "ok")
+        else:
+            raise ValueError("Acción no reconocida.")
         s.commit()
     except Exception as e:  # noqa: BLE001
         s.rollback()
-        flash(f"No se pudo aplicar: {e}", "error")
+        flash(f"No se pudo aplicar: {explicar(e)}", "error")
     return redirect(url_for("bancos.conciliacion", banco=mov.banco_id, estado=request.form.get("volver_estado", "pendiente")))
 
 
@@ -220,7 +235,7 @@ def movimientos():
                                                                    + datos)}),
                          f"banco_{banco.nombre}_{desde}_{hasta}.xlsx", XLSX)
     return render_template("bancos/movimientos.html", banco=banco, desde=desde, hasta=hasta, inicial=inicial,
-                           filas=filas, final=final, bancos=s.query(Banco).filter_by(activo=True).all(),
+                           filas=filas, final=final, bancos=_bancos_para_elegir(s, banco.id),
                            entradas=sum((m.debito for m, _ in filas), CERO), salidas=sum((m.credito for m, _ in filas), CERO))
 
 
@@ -262,7 +277,7 @@ def _tercero_desde_form(s):
             s.add(t)
             s.flush()
         return t.id
-    return int(tid) if tid.isdigit() else None
+    return int(tid) if tid.isdecimal() else None
 
 
 def _llenar_otro_ingreso(s, oi):
@@ -275,6 +290,14 @@ def _llenar_otro_ingreso(s, oi):
     cta = s.get(Cuenta, oi.cuenta)
     if cta is None or not cta.movimiento or not cta.codigo.startswith("4"):
         raise ValueError("La cuenta de ingreso no es válida.")
+    if cta.codigo[:4] in ("4135", "4155", "4175"):
+        raise ValueError("Los honorarios se registran con factura en Ventas; aquí van intereses, reintegros y otros ingresos.")
+    if request.form.get("fecha") and fecha_arg("fecha") is None:
+        raise ValueError("La fecha no es válida; use el selector de fecha.")
+    if cta.codigo[:4] in ("4135", "4155", "4175"):
+        raise ValueError("Los honorarios se registran con factura en Ventas; aquí van intereses, reintegros y otros ingresos.")
+    if request.form.get("fecha") and fecha_arg("fecha") is None:
+        raise ValueError("La fecha no es válida; use el selector de fecha.")
     oi.concepto = request.form.get("concepto", "").strip() or cta.nombre
     oi.valor = dinero("valor")
     oi.descuentos = dinero("descuentos")
@@ -297,6 +320,8 @@ def otro_ingreso(id=None):
     if request.method == "POST":
         try:
             if request.form.get("accion") == "borrar":
+                if oi is None:
+                    raise ValueError("El ingreso no existe.")
                 bancos.liberar(s, "otroingreso", oi.id)
                 contab.borrar_asientos(s, f"otroingreso:{oi.id}")
                 s.delete(oi)
@@ -305,7 +330,12 @@ def otro_ingreso(id=None):
                 return redirect(url_for("bancos.otros_ingresos"))
             nuevo = oi is None
             oi = oi or OtroIngreso()
+            anterior = (oi.banco_id, oi.neto) if not nuevo else None
             _llenar_otro_ingreso(s, oi)
+            if anterior and anterior != (oi.banco_id, oi.neto) and s.query(MovimientoBanco).filter_by(
+                    origen_tipo="otroingreso", origen_id=oi.id, estado="conciliado").first():
+                raise ValueError("Este ingreso ya está conciliado con el extracto; deshaga la conciliación antes de "
+                                 "cambiar el banco o el valor.")
             s.add(oi)
             s.flush()
             s.refresh(oi)
@@ -319,9 +349,9 @@ def otro_ingreso(id=None):
             return redirect(url_for("bancos.otros_ingresos", anio=oi.fecha.year))
         except Exception as e:  # noqa: BLE001
             s.rollback()
-            flash(f"No se pudo guardar: {e}", "error")
+            flash(f"No se pudo guardar: {explicar(e)}", "error")
             oi = s.get(OtroIngreso, id) if id else None
     return render_template("bancos/ingreso_form.html", oi=oi, form=request.form,
-                           bancos=s.query(Banco).filter_by(activo=True).order_by(Banco.id).all(),
+                           bancos=_bancos_para_elegir(s, oi.banco_id if oi else None),
                            cuentas=_cuentas_ingreso(s), terceros=s.query(Tercero).order_by(Tercero.nombre).all(),
                            hoy=date.today())

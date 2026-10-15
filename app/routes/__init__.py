@@ -3,7 +3,7 @@ from datetime import date
 
 from flask import Response, request
 
-from ..contab import d
+from ..contab import d, redondear
 
 
 def fecha_arg(nombre, defecto=None):
@@ -36,17 +36,32 @@ def anio_arg():
 def dinero(nombre):
     texto = (request.form.get(nombre) or "0").strip()
     try:
-        return d(texto)
-    except Exception as e:  # noqa: BLE001 — Decimal lanza InvalidOperation
+        return redondear(d(texto))  # lo que se guarda son pesos con dos decimales: se valida ya redondeado
+    except Exception as e:  # noqa: BLE001 — Decimal lanza InvalidOperation; d() ValueError (NaN, tope)
+        if "demasiado grande" in str(e):
+            raise ValueError(str(e)) from e
         raise ValueError(f"El valor '{texto}' no es un número válido (use 1.234.567,89).") from e
 
 
 def entero_requerido(nombre, mensaje):
     """Entero obligatorio del formulario; si falta o no es numérico, un mensaje entendible en vez del error técnico."""
     valor = request.form.get(nombre, "").strip()
-    if not valor.lstrip("-").isdigit():
+    if not valor.lstrip("-").isdecimal():
         raise ValueError(mensaje)
     return int(valor)
+
+
+def explicar(e: Exception) -> str:
+    """Texto para el usuario de un error inesperado: traduce los de la base de datos y recorta lo técnico."""
+    texto = str(e)
+    if "FOREIGN KEY" in texto:
+        return "Hace referencia a un registro que ya no existe (cliente, categoría, cuenta o banco)."
+    if "UNIQUE" in texto:
+        campo = texto.rsplit(".", 1)[-1].split()[0] if "." in texto else ""
+        return f"Ya existe un registro con ese mismo dato{f' ({campo})' if campo else ''}."
+    if "sqlite3." in texto or "[SQL:" in texto:
+        return "La base de datos rechazó la operación: " + texto.split("[SQL:")[0].split(")", 1)[-1].strip()[:200]
+    return texto
 
 
 def check(nombre):

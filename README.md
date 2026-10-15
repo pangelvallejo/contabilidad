@@ -31,7 +31,8 @@ del equipo, salvo las copias de seguridad en OneDrive.
 ## Instalación en Windows
 
 **Opción A, sin instalar Python (recomendada):** descargue `Contabilidad-<versión>-windows.zip` desde la
-página de *Releases* del repositorio, descomprímalo en `Documentos\Contabilidad` y abra
+página de *Releases* del repositorio, descomprímalo en una carpeta que no sincronice OneDrive (por ejemplo
+`C:\Contabilidad`) y abra
 **`Contabilidad.bat`**. El paquete trae su propio Python.
 
 **Opción B, con Python instalado:**
@@ -63,8 +64,10 @@ de archivos de las librerías sin necesidad, y los respaldos ya se copian solos 
 
 En `C:\Users\<usuario>\ContabilidadAngelLecompte\` (base de datos `contabilidad.db` y carpeta
 `adjuntos`). Esa carpeta es independiente del código: puede actualizar el programa sin perder datos.
-Los respaldos van a `OneDrive\Respaldos Contabilidad Angel Lecompte\` (configurable). Para restaurar,
-descomprima un respaldo en la carpeta de datos con el programa cerrado.
+Los respaldos van a `OneDrive\Respaldos Contabilidad Angel Lecompte\` (configurable). Para restaurar, use
+*Configuración → Restaurar respaldo* (verifica el archivo y lo aplica al reiniciar). Si lo hace a mano, cierre
+el programa, borre `contabilidad.db-wal` y `contabilidad.db-shm` si existen y descomprima el respaldo en la
+carpeta de datos.
 
 ### Actualizar
 
@@ -121,9 +124,10 @@ pruebas, construye el paquete portable con Windows y lo adjunta al lanzamiento
 Están en `app/config.py` y se actualizan con nuevas versiones del programa:
 
 - UVT 2026: $52.374. La UVT de años siguientes se registra en *Configuración* sin cambiar el programa.
-- SIMPLE, actividades profesionales y de consultoría (art. 908 E.T., Ley 2277 de 2022): tarifas anuales
-  5,9% / 7,3% / 12% / 14,5% y bimestrales 5,9% hasta 1.000 UVT, 7,3% hasta 2.500, 12% hasta 5.000 y
-  14,5% hasta 16.666. Límite de 12.000 UVT para profesiones liberales.
+- SIMPLE, servicios profesionales y de consultoría (art. 908 E.T. numeral 3, Ley 2155 de 2021, vigente de
+  nuevo por la Sentencia C-540 de 2023): tarifas anuales 5,9% / 7,3% / 12% / 14,5% y bimestrales 5,9% hasta
+  1.000 UVT, 7,3% hasta 2.500, 12% hasta 5.000 y 14,5% hasta 16.666. El tope de 12.000 UVT para profesiones
+  liberales fue declarado inexequible; rige el límite general de 100.000 UVT.
 - ReteIVA: 15% del IVA. IVA: 19%.
 - Base de ingresos del SIMPLE: por causación (fecha de factura) o por caja (fecha de recaudo), según
   *Configuración*.

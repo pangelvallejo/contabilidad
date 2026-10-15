@@ -6,7 +6,7 @@ from flask import Blueprint, abort, flash, redirect, render_template, request, u
 from .. import contab, correo, exportar
 from ..db import Session
 from ..models import Asunto, Cotizacion, DocumentoVenta, LineaCotizacion, Tercero
-from . import anio_arg, descargar, entero_requerido, fecha_arg
+from . import anio_arg, descargar, entero_requerido, explicar, fecha_arg
 
 bp = Blueprint("cotizaciones", __name__, url_prefix="/cotizaciones")
 
@@ -63,7 +63,7 @@ def _llenar(s, cot):
     if not cot.titulo:
         raise ValueError("Indique el título de la propuesta.")
     validez = request.form.get("validez_dias", "").strip()
-    cot.validez_dias = int(validez) if validez.isdigit() else 30
+    cot.validez_dias = int(validez) if validez.isdecimal() else 30
     if not 1 <= cot.validez_dias <= 365:
         raise ValueError("La validez debe estar entre 1 y 365 días.")
     cot.condiciones = request.form.get("condiciones", "").strip() or None
@@ -75,10 +75,10 @@ def _llenar(s, cot):
     for i, desc in enumerate(descripciones):
         desc = desc.strip()
         try:
-            valor = contab.d(valores[i] if i < len(valores) else 0)
+            valor = contab.redondear(contab.d(valores[i] if i < len(valores) else 0))
             iva_pct = contab.d(ivas[i] if i < len(ivas) and ivas[i].strip() != "" else 19)
         except Exception as e:  # noqa: BLE001
-            raise ValueError(f"El valor o el IVA de la línea {i + 1} no es un número válido.") from e
+            raise ValueError(f"El valor o el IVA de la línea {i + 1} no es un número válido: {explicar(e)}") from e
         if not desc and not valor:
             continue
         if not desc:
@@ -149,7 +149,7 @@ def editar(id=None):
             return redirect(url_for("cotizaciones.editar", id=cot.id))
         except Exception as e:  # noqa: BLE001
             s.rollback()
-            flash(f"No se pudo completar: {e}", "error")
+            flash(f"No se pudo completar: {explicar(e)}", "error")
             cot = s.get(Cotizacion, id) if id else None
     clientes = s.query(Tercero).filter(Tercero.es_cliente.is_(True)).order_by(Tercero.nombre).all()
     asuntos = s.query(Asunto).filter_by(estado="abierto").order_by(Asunto.nombre).all()

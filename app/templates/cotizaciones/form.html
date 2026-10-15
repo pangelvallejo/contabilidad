@@ -41,7 +41,7 @@
   </table>
   <p><button type="button" class="peq" id="agregar">+ Agregar línea</button> <span class="nota">Subtotal: <b id="subtotal">0</b> · IVA: <b id="iva">0</b> · Total: <b id="total">0</b></span></p>
   <div class="campos">
-    <div class="campo ancho"><label>Condiciones (aparecen en el PDF)</label><textarea name="condiciones" rows="4">{{ v.get('condiciones') or (cot.condiciones if cot else condiciones_defecto) }}</textarea></div>
+    <div class="campo ancho"><label>Condiciones (aparecen en el PDF)</label><textarea name="condiciones" rows="4">{{ v.get('condiciones') or ((cot.condiciones or '') if cot else condiciones_defecto) }}</textarea></div>
     <div class="campo ancho"><label>Notas internas (no aparecen en el PDF)</label><textarea name="notas" rows="2">{{ v.get('notas') or (cot.notas or '' if cot else '') }}</textarea></div>
   </div>
   <button class="primario" name="accion" value="guardar">Guardar</button>

@@ -7,7 +7,7 @@
 </div>
 <div class="rejilla k4" style="margin-bottom:16px">
   <div class="kpi"><div class="etq">Saldo según libros al {{ corte|fecha }}</div><div class="val">{{ saldo_libros|pesos }}</div></div>
-  <div class="kpi"><div class="etq">Saldo según extracto importado</div><div class="val">{{ saldo_extracto|pesos }}</div><div class="det">Diferencia {{ (saldo_libros - saldo_extracto)|pesos }}</div></div>
+  <div class="kpi"><div class="etq">Suma de los movimientos importados</div><div class="val">{{ saldo_extracto|pesos }}</div><div class="det">No incluye el saldo inicial del extracto; el informe de conciliación calcula el saldo esperado.</div></div>
   <div class="kpi"><div class="etq">Líneas pendientes</div><div class="val">{{ pendientes }}</div></div>
 </div>
 <form class="tarjeta filtros" method="post" enctype="multipart/form-data" action="/bancos/conciliacion?banco={{ banco.id }}">

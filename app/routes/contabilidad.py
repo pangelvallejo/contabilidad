@@ -6,7 +6,7 @@ from flask import Blueprint, abort, flash, redirect, render_template, request, u
 from .. import contab, exportar, reportes
 from ..db import Session
 from ..models import CERO, Asiento, Cuenta, Tercero
-from . import XLSX, descargar, fecha_arg, paginar_lista, periodo
+from . import XLSX, descargar, explicar, fecha_arg, paginar_lista, periodo
 
 bp = Blueprint("contabilidad", __name__, url_prefix="/contabilidad")
 
@@ -269,7 +269,7 @@ def asiento(id=None):
                     raise contab.ErrorContable(f"Monto no válido en la línea {i + 1} (use 1.234.567,89).") from e
                 if debito < 0 or credito < 0:
                     raise contab.ErrorContable(f"Los valores de la línea {i + 1} no pueden ser negativos.")
-                lineas.append((cta, debito, credito, int(tercero) if tercero.isdigit() else None,
+                lineas.append((cta, debito, credito, int(tercero) if tercero.isdecimal() else None,
                                detalles[i] if i < len(detalles) else ""))
             if len(lineas) < 2:
                 raise contab.ErrorContable("Agregue al menos dos líneas.")
@@ -289,7 +289,7 @@ def asiento(id=None):
             return redirect(url_for("contabilidad.asiento", id=nuevo.id))
         except Exception as e:  # noqa: BLE001
             s.rollback()
-            flash(f"No se pudo guardar: {e}", "error")
+            flash(f"No se pudo guardar: {explicar(e)}", "error")
             a = s.get(Asiento, id) if id else None
     return render_template("contabilidad/asiento.html", a=a, cuentas=_cuentas_movimiento(s),
                            terceros=s.query(Tercero).order_by(Tercero.nombre).all())
@@ -301,7 +301,7 @@ def puc():
     if request.method == "POST":
         codigo = request.form.get("codigo", "").strip()
         nombre = request.form.get("nombre", "").strip()
-        if not codigo.isdigit() or len(codigo) not in (6, 8, 10) or not nombre:
+        if not (codigo.isascii() and codigo.isdecimal()) or len(codigo) not in (6, 8, 10) or not nombre:
             flash("El código debe tener 6, 8 o 10 dígitos y la cuenta debe tener nombre.", "error")
         elif s.get(Cuenta, codigo):
             cta = s.get(Cuenta, codigo)

@@ -104,7 +104,9 @@ def test_punto_de_indiferencia_coherente(s):
     s.commit()
     cr = informes.comparar_regimenes(s, 2026, date(2026, 12, 31))
     m = cr["margen_indiferencia"] / 100
-    ordinario_en_m = Decimal("0.35") * (cr["ingresos"] * m - cr["ica"]) + cr["ica"]
+    # El margen de indiferencia usa la misma definición que c.margen (renta líquida tras deducir el ICA):
+    # con ese margen, renta (35 %) + ICA = SIMPLE.
+    ordinario_en_m = Decimal("0.35") * cr["ingresos"] * m + cr["ica"]
     assert abs(ordinario_en_m - cr["simple"]) <= cr["ingresos"] * Decimal("0.35") * Decimal("0.001")  # redondeo a 0,1 %
 
 

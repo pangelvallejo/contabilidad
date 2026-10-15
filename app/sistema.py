@@ -7,6 +7,8 @@ import socket
 import sqlite3
 import subprocess
 import sys
+import tempfile
+import time
 import zipfile
 from datetime import datetime
 from pathlib import Path
@@ -27,7 +29,7 @@ def version_actual():
 
 
 def _tupla(v):
-    return tuple(int(x) for x in str(v).lstrip("vV").split(".") if x.isdigit())
+    return tuple(int(x) for x in str(v).lstrip("vV").split(".") if x.isdecimal())
 
 
 def es_mas_nueva(remota, local):
@@ -72,7 +74,9 @@ def descargar_actualizacion(session, info):
         import shutil
         shutil.rmtree(destino, ignore_errors=True)
     destino.mkdir(parents=True)
-    with urlopen(_peticion(info["url_zip"], session, aceptar="application/octet-stream"), timeout=300) as r:
+    # El zipball de la API (instalación con iniciar.bat) responde 415 si se pide application/octet-stream;
+    # los archivos adjuntos del lanzamiento (portable) se descargan igual con */*.
+    with urlopen(_peticion(info["url_zip"], session, aceptar="*/*"), timeout=300) as r:
         contenido = r.read()
     return preparar_actualizacion(contenido, destino)
 
@@ -150,17 +154,57 @@ def reiniciar(script: Path | None = None):
 
 def respaldos_disponibles(session):
     from .respaldo import carpeta_destino
-    carpeta = carpeta_destino(session)
-    if not carpeta.exists():
+    try:
+        carpeta = carpeta_destino(session)
+        if not carpeta.exists():
+            return []
+        return sorted(carpeta.glob("respaldo_*.zip"), reverse=True)[:30]
+    except (OSError, ValueError):  # carpeta configurada con un nombre inválido o demasiado largo
         return []
-    return sorted(carpeta.glob("respaldo_*.zip"), reverse=True)[:30]
+
+
+def validar_respaldo(contenido_zip: bytes):
+    """Comprueba que el ZIP esté sano y que contabilidad.db sea una base SQLite íntegra del programa."""
+    try:
+        z = zipfile.ZipFile(io.BytesIO(contenido_zip))
+    except zipfile.BadZipFile:
+        raise ValueError("El archivo no es un ZIP válido.") from None
+    with z:
+        if "contabilidad.db" not in z.namelist():
+            raise ValueError("El archivo no es un respaldo del programa (no contiene contabilidad.db).")
+        try:
+            danado = z.testzip()
+        except Exception:  # noqa: BLE001 — cifrado, compresión no soportada, truncado
+            danado = "contabilidad.db"
+        if danado:
+            raise ValueError(f"El respaldo está dañado (archivo {danado}); use otro respaldo.")
+        try:
+            base = z.read("contabilidad.db")
+        except Exception:  # noqa: BLE001
+            raise ValueError("No se pudo leer contabilidad.db dentro del respaldo.") from None
+    if not base.startswith(b"SQLite format 3\x00"):
+        raise ValueError("contabilidad.db dentro del respaldo no es una base de datos SQLite.")
+    with tempfile.TemporaryDirectory() as tmp:
+        ruta = Path(tmp) / "verificar.db"
+        ruta.write_bytes(base)
+        try:
+            con = sqlite3.connect(f"file:{ruta}?mode=ro", uri=True)
+            try:
+                estado = con.execute("PRAGMA integrity_check").fetchone()[0]
+                tablas = {r[0] for r in con.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+            finally:
+                con.close()
+        except sqlite3.Error as e:
+            raise ValueError(f"La base de datos del respaldo no se puede abrir: {e}") from None
+    if estado != "ok":
+        raise ValueError(f"La base de datos del respaldo está dañada ({estado}).")
+    if "cuentas" not in tablas or "config" not in tablas:
+        raise ValueError("La base de datos del respaldo no es de este programa (faltan sus tablas).")
 
 
 def programar_restauracion(contenido_zip: bytes):
     """Valida el ZIP y lo deja en la carpeta de datos; se aplica al siguiente arranque (con la base cerrada)."""
-    with zipfile.ZipFile(io.BytesIO(contenido_zip)) as z:
-        if "contabilidad.db" not in z.namelist():
-            raise ValueError("El archivo no es un respaldo del programa (no contiene contabilidad.db).")
+    validar_respaldo(contenido_zip)
     (config.DATOS_DIR / ARCHIVO_RESTAURAR).write_bytes(contenido_zip)
 
 
@@ -168,6 +212,13 @@ def aplicar_restauracion_pendiente():
     """Se llama antes de abrir la base: si hay un respaldo programado, conserva la base actual y lo restaura."""
     pendiente = config.DATOS_DIR / ARCHIVO_RESTAURAR
     if not pendiente.exists():
+        return None
+    try:
+        validar_respaldo(pendiente.read_bytes())
+    except ValueError as e:
+        # Nunca se aparta la base actual por un respaldo que no sirve: se descarta el pendiente y se sigue.
+        pendiente.rename(config.DATOS_DIR / f"restaurar_rechazado_{datetime.now():%Y%m%d_%H%M%S}.zip")
+        print(f"[restaurar] respaldo rechazado: {e}")
         return None
     marca = datetime.now().strftime("%Y%m%d_%H%M%S")
     if config.DB_PATH.exists():
@@ -195,8 +246,39 @@ def clave_secreta():
     """Clave de sesión persistente (necesaria para que el inicio de sesión sobreviva a reinicios)."""
     archivo = config.DATOS_DIR / "clave.secreta"
     if not archivo.exists():
-        archivo.write_text(secrets.token_hex(32))
+        # Solo legible por el usuario (en Windows los permisos POSIX no aplican; la carpeta ya es del usuario).
+        fd = os.open(archivo, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w") as f:
+            f.write(secrets.token_hex(32))
     return archivo.read_text().strip()
+
+
+class _IntentosAcceso:
+    """Freno a la fuerza bruta en /acceso: tras 5 fallos seguidos desde una IP, 15 minutos de espera."""
+    MAXIMO, ESPERA = 5, 15 * 60
+
+    def __init__(self):
+        self._fallos = {}
+
+    def bloqueado(self, ip):
+        n, ultimo = self._fallos.get(ip, (0, 0.0))
+        if n >= self.MAXIMO and time.monotonic() - ultimo < self.ESPERA:
+            return True
+        if n >= self.MAXIMO:
+            self._fallos.pop(ip, None)  # la espera ya pasó
+        return False
+
+    def fallo(self, ip):
+        n, _ = self._fallos.get(ip, (0, 0.0))
+        self._fallos[ip] = (n + 1, time.monotonic())
+        if len(self._fallos) > 1000:
+            self._fallos = dict(sorted(self._fallos.items(), key=lambda kv: kv[1][1])[-500:])
+
+    def limpiar(self, ip):
+        self._fallos.pop(ip, None)
+
+
+intentos_acceso = _IntentosAcceso()
 
 
 def acceso_red_activo(session):

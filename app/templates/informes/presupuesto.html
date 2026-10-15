@@ -20,7 +20,7 @@
 <div class="tarjeta tabla-scroll">
   {% if pr.filas %}
   <table>
-    <tr><th>Concepto</th><th class="n">Presupuesto anual</th><th class="n">Esperado a {{ pr.meses }} meses</th><th class="n">Real</th><th class="n">Diferencia</th><th class="n">Ejecución</th><th class="n">Ejec. anual</th></tr>
+    <tr><th>Concepto</th><th class="n">Presupuesto anual</th><th class="n">Esperado a la fecha{% if pr.meses %} ({{ pr.meses }} mes{{ 'es' if pr.meses != 1 }}){% endif %}</th><th class="n">Real</th><th class="n">Diferencia</th><th class="n">Ejecución</th><th class="n">Ejec. anual</th></tr>
     {% for f in pr.filas %}
     <tr class="{{ 'grupo' if f.clave == 'ingresos' }}"><td>{{ f.concepto }}</td><td class="n">{{ f.anual|pesos }}</td><td class="n">{{ f.esperado|pesos }}</td><td class="n">{{ f.real|pesos }}</td>
       <td class="n" style="color:{{ 'var(--ok)' if (f.diferencia >= 0) == (f.clave == 'ingresos') else 'var(--crit)' }}">{{ f.diferencia|pesos }}</td>
