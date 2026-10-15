@@ -24,7 +24,7 @@
 <div class="tarjeta tabla-scroll">
   {% if movs %}
   <table>
-    <tr><th>Fecha</th><th>Descripción</th><th class="n">Valor</th><th>Estado</th><th style="min-width:420px">Acción</th></tr>
+    <tr><th>Fecha</th><th>Descripción</th><th class="n">Valor</th><th>Estado</th><th>Acción</th></tr>
     {% for m in movs %}
     <tr><td>{{ m.fecha|fecha }}</td><td>{{ m.descripcion }}{% if m.referencia %} <span class="nota">{{ m.referencia }}</span>{% endif %}</td>
       <td class="n">{{ m.valor|pesos }}</td>
@@ -39,13 +39,13 @@
           <button class="peq primario" name="accion" value="vincular">Vincular</button>
           {% endif %}
           {% if m.valor < 0 %}
-          <select name="categoria_id">{% set csug = categorias_sug.get(m.id) %}{% for c in categorias %}<option value="{{ c.id }}" {{ 'selected' if c.nombre == csug }}>{{ c.nombre }}</option>{% endfor %}</select>
+          <select name="categoria_id" class="sel-cat" data-sug="{{ categorias_sug.get(m.id) or '' }}"></select>
           <button class="peq" name="accion" value="gasto" title="Registra un gasto pagado desde este banco">Crear gasto</button>
           <select name="gasto_id" class="sel-fact" data-mov="{{ m.id }}"><option value="">Pago de factura de proveedor…</option></select>
-          <select name="proveedor_id" class="sel-prov" data-mov="{{ m.id }}"><option value="">(proveedor)</option>{% for p in proveedores %}<option value="{{ p.id }}">{{ p.nombre }}</option>{% endfor %}</select>
+          <select name="proveedor_id" class="sel-prov" data-mov="{{ m.id }}"><option value="">(proveedor)</option></select>
           <button class="peq" name="accion" value="pago_proveedor">Aplicar pago</button>
           {% else %}
-          <select name="cliente_id"><option value="">Cliente…</option>{% for c in clientes %}<option value="{{ c.id }}">{{ c.nombre }}</option>{% endfor %}</select>
+          <select name="cliente_id" class="sel-cli"><option value="">Cliente…</option></select>
           <label class="check" title="Tarjeta o pasarela"><input type="checkbox" name="medio_electronico"> electrónico</label>
           <button class="peq" name="accion" value="recaudo" title="Crea el recaudo y lo aplica a las facturas más antiguas">Crear recaudo</button>
           <select name="cuenta"><option value="421005">Intereses / rendimientos</option><option value="425050">Reintegro de gastos</option><option value="429595">Otros ingresos diversos</option><option value="235505">Dinero prestado por el socio (por pagar)</option></select>
@@ -59,11 +59,19 @@
       </td></tr>
     {% endfor %}
   </table>
+  {% include '_paginacion.html' %}
   {% else %}<p class="vacio">No hay movimientos {{ estado if estado != 'todos' else '' }}. Importe un extracto para empezar.</p>{% endif %}
 </div>
+{# Las listas de terceros y categorías viajan una sola vez; cada fila las clona al cargar la página #}
+<template id="tpl-cat">{% for c in categorias %}<option value="{{ c.id }}">{{ c.nombre }}</option>{% endfor %}</template>
+<template id="tpl-prov">{% for p in proveedores %}<option value="{{ p.id }}">{{ p.nombre }}</option>{% endfor %}</template>
+<template id="tpl-cli">{% for c in clientes %}<option value="{{ c.id }}">{{ c.nombre }}</option>{% endfor %}</template>
 {% endblock %}
 {% block scripts %}
 <script>
+const clonar = (clase, tpl) => document.querySelectorAll(clase).forEach(s => s.insertAdjacentHTML('beforeend', document.getElementById(tpl).innerHTML));
+clonar('.sel-cat', 'tpl-cat'); clonar('.sel-prov', 'tpl-prov'); clonar('.sel-cli', 'tpl-cli');
+document.querySelectorAll('.sel-cat').forEach(s => { const o = Array.from(s.options).find(o => o.textContent === s.dataset.sug); if (o) o.selected = true; });
 document.querySelectorAll('.sel-prov').forEach(sel => sel.addEventListener('change', async () => {
   const dest = document.querySelector('.sel-fact[data-mov="' + sel.dataset.mov + '"]');
   dest.innerHTML = '<option value="">Pago de factura de proveedor…</option>';

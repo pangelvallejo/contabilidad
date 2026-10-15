@@ -6,7 +6,7 @@ from flask import Blueprint, abort, flash, redirect, render_template, request, u
 from .. import contab, exportar, reportes
 from ..db import Session
 from ..models import CERO, Asiento, Cuenta, Tercero
-from . import XLSX, descargar, explicar, fecha_arg, paginar_lista, periodo
+from . import XLSX, descargar, explicar, fecha_arg, paginar, periodo
 
 bp = Blueprint("contabilidad", __name__, url_prefix="/contabilidad")
 
@@ -20,14 +20,15 @@ def diario():
     s = Session()
     desde, hasta = periodo()
     tipo = request.args.get("tipo") or None
-    asientos = reportes.libro_diario(s, desde, hasta, tipo)
+    consulta = reportes.consulta_diario(s, desde, hasta, tipo)
     if request.args.get("xlsx"):
+        asientos = consulta.all()
         filas = [[a.fecha, f"{a.tipo}-{a.numero}", a.descripcion, m.cuenta, m.cuenta_rel.nombre,
                   m.tercero.nit if m.tercero else "", m.tercero.nombre if m.tercero else "", m.debito, m.credito]
                  for a in asientos for m in a.lineas]
         enc = ["Fecha", "Comprobante", "Descripción", "Cuenta", "Nombre cuenta", "NIT", "Tercero", "Débito", "Crédito"]
         return descargar(exportar.excel({"Libro diario": (enc, filas)}), f"libro_diario_{desde}_{hasta}.xlsx", XLSX)
-    asientos, pagina, paginas = paginar_lista(asientos)
+    asientos, pagina, paginas = paginar(consulta)  # pagina en SQL: no carga todo el periodo para mostrar 100
     return render_template("contabilidad/diario.html", asientos=asientos, desde=desde, hasta=hasta, tipo=tipo,
                            pagina=pagina, paginas=paginas,
                            tipos=contab.TIPOS_ASIENTO)

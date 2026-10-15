@@ -5,10 +5,11 @@ from datetime import date
 from decimal import Decimal
 
 from sqlalchemy import func
+from sqlalchemy.orm import selectinload
 
 from . import config as cfg
 from . import contab
-from .models import CERO, Asiento, DocumentoVenta, Gasto, Movimiento, PagoImpuesto, Recaudo
+from .models import CERO, Asiento, AplicacionRecaudo, DocumentoVenta, Gasto, Movimiento, PagoImpuesto, Recaudo
 
 MIL = Decimal("1000")
 
@@ -179,12 +180,21 @@ def proyeccion_anual(session, anio, corte: date | None = None) -> ProyeccionAnua
 
 # ---------------------------------------------------------------------- SIMPLE
 
+def _recaudos_con_documentos(session, inicio, fin, solo_electronicos=False):
+    """Recaudos del periodo con sus aplicaciones y facturas ya cargadas (tres consultas en vez de dos por recaudo)."""
+    q = (session.query(Recaudo).filter(Recaudo.fecha.between(inicio, fin))
+         .options(selectinload(Recaudo.aplicaciones).selectinload(AplicacionRecaudo.documento)))
+    if solo_electronicos:
+        q = q.filter(Recaudo.medio_electronico.is_(True))
+    return q.all()
+
+
 def ingresos_brutos(session, inicio: date, fin: date, base: str | None = None) -> Decimal:
     """Ingresos brutos (ordinarios y extraordinarios) del periodo, netos de notas crédito."""
     base = base or contab.config(session, "simple_base", "causacion")
     if base == "caja":
         total = CERO
-        for rec in session.query(Recaudo).filter(Recaudo.fecha.between(inicio, fin)):
+        for rec in _recaudos_con_documentos(session, inicio, fin):
             for ap in rec.aplicaciones:
                 doc = ap.documento
                 cobrable = doc.total - (doc.reteiva_valor if doc.reteiva_aplica else CERO)
@@ -271,7 +281,7 @@ def declaracion_simple(session, anio) -> DeclaracionSimple:
     impuesto = redondeo_dian(max(ingresos, CERO) * t)
     # Ingresos recibidos por tarjetas y medios electrónicos (art. 912 E.T.), sin IVA.
     electronicos = CERO
-    for rec in session.query(Recaudo).filter(Recaudo.fecha.between(inicio, fin), Recaudo.medio_electronico.is_(True)):
+    for rec in _recaudos_con_documentos(session, inicio, fin, solo_electronicos=True):
         for ap in rec.aplicaciones:
             doc = ap.documento
             cobrable = doc.total - (doc.reteiva_valor if doc.reteiva_aplica else CERO)

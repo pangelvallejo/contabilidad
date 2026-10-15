@@ -32,13 +32,13 @@
     <div class="campo ancho"><label>Título de la propuesta</label><input name="titulo" required value="{{ v.get('titulo') or (cot.titulo if cot else '') }}" placeholder="Asesoría tributaria para la reorganización de XYZ S.A.S."></div>
   </div>
   <h2>Honorarios</h2>
-  <table id="lineas">
+  <div class="tabla-scroll"><table id="lineas">
     <tr><th>Descripción del servicio o etapa</th><th class="n" style="width:160px">Honorarios (sin IVA)</th><th class="n" style="width:90px">% IVA</th><th></th></tr>
     {% set lineas = cot.lineas if cot else [] %}
     {% for i in range(lineas|length if lineas else 1) %}{% set l = lineas[i] if lineas else none %}
     <tr><td><input name="descripcion" value="{{ l.descripcion if l else '' }}"></td><td><input class="n val" name="valor" value="{{ l.valor|entrada if l else '' }}"></td><td><input class="n" name="iva_pct" value="{{ l.iva_pct|entrada if l else 19 }}"></td><td><button type="button" class="peq quitar">×</button></td></tr>
     {% endfor %}
-  </table>
+  </table></div>
   <p><button type="button" class="peq" id="agregar">+ Agregar línea</button> <span class="nota">Subtotal: <b id="subtotal">0</b> · IVA: <b id="iva">0</b> · Total: <b id="total">0</b></span></p>
   <div class="campos">
     <div class="campo ancho"><label>Condiciones (aparecen en el PDF)</label><textarea name="condiciones" rows="4">{{ v.get('condiciones') or ((cot.condiciones or '') if cot else condiciones_defecto) }}</textarea></div>

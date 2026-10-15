@@ -164,13 +164,18 @@ def balance_general(session, corte: date):
     }
 
 
-def libro_diario(session, desde, hasta, tipo=None):
+def consulta_diario(session, desde, hasta, tipo=None):
+    """Consulta ordenada del libro diario (sin ejecutar), para paginar en la base de datos."""
     q = session.query(Asiento).filter(Asiento.fecha.between(desde, hasta))
     if tipo:
         q = q.filter(Asiento.tipo == tipo)
     q = q.options(selectinload(Asiento.lineas).joinedload(Movimiento.cuenta_rel),
                   selectinload(Asiento.lineas).joinedload(Movimiento.tercero), joinedload(Asiento.tercero))
-    return q.order_by(Asiento.fecha, Asiento.tipo, Asiento.numero).all()
+    return q.order_by(Asiento.fecha, Asiento.tipo, Asiento.numero)
+
+
+def libro_diario(session, desde, hasta, tipo=None):
+    return consulta_diario(session, desde, hasta, tipo).all()
 
 
 def libro_mayor(session, cuenta: str, desde, hasta, tercero_id=None):

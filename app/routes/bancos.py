@@ -3,11 +3,13 @@ from datetime import date
 
 from flask import Blueprint, abort, flash, redirect, render_template, request, url_for
 
+from sqlalchemy.orm import selectinload
+
 from .. import archivos, bancos, cartera, contab, reportes
 from ..db import Session
 from ..models import (CERO, Banco, CategoriaGasto, Cuenta, Gasto, MovimientoBanco, OtroIngreso, PagoGasto, Recaudo,
                       Tercero)
-from . import check, entero_requerido, explicar, fecha_arg
+from . import check, entero_requerido, explicar, fecha_arg, paginar
 
 bp = Blueprint("bancos", __name__, url_prefix="/bancos")
 
@@ -51,7 +53,7 @@ def conciliacion():
     q = s.query(MovimientoBanco).filter_by(banco_id=banco.id)
     if estado != "todos":
         q = q.filter(MovimientoBanco.estado == estado)
-    movs = q.order_by(MovimientoBanco.fecha.desc(), MovimientoBanco.id.desc()).limit(300).all()
+    movs, pagina, paginas = paginar(q.order_by(MovimientoBanco.fecha.desc(), MovimientoBanco.id.desc()))
     usados = bancos._ya_conciliados(s)
     sugerencias = {m.id: bancos.candidatos(s, m, usados=usados) for m in movs if m.estado == "pendiente"}
     categorias = {m.id: bancos.sugerir_categoria_bancaria(m.descripcion) for m in movs if m.estado == "pendiente"}
@@ -59,7 +61,7 @@ def conciliacion():
     pendientes = s.query(MovimientoBanco).filter_by(banco_id=banco.id, estado="pendiente").count()
     return render_template(
         "bancos/conciliacion.html", banco=banco, movs=movs, sugerencias=sugerencias, categorias_sug=categorias,
-        estado=estado, bancos=_bancos_para_elegir(s, banco.id), pendientes=pendientes,
+        estado=estado, bancos=_bancos_para_elegir(s, banco.id), pendientes=pendientes, pagina=pagina, paginas=paginas,
         saldo_libros=reportes.saldo_cuenta(s, banco.cuenta, corte), saldo_extracto=bancos.saldo_extracto(s, banco.id, corte),
         corte=corte, categorias=s.query(CategoriaGasto).filter_by(activa=True).order_by(CategoriaGasto.nombre).all(),
         clientes=s.query(Tercero).filter_by(es_cliente=True).order_by(Tercero.nombre).all(),
@@ -186,8 +188,10 @@ def facturas_proveedor():
     """Facturas a crédito abiertas de un proveedor (para el selector de pagos)."""
     s = Session()
     pid = request.args.get("proveedor", type=int)
-    res = [{"id": g.id, "texto": f"{g.numero or ''} {g.fecha:%d/%m} saldo {g.saldo:,.0f}"}
-           for g in s.query(Gasto).filter_by(proveedor_id=pid, forma_pago="credito") if g.saldo > 0]
+    from ..formato import pesos
+    res = [{"id": g.id, "texto": f"{g.numero or ''} {g.fecha:%d/%m} saldo {pesos(g.saldo)}"}
+           for g in s.query(Gasto).options(selectinload(Gasto.pagos), selectinload(Gasto.notas_credito))
+           .filter_by(proveedor_id=pid, forma_pago="credito") if g.saldo > 0]
     return {"facturas": res}
 
 

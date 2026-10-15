@@ -186,7 +186,7 @@ def importar_extracto(session, banco: Banco, nombre: str, contenido: bytes, mapa
 # ------------------------------------------------------------------ conciliación
 
 def _ya_conciliados(session):
-    return {(m.origen_tipo, m.origen_id) for m in session.query(MovimientoBanco).filter_by(estado="conciliado")}
+    return set(session.query(MovimientoBanco.origen_tipo, MovimientoBanco.origen_id).filter_by(estado="conciliado"))
 
 
 def candidatos(session, mov: MovimientoBanco, dias=5, usados=None):

@@ -6,6 +6,9 @@ reportar, la versión vigente de cada formato y las cuantías menores de la reso
 from collections import defaultdict
 from datetime import date
 
+from sqlalchemy.orm import joinedload, selectinload
+
+
 from . import cartera
 from .models import CERO, DocumentoVenta, Gasto, OtroIngreso, Tercero
 
@@ -38,7 +41,8 @@ def faltantes(t: Tercero):
 
 def generar(session, anio):
     inicio, fin = date(anio, 1, 1), date(anio, 12, 31)
-    gastos = session.query(Gasto).filter(Gasto.fecha.between(inicio, fin), Gasto.proveedor_id.isnot(None)).all()
+    gastos = (session.query(Gasto).options(joinedload(Gasto.categoria))
+              .filter(Gasto.fecha.between(inicio, fin), Gasto.proveedor_id.isnot(None)).all())
     ventas = (session.query(DocumentoVenta)
               .filter(DocumentoVenta.fecha.between(inicio, fin), DocumentoVenta.anulada.is_(False)).all())
 
@@ -75,8 +79,8 @@ def generar(session, anio):
         f1008[doc.cliente_id] += saldo
 
     f1009 = defaultdict(lambda: CERO)
-    for g in session.query(Gasto).filter(Gasto.fecha <= fin, Gasto.forma_pago == "credito",
-                                         Gasto.proveedor_id.isnot(None)):
+    for g in session.query(Gasto).options(selectinload(Gasto.pagos)).filter(Gasto.fecha <= fin, Gasto.forma_pago == "credito",
+                                                                            Gasto.proveedor_id.isnot(None)):
         pagado = sum((p.valor for p in g.pagos if p.fecha <= fin), CERO)
         saldo = g.total - pagado if g.tipo_soporte != "NC" else -g.total
         if saldo:

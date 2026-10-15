@@ -25,7 +25,7 @@
     <tr><th>Fecha</th><th>Proveedor</th><th>Número</th><th>Categoría</th><th class="n">Base</th><th class="n">IVA</th>
       <th class="n">IVA descontable</th><th class="n">Total</th><th class="n">Por pagar</th><th></th></tr>
     {% for g in gastos %}
-    <tr><td>{{ g.fecha|fecha }}</td><td>{{ g.proveedor.nombre if g.proveedor else '—' }}</td>
+    <tr><td>{{ g.fecha|fecha }}</td><td>{{ g.proveedor.nombre if g.proveedor else '—' }}{% if g.descripcion %}<div class="nota">{{ g.descripcion[:70] }}</div>{% endif %}</td>
       <td><a href="/gastos/{{ g.id }}">{{ g.numero or tipos[g.tipo_soporte] }}</a>{% if g.tipo_soporte == 'NC' %} <span class="etiqueta Nota">NC</span>{% endif %}</td>
       <td>{{ g.categoria.nombre }}{% if not g.revisado %} <span class="etiqueta adv">revisar</span>{% endif %}</td>
       <td class="n">{{ (g.signo * g.subtotal)|pesos }}</td><td class="n">{{ (g.signo * g.iva)|pesos }}</td>
