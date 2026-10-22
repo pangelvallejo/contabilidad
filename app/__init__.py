@@ -15,7 +15,24 @@ warnings.filterwarnings("ignore", message=".*Decimal objects natively.*")
 # Si Windows bloquea Pillow, fpdf2 avisa que no podrá insertar imágenes: el programa no las usa.
 warnings.filterwarnings("ignore", message="Pillow could not be imported.*")
 
-VERSION = "1.4.4"
+VERSION = "1.4.5"
+
+
+def _reparaciones_al_actualizar(session):
+    """Correcciones de datos que una versión nueva aplica una sola vez sobre bases de versiones anteriores."""
+    from . import contab
+    if contab.config(session, "reparacion_reteiva") == "si":
+        return
+    try:
+        reparados = contab.reparar_reteiva_duplicada(session)
+        contab.set_config(session, "reparacion_reteiva", "si")
+        session.commit()
+        if reparados:
+            print(f"[actualización] reteIVA reclasificada una sola vez en {len(reparados)} bimestre(s): "
+                  + ", ".join(f"{a}-{b}" for a, b in reparados))
+    except Exception as e:  # noqa: BLE001 — nunca impide arrancar
+        session.rollback()
+        print(f"[actualización] no se pudo revisar la reteIVA de los pagos 2593: {e}")
 
 
 def create_app(datos_dir=None, respaldo_automatico=False):
@@ -33,6 +50,7 @@ def create_app(datos_dir=None, respaldo_automatico=False):
     sincronizar_esquema()
     from .seed import sembrar
     sembrar(Session())
+    _reparaciones_al_actualizar(Session())
     Session.remove()
 
     app = Flask(__name__)

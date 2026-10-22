@@ -116,6 +116,7 @@ def nueva():
                 doc.reteiva_aplica = True
                 doc.reteiva_valor = contab.redondear(iva * contab.d(TARIFA_RETEIVA), "1")
                 doc.reteiva_fecha = doc.fecha
+            contab.verificar_periodo(s, doc.fecha)  # también para documentos en cero, que no generan asiento
             s.add(doc)
             s.flush()
             contab.contabilizar_venta(s, doc)
@@ -261,6 +262,9 @@ def _abiertos_para(s, cliente_id, rec=None):
 
 
 def _guardar_recaudo(s, rec, cliente_id):
+    # Cambiar a qué facturas se aplica el dinero o el indicador de medio electrónico no altera el asiento, pero sí la
+    # cartera y el descuento del F260 del periodo: cuenta como modificación del periodo bloqueado.
+    antes = ({(a.documento_id, a.valor) for a in rec.aplicaciones}, rec.medio_electronico, rec.fecha) if rec.id else None
     rec.fecha = fecha_arg("fecha", date.today())
     if not cliente_id or s.get(Tercero, cliente_id) is None:
         raise ValueError("Seleccione el cliente.")
@@ -286,6 +290,11 @@ def _guardar_recaudo(s, rec, cliente_id):
     cartera.registrar_aplicaciones(rec, valores)
     if rec.aplicado > rec.valor:
         raise ValueError("Lo aplicado a facturas supera el valor recibido.")
+    if antes is not None:
+        ahora = ({(a.documento.id if a.documento is not None else a.documento_id, a.valor) for a in rec.aplicaciones},
+                 rec.medio_electronico, rec.fecha)
+        if ahora != antes:
+            contab.verificar_periodo(s, antes[2])
     s.flush()
     contab.contabilizar_recaudo(s, rec)
     s.commit()

@@ -603,3 +603,113 @@ def test_patrimonio_muestra_resultado_sin_cerrar_aunque_haya_cierres_antiguos(s)
     assert any("sin cerrar" in f["cuenta"] for f in filas)
     from app import reportes
     assert total["inicial"] == reportes.balance_general(s, date(2025, 12, 31))["total_patrimonio"] == D("3000000")
+
+
+# ------------------------------------------------------------------ revisión adversarial de la 1.4.3 (1.4.5)
+
+def test_recaudo_en_periodo_bloqueado_no_cambia_de_factura(cliente_web, s):
+    c = _cliente(s)
+    f1 = _factura(s, c, "FV-1", D("1000000"), date(2026, 3, 1))
+    f2 = _factura(s, c, "FV-2", D("1000000"), date(2026, 3, 2))
+    banco = s.query(Banco).first()
+    rec = Recaudo(fecha=date(2026, 3, 10), cliente_id=c.id, banco_id=banco.id, valor=D("1190000"))
+    s.add(rec)
+    from app import cartera
+    cartera.registrar_aplicaciones(rec, {f1: D("1190000")})
+    s.flush()
+    contab.contabilizar_recaudo(s, rec)
+    s.commit()
+    contab.set_config(s, "periodo_bloqueado_hasta", "2026-04-30")
+    s.commit()
+    rid, cid, bid, f1id, f2id = rec.id, c.id, banco.id, f1.id, f2.id
+    datos = {"guardar": "1", "fecha": "2026-03-10", "cliente_id": cid, "banco_id": bid, "valor": "1.190.000",
+             f"aplicar_{f1id}": "0", f"aplicar_{f2id}": "1.190.000"}
+    r = cliente_web.post(f"/recaudos/{rid}", data=datos, follow_redirects=True)
+    assert "bloqueado" in r.get_data(as_text=True)
+    s.expire_all()
+    assert {a.documento_id for a in s.get(Recaudo, rid).aplicaciones} == {f1id}
+    # marcar medio electrónico en un recaudo del periodo declarado también se rechaza (descuento del F260)
+    datos = {"guardar": "1", "fecha": "2026-03-10", "cliente_id": cid, "banco_id": bid, "valor": "1.190.000",
+             f"aplicar_{f1id}": "1.190.000", "medio_electronico": "on"}
+    r = cliente_web.post(f"/recaudos/{rid}", data=datos, follow_redirects=True)
+    assert "bloqueado" in r.get_data(as_text=True) and not s.get(Recaudo, rid).medio_electronico
+    # solo la referencia sí se puede cambiar
+    datos = {"guardar": "1", "fecha": "2026-03-10", "cliente_id": cid, "banco_id": bid, "valor": "1.190.000",
+             f"aplicar_{f1id}": "1.190.000", "referencia": "Transferencia 77"}
+    r = cliente_web.post(f"/recaudos/{rid}", data=datos, follow_redirects=True)
+    assert "bloqueado" not in r.get_data(as_text=True) and s.get(Recaudo, rid).referencia == "Transferencia 77"
+
+
+def test_documentos_en_cero_respetan_el_periodo_bloqueado(cliente_web, s):
+    c = _cliente(s)
+    s.commit()
+    contab.set_config(s, "periodo_bloqueado_hasta", "2026-04-30")
+    s.commit()
+    r = cliente_web.post("/ventas/nueva", data={"numero": "FV-0", "fecha": "2026-03-05", "cliente_id": c.id, "base": "0",
+                                                "iva": "0"}, follow_redirects=True)
+    assert "bloqueado" in r.get_data(as_text=True) and s.query(DocumentoVenta).count() == 0
+    cat = s.query(CategoriaGasto).filter(CategoriaGasto.cuenta.like("51%")).first()
+    r = cliente_web.post("/gastos/nuevo", data={"tipo_soporte": "RE", "fecha": "2026-03-05", "categoria_id": cat.id,
+                                                "subtotal": "0", "iva": "0", "forma_pago": "contado", "cuenta_pago": "110505"},
+                         follow_redirects=True)
+    assert "bloqueado" in r.get_data(as_text=True) and s.query(Gasto).count() == 0
+
+
+def test_tope_de_valores_cubre_decimales_y_centavos():
+    with pytest.raises(ValueError, match="demasiado grande"):
+        contab.d(D("1e14"))
+    with pytest.raises(ValueError):
+        contab.d("10.000.000.000.000")
+    assert contab.d("9.999.999.999.999,99") == D("9999999999999.99")
+
+
+def test_eliminar_pago_complementario_no_reescribe_el_principal(cliente_web, s):
+    _escenario(s)
+    banco = s.query(Banco).first()
+    p1 = PagoImpuesto(formulario="2593", anio=2026, bimestre=5, fecha=date(2026, 11, 19), valor_simple=D("885000"),
+                      valor_iva=D("2328000"), banco=banco)
+    s.add(p1)
+    s.flush()
+    contab.contabilizar_pago_impuesto(s, p1)
+    p2 = PagoImpuesto(formulario="2593", anio=2026, bimestre=5, fecha=date(2026, 11, 25), valor_simple=D("10000"),
+                      valor_iva=D("0"), banco=banco)
+    s.add(p2)
+    s.flush()
+    contab.contabilizar_pago_impuesto(s, p2)
+    s.commit()
+    contab.set_config(s, "periodo_bloqueado_hasta", "")
+    s.commit()
+    a1 = s.query(Asiento).filter_by(origen=f"impuesto:{p1.id}").one()
+    antes = (a1.id, [(m.cuenta, m.debito, m.credito) for m in a1.lineas])
+    p2id = p2.id
+    r = cliente_web.post(f"/impuestos/pago/{p2id}/eliminar", follow_redirects=True)
+    assert "Pago eliminado" in r.get_data(as_text=True)
+    s.expire_all()
+    a1 = s.query(Asiento).filter_by(origen=f"impuesto:{antes[0] and p1.id}").one()
+    assert (a1.id, [(m.cuenta, m.debito, m.credito) for m in a1.lineas]) == antes  # intacto
+
+
+def test_reparacion_de_reteiva_duplicada_de_versiones_anteriores(s):
+    from app.models import Movimiento
+    _escenario(s)
+    banco = s.query(Banco).first()
+    pagos = []
+    for fecha, simple in ((date(2026, 11, 19), D("885000")), (date(2026, 11, 25), D("10000"))):
+        p = PagoImpuesto(formulario="2593", anio=2026, bimestre=5, fecha=fecha, valor_simple=simple, valor_iva=D("0"),
+                         banco=banco)
+        s.add(p)
+        s.flush()
+        contab.contabilizar_pago_impuesto(s, p)
+        pagos.append(p)
+    # Simula la base de la 1.4.2: el segundo pago también reclasificó la reteIVA
+    a2 = s.query(Asiento).filter_by(origen=f"impuesto:{pagos[1].id}").one()
+    a2.lineas.append(Movimiento(cuenta=contab.CTA_IVA_GENERADO, debito=D("142500"), credito=0))
+    a2.lineas.append(Movimiento(cuenta=contab.CTA_RETEIVA, debito=0, credito=D("142500")))
+    s.commit()
+    from app.reportes import saldo_cuenta
+    assert saldo_cuenta(s, contab.CTA_RETEIVA) == D("-142500")
+    assert contab.reparar_reteiva_duplicada(s) == [(2026, 5)]
+    s.commit()
+    assert saldo_cuenta(s, contab.CTA_RETEIVA) == 0
+    assert contab.reparar_reteiva_duplicada(s) == []  # ya no hay nada que reparar
+    cuadra(s)

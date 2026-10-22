@@ -165,6 +165,7 @@ def nuevo():
         try:
             g = Gasto(origen="manual")
             _llenar_gasto(s, g)
+            contab.verificar_periodo(s, g.fecha)  # también para gastos en cero, que no generan asiento
             s.add(g)
             s.flush()
             s.refresh(g)
