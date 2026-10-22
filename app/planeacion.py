@@ -124,10 +124,8 @@ def activos(session):
 
 
 def costo_activo(session, g):
-    """Costo depreciable: valor sin IVA descontable, menos notas crédito del mismo proveedor y categoría."""
-    nc = sum((n.total - n.iva_desc_valor for n in session.query(Gasto)
-              .filter(Gasto.tipo_soporte == "NC", Gasto.proveedor_id == g.proveedor_id,
-                      Gasto.categoria_id == g.categoria_id, Gasto.fecha >= g.fecha)), CERO)
+    """Costo depreciable: valor sin IVA descontable, menos las notas crédito que afectan a esa compra."""
+    nc = sum((n.total - n.iva_desc_valor for n in g.notas_credito), CERO)
     return g.total - g.iva_desc_valor - nc
 
 

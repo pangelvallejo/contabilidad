@@ -106,6 +106,15 @@ def eliminar_pago(id):
         s.flush()
         if formulario == "2593" and bimestre:
             contab.recontabilizar_pagos_bimestre(s, anio, bimestre)  # otro pago del bimestre asume la reteIVA
+            if not s.query(PagoImpuesto).filter_by(formulario="2593", anio=anio, bimestre=bimestre).first():
+                v = (s.query(Vencimiento).filter(Vencimiento.obligacion.like("Recibo 2593%"),
+                                                 Vencimiento.periodo.like(f"Bimestre {bimestre} %{anio}")).first())
+                if v:
+                    v.cumplido = False  # vuelve a aparecer como pendiente en el calendario
+                tope = contab.periodo_bloqueado_hasta(s)
+                if tope and tope == impuestos.rango_bimestre(anio, bimestre)[1]:
+                    flash(f"La contabilidad sigue bloqueada hasta el {tope:%d/%m/%Y}; si el bimestre no está declarado, "
+                          "cambie la fecha de bloqueo en Configuración.", "info")
         s.commit()
         flash("Pago eliminado.", "ok")
     except Exception as e:  # noqa: BLE001

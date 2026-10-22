@@ -94,11 +94,16 @@ def periodo_bloqueado_hasta(session):
 
 
 def verificar_periodo(session, fecha, forzar=False):
+    if forzar or not fecha:
+        return
     tope = periodo_bloqueado_hasta(session)
-    if not forzar and tope and fecha and fecha <= tope:
+    if tope and fecha <= tope:
         raise ErrorContable(
             f"El periodo hasta el {tope:%d/%m/%Y} está bloqueado porque ya se declaró. "
             "Para corregirlo cambie la fecha de bloqueo en Configuración.")
+    if session.query(Asiento.id).filter_by(origen=f"cierre:{fecha.year}").first() is not None:
+        raise ErrorContable(f"El año {fecha.year} ya está cerrado: su asiento de cierre quedaría incompleto. "
+                            "Reábralo en Contabilidad → Cierre del ejercicio, registre el movimiento y vuelva a cerrarlo.")
 
 
 def _siguiente_numero(session, tipo):
