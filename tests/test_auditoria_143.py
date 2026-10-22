@@ -520,3 +520,86 @@ def test_retainer_invalido_avisa_y_formatos_en_pesos(cliente_web, s):
     assert "debe ser un número entero" in r.get_data(as_text=True)
     from app import bitacora
     assert bitacora._texto(D("1000000.5")) == "1.000.000,50"
+
+
+# ------------------------------------------------------------------ verificación de la auditoría (1.4.4)
+
+def test_nc_de_proveedor_solo_rebaja_el_activo_que_afecta(s):
+    prov = Tercero(nit="800111222", nombre="Proveedor", es_proveedor=True)
+    cat = CategoriaGasto(nombre="Computadores", cuenta="152805", concepto_exogena="5016")
+    s.add_all([prov, cat])
+    s.flush()
+    a = _gasto(s, cat, D("2380000"), date(2026, 1, 10), forma="credito", proveedor=prov)
+    b = _gasto(s, cat, D("2380000"), date(2026, 1, 10), forma="credito", proveedor=prov)
+    nc = Gasto(tipo_soporte="NC", numero="NC-A", fecha=date(2026, 1, 20), categoria=cat, proveedor=prov, subtotal=D("595000"),
+               iva=0, iva_descontable=False, total=D("595000"), forma_pago="credito", referencia=a)
+    s.add(nc)
+    s.flush()
+    contab.contabilizar_gasto(s, nc)
+    s.commit()
+    assert planeacion.costo_activo(s, a) == D("1785000") and planeacion.costo_activo(s, b) == D("2380000")
+
+
+def test_anio_cerrado_no_admite_movimientos(s):
+    c = _cliente(s)
+    _factura(s, c, "FV-1", D("1000000"), date(2025, 5, 1))
+    s.commit()
+    planeacion.cerrar_anio(s, 2025)
+    s.commit()
+    contab.set_config(s, "periodo_bloqueado_hasta", "")  # el usuario quita el bloqueo "para corregir"
+    s.commit()
+    with pytest.raises(contab.ErrorContable, match="ya está cerrado"):
+        _factura(s, c, "FV-2", D("500000"), date(2025, 12, 28))
+    s.rollback()
+    from app import reportes
+    assert reportes.balance_general(s, date(2025, 12, 31))["cuadre"] == 0
+    planeacion.reabrir_anio(s, 2025)
+    contab.set_config(s, "periodo_bloqueado_hasta", "")
+    s.commit()
+    _factura(s, c, "FV-2", D("500000"), date(2025, 12, 28))  # reabierto: sí se puede
+    s.commit()
+
+
+def test_eliminar_unico_pago_2593_libera_el_calendario(cliente_web, s):
+    from app.models import Vencimiento
+    banco = s.query(Banco).first()
+    r = cliente_web.post("/impuestos/pago", data={"formulario": "2593", "anio": "2026", "bimestre": "1", "fecha": "2026-03-10",
+                                                  "valor_simple": "100.000", "valor_iva": "0", "banco_id": banco.id},
+                         follow_redirects=True)
+    assert "Pago registrado" in r.get_data(as_text=True)
+    v = s.query(Vencimiento).filter(Vencimiento.periodo.like("Bimestre 1 %2026"), Vencimiento.obligacion.like("Recibo 2593%")).first()
+    vid = v.id if v is not None else None
+    assert v is None or v.cumplido
+    pid = s.query(PagoImpuesto).one().id
+    r = cliente_web.post(f"/impuestos/pago/{pid}/eliminar", follow_redirects=True)
+    html = r.get_data(as_text=True)
+    assert "Pago eliminado" in html and "sigue bloqueada" in html
+    s.expire_all()
+    if vid is not None:
+        assert not s.get(Vencimiento, vid).cumplido
+
+
+def test_extracto_con_columna_de_naturaleza():
+    filas = bancos.leer_tabla("e.csv", "Fecha;Descripcion;Valor;Naturaleza\n05/03/2026;PAGO ARRIENDO;2.000.000;D\n06/03/2026;CONSIGNACION;500.000;C\n".encode())
+    enc, mapa = bancos.detectar_columnas(filas)
+    assert "naturaleza" in mapa
+    lineas, _ = bancos.extraer(filas, mapa, enc)
+    assert [l.valor for l in lineas] == [D("-2000000"), D("500000")]
+    filas = bancos.leer_tabla("e.csv", "Fecha;Descripcion;Valor;Tipo\n05/03/2026;PAGO;100;Débito\n06/03/2026;ABONO;100;Crédito\n".encode())
+    enc, mapa = bancos.detectar_columnas(filas)
+    assert [l.valor for l in bancos.extraer(filas, mapa, enc)[0]] == [D("-100"), D("100")]
+
+
+def test_patrimonio_muestra_resultado_sin_cerrar_aunque_haya_cierres_antiguos(s):
+    c = _cliente(s)
+    _factura(s, c, "FV-1", D("1000000"), date(2024, 5, 1))
+    s.commit()
+    planeacion.cerrar_anio(s, 2024)
+    s.commit()
+    contab.set_config(s, "periodo_bloqueado_hasta", "2024-12-31")
+    _factura(s, c, "FV-2", D("2000000"), date(2025, 5, 1))  # 2025 sin cerrar
+    s.commit()
+    filas, total = informes.cambios_patrimonio(s, 2026)
+    assert any("sin cerrar" in f["cuenta"] for f in filas)
+    from app import reportes
+    assert total["inicial"] == reportes.balance_general(s, date(2025, 12, 31))["total_patrimonio"] == D("3000000")

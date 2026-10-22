@@ -124,8 +124,10 @@ def cambios_patrimonio(session, anio: int):
         if inicial or aumentos or disminuciones:
             filas.append({"cuenta": f"{c.codigo} {c.nombre}", "inicial": inicial, "aumentos": aumentos,
                           "disminuciones": disminuciones, "final": inicial + aumentos - disminuciones})
+    # resultado_acumulado solo contiene lo no cerrado (el asiento CI deja 4/5/6 en cero), así que no se duplica
+    # con el saldo de 3705/3710 que viene de los años ya cerrados.
     anteriores = reportes.resultado_acumulado(session, _dia_anterior(desde))
-    if anteriores and not any(f["cuenta"].startswith("3705") or f["cuenta"].startswith("3710") for f in filas):
+    if anteriores:
         filas.append({"cuenta": "Resultados de ejercicios anteriores (sin cerrar)", "inicial": anteriores,
                       "aumentos": CERO, "disminuciones": CERO, "final": anteriores})
     er = reportes.estado_resultados(session, desde, hasta)

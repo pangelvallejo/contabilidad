@@ -27,7 +27,10 @@ NOMBRES = {
     "credito": ("credito", "creditos", "consignacion", "consignaciones", "deposito", "entrada", "abono", "ingreso",
                 "credit"),
     "referencia": ("referencia", "documento", "no. documento", "comprobante", "ref", "referencia 2"),
+    "naturaleza": ("naturaleza", "tipo", "tipo movimiento", "tipo de movimiento", "d c", "dc", "signo", "db cr",
+                   "debito credito", "tipo transaccion"),
 }
+SALIDAS = ("d", "db", "dr", "debito", "debit", "retiro", "salida", "egreso", "cargo", "pago", "-")
 
 
 def _norm(t):
@@ -145,6 +148,9 @@ def extraer(filas, mapa, fila_encabezado):
             continue
         if "valor" in mapa:
             valor = _numero(celda("valor"))
+            nat = _norm(celda("naturaleza")) if "naturaleza" in mapa else ""
+            if valor > 0 and nat and (nat in SALIDAS or nat.startswith(("debit", "retiro", "salida", "egreso", "cargo"))):
+                valor = -valor  # el banco trae el valor sin signo y el sentido en otra columna
         else:
             valor = _numero(celda("credito")) - abs(_numero(celda("debito")))
         if valor == 0:
