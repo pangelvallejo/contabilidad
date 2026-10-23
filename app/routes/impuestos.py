@@ -99,13 +99,15 @@ def eliminar_pago(id):
     s = Session()
     p = s.get(PagoImpuesto, id) or abort(404)
     try:
+        llevaba_reteiva = p.formulario == "2593" and bool(p.bimestre) and contab._lleva_reteiva(s, p)
         bancos.liberar(s, "impuesto", p.id)
         contab.borrar_asientos(s, f"impuesto:{p.id}")
         anio, bimestre, formulario = p.anio, p.bimestre, p.formulario
         s.delete(p)
         s.flush()
         if formulario == "2593" and bimestre:
-            contab.recontabilizar_pagos_bimestre(s, anio, bimestre)  # otro pago del bimestre asume la reteIVA
+            if llevaba_reteiva:
+                contab.recontabilizar_pagos_bimestre(s, anio, bimestre)  # el siguiente pago asume la reteIVA
             if not s.query(PagoImpuesto).filter_by(formulario="2593", anio=anio, bimestre=bimestre).first():
                 v = (s.query(Vencimiento).filter(Vencimiento.obligacion.like("Recibo 2593%"),
                                                  Vencimiento.periodo.like(f"Bimestre {bimestre} %{anio}")).first())

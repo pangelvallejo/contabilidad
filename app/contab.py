@@ -10,7 +10,7 @@ from sqlalchemy import func
 
 from .models import CERO, Asiento, Config, Movimiento, PagoImpuesto
 
-TOPE_VALOR = Decimal("1e15")  # 15 dígitos: lo que SQLite y Numeric(18,2) conservan sin alterar
+TOPE_VALOR = Decimal("1e13")  # SQLite guarda los montos como REAL de 64 bits: por debajo de 10 billones conserva los centavos
 
 # Cuentas usadas por los asientos automáticos
 CTA_CLIENTES = "130505"
@@ -51,6 +51,8 @@ def d(valor) -> Decimal:
     if valor is None or valor == "":
         return CERO
     if isinstance(valor, Decimal):
+        if abs(valor) >= TOPE_VALOR:
+            raise ValueError(f"'{valor}' es un valor demasiado grande (el máximo es 9.999.999.999.999).")
         return valor
     if isinstance(valor, str):
         valor = valor.replace("$", "").replace(" ", "").strip() or "0"
@@ -63,7 +65,7 @@ def d(valor) -> Decimal:
     if not res.is_finite():
         raise ValueError(f"'{valor}' no es un número.")
     if abs(res) >= TOPE_VALOR:
-        raise ValueError(f"'{valor}' es un valor demasiado grande (el máximo es 999.999.999.999.999).")
+        raise ValueError(f"'{valor}' es un valor demasiado grande (el máximo es 9.999.999.999.999).")
     return res
 
 
@@ -255,13 +257,40 @@ def _lleva_reteiva(session, p):
 
 
 def recontabilizar_pagos_bimestre(session, anio, bimestre, excepto=None):
-    """Tras eliminar un pago 2593, el siguiente del mismo bimestre asume la reclasificación de la reteIVA."""
-    for otro in session.query(PagoImpuesto).filter_by(formulario="2593", anio=anio, bimestre=bimestre):
-        if otro.id != excepto:
-            contabilizar_pago_impuesto(session, otro)
+    """Tras eliminar el pago 2593 que llevaba la reteIVA, el siguiente del mismo bimestre la asume.
+    Solo se toca ese pago: los demás asientos del bimestre quedan como estaban."""
+    primero = (session.query(PagoImpuesto).filter_by(formulario="2593", anio=anio, bimestre=bimestre)
+               .filter(PagoImpuesto.id != (excepto or 0)).order_by(PagoImpuesto.id).first())
+    if primero is None:
+        return
+    try:
+        contabilizar_pago_impuesto(session, primero)
+    except ErrorContable as e:
+        raise ErrorContable(f"La reteIVA del bimestre pasaría al pago del {primero.fecha:%d/%m/%Y}, que está en un periodo "
+                            f"bloqueado ({e}).") from e
 
 
-def contabilizar_pago_impuesto(session, p):
+def reparar_reteiva_duplicada(session):
+    """Bases creadas con versiones anteriores a la 1.4.3: si un bimestre tenía varios pagos 2593, cada uno había
+    reclasificado la reteIVA. Deja la reclasificación solo en el primero. Devuelve los bimestres reparados."""
+    reparados = []
+    pagos = session.query(PagoImpuesto).filter_by(formulario="2593").filter(PagoImpuesto.bimestre.isnot(None)).all()
+    grupos = {}
+    for p in pagos:
+        grupos.setdefault((p.anio, p.bimestre), []).append(p)
+    for clave, lista in grupos.items():
+        if len(lista) < 2:
+            continue
+        con_rete = [p for p in lista if session.query(Movimiento.id).join(Asiento)
+                    .filter(Asiento.origen == f"impuesto:{p.id}", Movimiento.cuenta == CTA_RETEIVA).first()]
+        if len(con_rete) > 1:
+            for p in sorted(lista, key=lambda x: x.id):
+                contabilizar_pago_impuesto(session, p, forzar=True)
+            reparados.append(clave)
+    return reparados
+
+
+def contabilizar_pago_impuesto(session, p, forzar=False):
     periodo = f"bimestre {p.bimestre} de {p.anio}" if p.bimestre else str(p.anio)
     desc = f"Formulario {p.formulario} {periodo}"
     if p.formulario == "2593":
@@ -281,4 +310,4 @@ def contabilizar_pago_impuesto(session, p):
         cta = CTA_SIMPLE_POR_PAGAR if p.formulario == "260" else CTA_IVA_PAGADO_2593
         lineas = [(cta, p.total, 0, None, desc), (p.banco.cuenta, 0, p.total, None, desc)]
     guardar_asiento(session, origen=f"impuesto:{p.id}", tipo="IM", fecha=p.fecha, descripcion=desc,
-                    tercero_id=None, lineas=lineas)
+                    tercero_id=None, lineas=lineas, forzar=forzar)
