@@ -249,25 +249,39 @@ def contabilizar_pago_gasto(session, p):
 
 # ------------------------------------------------------------------ impuestos
 
-def _lleva_reteiva(session, p):
-    """La reclasificación de la reteIVA del bimestre va en el primer pago 2593 registrado para ese bimestre."""
-    primero = (session.query(PagoImpuesto).filter_by(formulario="2593", anio=p.anio, bimestre=p.bimestre)
-               .order_by(PagoImpuesto.id).first())
-    return primero is None or primero.id == p.id
+def pago_lleva_reteiva(session, p) -> bool:
+    """¿El asiento de este pago 2593 reclasifica reteIVA (tiene línea en 135517)?"""
+    return (session.query(Movimiento.id).join(Asiento)
+            .filter(Asiento.origen == f"impuesto:{p.id}", Movimiento.cuenta == CTA_RETEIVA).first() is not None)
+
+
+_lleva_reteiva = pago_lleva_reteiva  # nombre anterior
+
+
+def _reteiva_reclasificada_por_otros(session, p):
+    """ReteIVA del bimestre que ya reclasificaron los demás pagos 2593 (créditos netos a 135517)."""
+    otros = [f"impuesto:{oid}" for (oid,) in session.query(PagoImpuesto.id)
+             .filter_by(formulario="2593", anio=p.anio, bimestre=p.bimestre).filter(PagoImpuesto.id != p.id)]
+    if not otros:
+        return CERO
+    total = (session.query(func.coalesce(func.sum(Movimiento.credito - Movimiento.debito), 0)).join(Asiento)
+             .filter(Asiento.origen.in_(otros), Movimiento.cuenta == CTA_RETEIVA).scalar())
+    return redondear(total or 0)
 
 
 def recontabilizar_pagos_bimestre(session, anio, bimestre, excepto=None):
-    """Tras eliminar el pago 2593 que llevaba la reteIVA, el siguiente del mismo bimestre la asume.
-    Solo se toca ese pago: los demás asientos del bimestre quedan como estaban."""
-    primero = (session.query(PagoImpuesto).filter_by(formulario="2593", anio=anio, bimestre=bimestre)
-               .filter(PagoImpuesto.id != (excepto or 0)).order_by(PagoImpuesto.id).first())
-    if primero is None:
+    """Tras eliminar un pago 2593 que llevaba reteIVA: si ningún otro pago del bimestre la lleva, el primero que
+    queda la asume. Si otro ya la lleva, no se toca ningún asiento (lo que falte lo aplicará el próximo pago)."""
+    restantes = (session.query(PagoImpuesto).filter_by(formulario="2593", anio=anio, bimestre=bimestre)
+                 .filter(PagoImpuesto.id != (excepto or 0)).order_by(PagoImpuesto.id).all())
+    if not restantes or any(pago_lleva_reteiva(session, p) for p in restantes):
         return
+    primero = restantes[0]
     try:
         contabilizar_pago_impuesto(session, primero)
     except ErrorContable as e:
-        raise ErrorContable(f"La reteIVA del bimestre pasaría al pago del {primero.fecha:%d/%m/%Y}, que está en un periodo "
-                            f"bloqueado ({e}).") from e
+        raise ErrorContable(f"La reteIVA del bimestre pasaría al pago del {primero.fecha:%d/%m/%Y}, que no se puede "
+                            f"modificar: {e}") from e
 
 
 def reparar_reteiva_duplicada(session):
@@ -284,7 +298,8 @@ def reparar_reteiva_duplicada(session):
         con_rete = [p for p in lista if session.query(Movimiento.id).join(Asiento)
                     .filter(Asiento.origen == f"impuesto:{p.id}", Movimiento.cuenta == CTA_RETEIVA).first()]
         if len(con_rete) > 1:
-            for p in sorted(lista, key=lambda x: x.id):
+            # Del último al primero: cada uno descuenta lo que los demás ya llevan, así queda todo en el primero.
+            for p in sorted(lista, key=lambda x: -x.id):
                 contabilizar_pago_impuesto(session, p, forzar=True)
             reparados.append(clave)
     return reparados
@@ -300,12 +315,15 @@ def contabilizar_pago_impuesto(session, p, forzar=False):
         lineas = [(cta_simple, p.valor_simple, 0, None, "Anticipo SIMPLE"),
                   (CTA_IVA_PAGADO_2593, p.valor_iva, 0, None, "IVA bimestral"),
                   (p.banco.cuenta, 0, p.total, None, desc)]
-        if p.bimestre and _lleva_reteiva(session, p):
-            # La reteIVA que practicaron los clientes en el bimestre se aplica contra el IVA generado
-            # (una sola vez por bimestre: un pago complementario o de corrección no la repite).
+        if p.bimestre:
+            # La reteIVA que practicaron los clientes en el bimestre se aplica contra el IVA generado. Cada pago
+            # reclasifica solo lo que los demás pagos del bimestre no hayan reclasificado: un pago complementario
+            # aplica únicamente la reteIVA que entró después del principal.
             from .impuestos import resumen_iva_bimestre
-            rete = resumen_iva_bimestre(session, p.anio, p.bimestre).reteiva
-            lineas += [(CTA_IVA_GENERADO, rete, 0, None, "ReteIVA aplicada"), (CTA_RETEIVA, 0, rete, None, "ReteIVA aplicada")]
+            rete = resumen_iva_bimestre(session, p.anio, p.bimestre).reteiva - _reteiva_reclasificada_por_otros(session, p)
+            if rete > 0:
+                lineas += [(CTA_IVA_GENERADO, rete, 0, None, "ReteIVA aplicada"),
+                           (CTA_RETEIVA, 0, rete, None, "ReteIVA aplicada")]
     else:  # saldo de declaración anual: 260 cancela SIMPLE por pagar; 300 cancela IVA
         cta = CTA_SIMPLE_POR_PAGAR if p.formulario == "260" else CTA_IVA_PAGADO_2593
         lineas = [(cta, p.total, 0, None, desc), (p.banco.cuenta, 0, p.total, None, desc)]

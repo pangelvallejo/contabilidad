@@ -18,7 +18,7 @@
     <tr class="grupo"><td>(−) Registrado en libros y no en el extracto</td><td class="n">{{ inf.total_en_libros|pesos }}</td></tr>
     {% for a, v in inf.en_libros %}<tr><td style="padding-left:24px">{{ a.fecha|fecha }} <a href="/contabilidad/asiento/{{ a.id }}">{{ a.tipo }}-{{ a.numero }}</a> {{ (a.descripcion or '')[:70] }}</td><td class="n">{{ v|pesos }}</td></tr>{% endfor %}
     <tr class="grupo"><td>(+) En el extracto y pendiente de registrar</td><td class="n">{{ inf.total_pendientes|pesos }}</td></tr>
-    {% for m in inf.pendientes %}<tr><td style="padding-left:24px">{{ m.fecha|fecha }} {{ m.descripcion[:70] }}</td><td class="n">{{ m.valor|pesos }}</td></tr>{% endfor %}
+    {% for m in inf.pendientes %}<tr><td style="padding-left:24px">{{ m.fecha|fecha }} {{ m.descripcion[:70] }}{% if m.registrado_el is defined %} <span class="nota">(registrado en libros el {{ m.registrado_el|fecha }}, después del corte)</span>{% endif %}</td><td class="n">{{ m.valor|pesos }}</td></tr>{% endfor %}
     <tr class="res"><td>Saldo que debe mostrar el extracto</td><td class="n">{{ inf.extracto_esperado|pesos }}</td></tr>
     {% if inf.saldo_extracto is not none %}
     <tr><td>Saldo según el extracto</td><td class="n">{{ inf.saldo_extracto|pesos }}</td></tr>

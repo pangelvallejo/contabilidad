@@ -105,10 +105,13 @@ def nueva():
                 ref = s.get(DocumentoVenta, doc.referencia_id)
                 if ref is None or ref.cliente_id != cliente.id:
                     raise ValueError("La factura afectada debe ser del mismo cliente.")
-                if doc.total > cartera.saldo_documento(s, ref):
+                # La reteIVA es una retención que practica el cliente al pagar, no una rebaja: una NC puede anular la
+                # factura completa aunque el saldo "cobrable" ya la descuente.
+                tope = cartera.saldo_documento(s, ref) + (ref.reteiva_valor if ref.reteiva_aplica else CERO)
+                if doc.total > tope:
                     from ..formato import pesos
                     raise ValueError(f"La nota crédito ({pesos(doc.total)}) supera el saldo pendiente de la factura "
-                                     f"{ref.numero} ({pesos(cartera.saldo_documento(s, ref))}).")
+                                     f"{ref.numero} ({pesos(tope)}).")
                 doc.asunto_id = doc.asunto_id or ref.asunto_id
             doc.lineas.append(LineaVenta(descripcion=request.form.get("descripcion") or "Honorarios", base=base,
                                          iva_pct=contab.d(TARIFA_IVA * 100) if iva else 0, iva=iva))

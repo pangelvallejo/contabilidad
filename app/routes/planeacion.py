@@ -54,6 +54,8 @@ def cierre():
             if request.form.get("accion") == "reabrir":
                 planeacion.reabrir_anio(s, anio)
                 flash(f"Año {anio} reabierto. Recuerde ajustar la fecha de bloqueo en Configuración.", "ok")
+            elif planeacion.anio_cerrado(s, anio):
+                flash(f"El año {anio} ya estaba cerrado; no hay nada que hacer.", "info")
             else:
                 planeacion.causar_depreciaciones(s, date(anio, 12, 31), forzar=True)
                 impuestos.causar_simple_anual(s, anio)

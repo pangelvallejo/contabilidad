@@ -1,4 +1,5 @@
 """Utilidades comunes de las vistas."""
+import re
 from datetime import date
 
 from flask import Response, request
@@ -36,7 +37,7 @@ def anio_arg():
 def dinero(nombre):
     texto = (request.form.get(nombre) or "0").strip()
     try:
-        return redondear(d(texto))  # lo que se guarda son pesos con dos decimales: se valida ya redondeado
+        return d(redondear(d(texto)))  # lo que se guarda son pesos con dos decimales: el tope se aplica ya redondeado
     except Exception as e:  # noqa: BLE001 — Decimal lanza InvalidOperation; d() ValueError (NaN, tope)
         if "demasiado grande" in str(e):
             raise ValueError(str(e)) from e
@@ -57,7 +58,8 @@ def explicar(e: Exception) -> str:
     if "FOREIGN KEY" in texto:
         return "Hace referencia a un registro que ya no existe (cliente, categoría, cuenta o banco)."
     if "UNIQUE" in texto:
-        campo = texto.rsplit(".", 1)[-1].split()[0] if "." in texto else ""
+        m = re.search(r"UNIQUE constraint failed: \w+\.(\w+)", texto)
+        campo = m.group(1) if m else ""
         return f"Ya existe un registro con ese mismo dato{f' ({campo})' if campo else ''}."
     if "sqlite3." in texto or "[SQL:" in texto:
         return "La base de datos rechazó la operación: " + texto.split("[SQL:")[0].split(")", 1)[-1].strip()[:200]

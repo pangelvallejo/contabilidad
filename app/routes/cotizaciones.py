@@ -83,6 +83,8 @@ def _llenar(s, cot):
             continue
         if not desc:
             raise ValueError(f"La línea {i + 1} no tiene descripción.")
+        if len(desc) > 2000:
+            raise ValueError(f"La descripción de la línea {i + 1} es demasiado larga (máximo 2.000 caracteres).")
         if valor <= 0:
             raise ValueError(f"El valor de la línea {i + 1} debe ser mayor que cero.")
         if iva_pct not in (0, 5, 19):

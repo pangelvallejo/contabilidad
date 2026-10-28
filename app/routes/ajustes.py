@@ -30,8 +30,8 @@ def _ruta_valida(ruta: str) -> bool:
     if len(ruta) > 240 or "\x00" in ruta or any(len(parte) > 200 for parte in re.split(r"[\\/]", ruta)):
         return False
     try:
-        Path(ruta).expanduser().exists()
-    except (OSError, ValueError):
+        Path(ruta).exists()
+    except (OSError, ValueError, RuntimeError):
         return False
     return True
 
@@ -66,10 +66,8 @@ def inicio():
                         flash(f"La ruta de {campo.replace('_', ' ')} no es válida (demasiado larga o con caracteres "
                               "no permitidos).", "error")
                         continue
-                    if campo in ("carpeta_respaldo", "carpeta_vigilada") and valor and not _ruta_valida(valor):
-                        flash(f"La ruta de {campo.replace('_', ' ')} no es válida (demasiado larga o con caracteres "
-                              "no permitidos).", "error")
-                        continue
+                    if campo == "respaldos_a_conservar":
+                        continue  # se valida como entero más abajo
                     contab.set_config(s, campo, valor)
             if request.form.get("uvt_anio") and request.form.get("uvt_valor", "").strip():
                 try:

@@ -367,6 +367,16 @@ def cuentas_por_pagar_edades(session, al: date | None = None):
                 fila[nombre] += saldo
                 break
         fila["total"] += saldo
+    # Notas crédito a crédito sin factura asociada rebajan la cuenta por pagar del proveedor (coincide con 2205 y el 1009)
+    for nc in session.query(Gasto).options(selectinload(Gasto.proveedor)).filter(
+            Gasto.fecha <= al, Gasto.forma_pago == "credito", Gasto.tipo_soporte == "NC", Gasto.referencia_id.is_(None)):
+        clave = nc.proveedor_id or 0
+        fila = proveedores.get(clave)
+        if fila is None:
+            continue
+        fila["total"] -= nc.total
+        fila[EDADES_CXP[0][0]] -= nc.total
+    proveedores = {k: f for k, f in proveedores.items() if f["total"] > 0}
     filas = sorted(proveedores.values(), key=lambda f: -f["total"])
     totales = {"total": sum((f["total"] for f in filas), CERO)}
     for e in EDADES_CXP:
@@ -566,6 +576,19 @@ def informe_conciliacion(session, banco: Banco, corte: date, saldo_extracto: Dec
     en_libros_sin_extracto.sort(key=lambda par: (par[0].fecha, par[0].id))
     pendientes = (session.query(MovimientoBanco).filter_by(banco_id=banco.id, estado="pendiente")
                   .filter(MovimientoBanco.fecha <= corte).order_by(MovimientoBanco.fecha).all())
+    # Líneas del extracto hasta el corte cuyo documento se registró en libros DESPUÉS del corte (consignación del
+    # 31 registrada el 1.º): el extracto ya las tiene y los libros al corte todavía no.
+    posteriores = []
+    for m in (session.query(MovimientoBanco).filter_by(banco_id=banco.id, estado="conciliado")
+              .filter(MovimientoBanco.fecha <= corte).order_by(MovimientoBanco.fecha)):
+        if m.origen_tipo == "asiento":
+            a = session.get(Asiento, m.origen_id)
+        else:
+            a = session.query(Asiento).filter_by(origen=f"{m.origen_tipo}:{m.origen_id}").order_by(Asiento.id).first()
+        if a is not None and a.fecha > corte:
+            m.registrado_el = a.fecha
+            posteriores.append(m)
+    pendientes = pendientes + posteriores
     total_libros_sin_extracto = sum((v for _, v in en_libros_sin_extracto), CERO)
     total_pendientes = sum((m.valor for m in pendientes), CERO)
     extracto_esperado = saldo_libros - total_libros_sin_extracto + total_pendientes
@@ -574,7 +597,7 @@ def informe_conciliacion(session, banco: Banco, corte: date, saldo_extracto: Dec
             "total_en_libros": total_libros_sin_extracto, "pendientes": pendientes, "total_pendientes": total_pendientes,
             "extracto_esperado": extracto_esperado, "saldo_extracto": saldo_extracto,
             "diferencia": (saldo_extracto - extracto_esperado) if saldo_extracto is not None else None,
-            "tiene_extracto": tiene_extracto}
+            "tiene_extracto": tiene_extracto, "posteriores": posteriores}
 
 
 # ------------------------------------------------------------------ resumen mensual (para el correo)

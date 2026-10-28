@@ -171,9 +171,9 @@ def informe_pdf(empresa, titulo, subtitulo, columnas, filas, orientacion="P", no
                 tam -= 0.5
                 pdf.set_font_size(tam)  # una cifra larga se encoge antes que perder dígitos
             if pdf.get_string_width(texto) > w - 1.5:
-                while texto and pdf.get_string_width(texto + "…") > w - 1.5:
+                while texto and pdf.get_string_width(texto + "...") > w - 1.5:  # "…" no existe en latin-1
                     texto = texto[:-1]
-                texto += "…"
+                texto += "..."
             pdf.cell(w, 5.5, texto, align=al, fill=relleno)
             pdf.set_font_size(8)
         pdf.ln()
@@ -250,13 +250,16 @@ def cotizacion_pdf(empresa, cot) -> bytes:
         if pdf.get_y() + alto > pdf.page_break_trigger:
             pdf.add_page()
         y = pdf.get_y()
+        pagina = pdf.page_no()
+        alto_cel = min(alto, pdf.page_break_trigger - y)  # una descripción más larga que la página fluye sola
         pdf.set_xy(pdf.l_margin + 115, y)
-        pdf.cell(30, alto, _latin1(pesos(l.valor)), align="R")
-        pdf.cell(25, alto, _latin1(pesos(l.iva)), align="R")
-        pdf.cell(25, alto, _latin1(pesos(l.valor + l.iva)), align="R")
+        pdf.cell(30, alto_cel, _latin1(pesos(l.valor)), align="R")
+        pdf.cell(25, alto_cel, _latin1(pesos(l.iva)), align="R")
+        pdf.cell(25, alto_cel, _latin1(pesos(l.valor + l.iva)), align="R")
         pdf.set_xy(pdf.l_margin, y)
         pdf.multi_cell(115, 5, texto, new_x="LMARGIN", new_y="NEXT")
-        pdf.set_y(y + alto)
+        if pdf.page_no() == pagina:
+            pdf.set_y(y + alto)
     pdf.ln(2)
     pdf.set_font("helvetica", "B", 10)
     for etiqueta, v in (("Subtotal honorarios", cot.subtotal), ("IVA", cot.iva), ("TOTAL", cot.total)):

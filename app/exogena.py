@@ -85,6 +85,11 @@ def generar(session, anio):
         saldo = g.saldo_al(fin)  # la misma fórmula que la pantalla del gasto y cuentas por pagar
         if saldo:
             f1009[g.proveedor_id] += saldo
+    # Notas crédito a crédito sin factura asociada: rebajan la cuenta por pagar del proveedor en libros (2205)
+    nc_sueltas = (session.query(Gasto).filter(Gasto.fecha <= fin, Gasto.forma_pago == "credito", Gasto.tipo_soporte == "NC",
+                                             Gasto.referencia_id.is_(None), Gasto.proveedor_id.isnot(None)).all())
+    for nc in nc_sueltas:
+        f1009[nc.proveedor_id] -= nc.total
     f1009 = {t: v for t, v in f1009.items() if v > 0}  # un saldo a favor con el proveedor no es cuenta por pagar
 
     terceros = {t.id: t for t in session.query(Tercero)}
@@ -125,6 +130,12 @@ def generar(session, anio):
         total = sum((g.total for g in sin_proveedor), CERO)
         incompletos.append((Tercero(nit="", nombre=f"{len(sin_proveedor)} gasto(s) por {pesos(total)} sin proveedor "
                                                    "(indíquelo en cada gasto para incluirlos en el 1001)"),
+                            ["tercero"]))
+    if nc_sueltas:
+        from .formato import pesos
+        total = sum((nc.total for nc in nc_sueltas), CERO)
+        incompletos.append((Tercero(nit="", nombre=f"{len(nc_sueltas)} nota(s) crédito de proveedor por {pesos(total)} sin "
+                                                   "factura asociada (indíquela en cada nota para que el 1009 quede exacto)"),
                             ["tercero"]))
     if sin_tercero:
         from .formato import pesos

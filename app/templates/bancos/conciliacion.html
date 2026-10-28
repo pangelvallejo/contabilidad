@@ -63,6 +63,7 @@
   {% else %}<p class="vacio">No hay movimientos {{ estado if estado != 'todos' else '' }}. Importe un extracto para empezar.</p>{% endif %}
 </div>
 {# Las listas de terceros y categorías viajan una sola vez; cada fila las clona al cargar la página #}
+<noscript><p class="mensaje adv">La conciliación necesita JavaScript activo para mostrar las listas de clientes, proveedores y categorías.</p></noscript>
 <template id="tpl-cat">{% for c in categorias %}<option value="{{ c.id }}">{{ c.nombre }}</option>{% endfor %}</template>
 <template id="tpl-prov">{% for p in proveedores %}<option value="{{ p.id }}">{{ p.nombre }}</option>{% endfor %}</template>
 <template id="tpl-cli">{% for c in clientes %}<option value="{{ c.id }}">{{ c.nombre }}</option>{% endfor %}</template>

@@ -188,7 +188,7 @@ def validar_respaldo(contenido_zip: bytes):
         ruta = Path(tmp) / "verificar.db"
         ruta.write_bytes(base)
         try:
-            con = sqlite3.connect(f"file:{ruta}?mode=ro", uri=True)
+            con = sqlite3.connect(str(ruta))  # copia privada: sin URI (un '#' o '?' en la ruta temporal la rompería)
             try:
                 estado = con.execute("PRAGMA integrity_check").fetchone()[0]
                 tablas = {r[0] for r in con.execute("SELECT name FROM sqlite_master WHERE type='table'")}
@@ -245,6 +245,11 @@ def aplicar_restauracion_pendiente():
 def clave_secreta():
     """Clave de sesión persistente (necesaria para que el inicio de sesión sobreviva a reinicios)."""
     archivo = config.DATOS_DIR / "clave.secreta"
+    if archivo.exists() and os.name != "nt":
+        try:
+            os.chmod(archivo, 0o600)  # instalaciones anteriores la crearon con los permisos por defecto
+        except OSError:
+            pass
     if not archivo.exists():
         # Solo legible por el usuario (en Windows los permisos POSIX no aplican; la carpeta ya es del usuario).
         fd = os.open(archivo, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
@@ -272,7 +277,11 @@ class _IntentosAcceso:
         n, _ = self._fallos.get(ip, (0, 0.0))
         self._fallos[ip] = (n + 1, time.monotonic())
         if len(self._fallos) > 1000:
-            self._fallos = dict(sorted(self._fallos.items(), key=lambda kv: kv[1][1])[-500:])
+            ahora = time.monotonic()
+            # Los bloqueos vigentes nunca se podan (si no, bastaría inundar la tabla desde otras IP para liberarlos)
+            bloqueados = {ip: v for ip, v in self._fallos.items() if v[0] >= self.MAXIMO and ahora - v[1] < self.ESPERA}
+            resto = sorted((kv for kv in self._fallos.items() if kv[0] not in bloqueados), key=lambda kv: kv[1][1])
+            self._fallos = {**dict(resto[-500:]), **bloqueados}
 
     def limpiar(self, ip):
         self._fallos.pop(ip, None)

@@ -53,7 +53,7 @@
       {% set ns = namespace(desde=0) %}
       {% for hasta, t in tabla %}<tr><td>{{ ns.desde|numero }} a {{ hasta|numero }} UVT ({{ (hasta * uvt)|pesos }})</td><td class="n">{{ t|pct }}</td></tr>{% set ns.desde = hasta %}{% endfor %}
     </table>
-    <p class="nota">El tope especial de 12.000 UVT para profesiones liberales fue declarado inexequible (Sentencia C-540 de 2023); rige el límite general de 100.000 UVT de ingresos al año. Confirme cualquier cambio normativo con el contador.</p>
+    <p class="nota">El tope especial de 12.000 UVT para profesiones liberales fue declarado inexequible (Sentencia C-540 de 2023); rige el límite general de ingresos inferiores a {{ SIMPLE_LIMITE_UVT|numero }} UVT al año. Confirme cualquier cambio normativo con el contador.</p>
   </div>
 </div>
 {% endblock %}

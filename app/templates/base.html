@@ -64,7 +64,7 @@
     <a href="/terceros" class="{{ 'activo' if ruta.startswith('/terceros') }}">Clientes y proveedores</a>
     <a href="/historial" class="{{ 'activo' if ruta.startswith('/historial') }}">Historial de cambios</a>
     <a href="/configuracion/" class="{{ 'activo' if ruta.startswith('/configuracion') }}">Configuración</a>
-    {% if session.get('autenticado') %}<form method="post" action="/salir" style="display:inline"><button type="submit" class="enlace">Cerrar sesión</button></form>{% endif %}
+    {% if session.get('autenticado') %}<form method="post" action="/salir"><button type="submit" class="enlace">Cerrar sesión</button></form>{% endif %}
     </div>
   </nav>
   <main>

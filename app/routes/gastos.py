@@ -98,6 +98,15 @@ def _proveedor_desde_form(s):
     return int(pid) if pid else None
 
 
+def _cuenta_de_pago(s, codigo):
+    """Cuenta de caja o bancos (clase 11, de movimiento) con la que se pagó; si no, un mensaje claro."""
+    with s.no_autoflush:
+        cta = s.get(Cuenta, codigo or "")
+    if cta is None or not cta.movimiento or not cta.codigo.startswith("11"):
+        raise ValueError("Elija la cuenta con la que se pagó (caja o un banco).")
+    return cta.codigo
+
+
 def _llenar_gasto(s, g):
     g.tipo_soporte = request.form.get("tipo_soporte", "FE")
     if g.tipo_soporte not in TIPOS_SOPORTE:
@@ -130,14 +139,14 @@ def _llenar_gasto(s, g):
                         CERO)
             if g.total > ref.total - otras:
                 raise ValueError("La nota crédito supera el valor pendiente de la factura del proveedor.")
-            if ref.forma_pago == "credito":
+            pendiente = ref.total - otras - ref.pagado
+            if ref.forma_pago == "credito" and g.total <= pendiente:
                 g.forma_pago = "credito"  # rebaja la cuenta por pagar de esa factura; no es un reintegro al banco
+            elif ref.forma_pago == "credito" and g.forma_pago == "credito":
+                raise ValueError("La factura ya está pagada en esa parte: registre la nota crédito de contado con el banco "
+                                 "donde el proveedor reintegró el dinero.")
         g.referencia = ref
-    g.cuenta_pago = request.form.get("cuenta_pago") if g.forma_pago == "contado" else None
-    if g.forma_pago == "contado":
-        cta = s.get(Cuenta, g.cuenta_pago or "")
-        if cta is None or not cta.movimiento or not cta.codigo.startswith("11"):
-            raise ValueError("Elija la cuenta con la que se pagó (caja o un banco).")
+    g.cuenta_pago = _cuenta_de_pago(s, request.form.get("cuenta_pago")) if g.forma_pago == "contado" else None
     g.notas = request.form.get("notas") or None
     g.recurrente = check("recurrente")
     g.asunto_id = request.form.get("asunto_id", type=int) or None
@@ -219,7 +228,7 @@ def revisar():
                 if forma == "contado" and g.pagos:
                     raise ValueError("tiene pagos registrados; elimínelos antes de marcarlo de contado")
                 g.forma_pago = forma
-                g.cuenta_pago = request.form.get(f"cuenta_{gid}") if g.forma_pago == "contado" else None
+                g.cuenta_pago = _cuenta_de_pago(s, request.form.get(f"cuenta_{gid}")) if g.forma_pago == "contado" else None
                 g.recurrente = request.form.get(f"rec_{gid}") == "on"
                 g.revisado = True
                 s.flush()
@@ -264,7 +273,7 @@ def detalle(id):
                 if valor <= 0 or valor > g.saldo:
                     raise ValueError("El valor del pago debe ser mayor que cero y no superar el saldo.")
                 p = PagoGasto(fecha=fecha_arg("pago_fecha", date.today()),
-                              cuenta_pago=request.form["pago_cuenta"], valor=valor)
+                              cuenta_pago=_cuenta_de_pago(s, request.form.get("pago_cuenta")), valor=valor)
                 s.add(p)
                 g.pagos.append(p)
                 s.flush()
@@ -282,7 +291,13 @@ def detalle(id):
                 s.commit()
                 return redirect(url_for("gastos.detalle", id=id))
             categoria_anterior, fecha_anterior = g.categoria.cuenta, g.fecha
+            # Datos con efecto tributario (exógena, IVA) aunque no cambien el asiento: respetan el periodo bloqueado
+            antes = (g.subtotal, g.iva, g.otros_impuestos, g.iva_descontable, g.categoria_id, g.tipo_soporte, g.fecha)
             _llenar_gasto(s, g)
+            if (g.subtotal, g.iva, g.otros_impuestos, g.iva_descontable, g.categoria_id, g.tipo_soporte, g.fecha) != antes:
+                contab.verificar_periodo(s, fecha_anterior)
+                if g.fecha != fecha_anterior:
+                    contab.verificar_periodo(s, g.fecha)
             if categoria_anterior.startswith("15") and not s.get(CategoriaGasto, g.categoria_id).cuenta.startswith("15"):
                 planeacion.borrar_depreciaciones(s, g.id)  # dejó de ser activo
             elif categoria_anterior.startswith("15") and g.fecha != fecha_anterior:
