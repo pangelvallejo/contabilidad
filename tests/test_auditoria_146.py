@@ -354,7 +354,7 @@ def test_respaldos_a_conservar_invalido_no_se_guarda(cliente_web, s):
 def test_validar_respaldo_con_carpeta_temporal_rara(s, monkeypatch, tmp_path):
     from app import respaldo
     real = respaldo.crear_respaldo(s).read_bytes()
-    rara = tmp_path / "num#1?x"
+    rara = tmp_path / "num#1"  # '#' corta una URI de SQLite ('?' además no es válido en Windows)
     rara.mkdir()
     monkeypatch.setattr(tempfile, "tempdir", str(rara))
     sistema.validar_respaldo(real)  # antes: 'faltan sus tablas' por la URI cortada en '#'
@@ -367,7 +367,8 @@ def test_archivo_carpeta_da_404_y_clave_secreta_0600(cliente_web, app):
     archivo = config.DATOS_DIR / "clave.secreta"
     os.chmod(archivo, 0o644)
     sistema.clave_secreta()
-    assert stat.S_IMODE(archivo.stat().st_mode) == 0o600
+    if os.name != "nt":  # en Windows los permisos POSIX no aplican
+        assert stat.S_IMODE(archivo.stat().st_mode) == 0o600
 
 
 def test_poda_de_intentos_no_libera_bloqueados():
