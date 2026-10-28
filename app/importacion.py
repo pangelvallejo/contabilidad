@@ -4,6 +4,8 @@ import unicodedata
 from dataclasses import dataclass
 from datetime import timedelta
 
+from sqlalchemy import func, or_
+
 from . import archivos, contab
 from .config import TARIFA_RETEIVA
 from .dian_xml import DocumentoDIAN, Parte, leer_archivo, nit_limpio
@@ -25,15 +27,20 @@ def normalizar(texto: str) -> str:
 
 
 def buscar_tercero(session, nit: str):
-    """Tercero con ese NIT, aunque se haya registrado a mano con puntos o guion (900.123.456-7)."""
+    """Tercero con ese NIT, aunque se haya registrado a mano con puntos o guion (900.123.456-7) o con el dígito de
+    verificación pegado (9001234567, solo para NIT: una cédula de 10 dígitos nunca se recorta)."""
     if not nit:
         return None
     t = session.query(Tercero).filter_by(nit=nit).first()
-    if t is None:
-        for cand in session.query(Tercero).filter(Tercero.nit.like(f"%{nit[:3]}%")):
-            if nit_limpio(cand.nit, cand.dv or "") == nit:
-                return cand
-    return t
+    if t is not None:
+        return t
+    limpio = func.replace(func.replace(func.replace(Tercero.nit, ".", ""), "-", ""), " ", "")
+    t = session.query(Tercero).filter(limpio == nit).first()
+    if t is not None:
+        return t
+    return (session.query(Tercero)
+            .filter(Tercero.dv.isnot(None), Tercero.dv != "", limpio == nit + Tercero.dv,
+                    or_(Tercero.tipo_doc.is_(None), Tercero.tipo_doc.in_(("", "31")))).first())
 
 
 def tercero_desde_parte(session, parte: Parte, *, cliente=False, proveedor=False) -> Tercero:
@@ -110,12 +117,14 @@ def _existe(session, doc: DocumentoDIAN, direccion: str):
         return None
     if direccion == "venta":
         t = buscar_tercero(session, nit_limpio(doc.receptor.nit, doc.receptor.dv))
+        tipo = doc.tipo if doc.tipo in ("FV", "NC", "ND") else "FV"
         return t and (session.query(DocumentoVenta)
                       .filter(DocumentoVenta.numero == doc.numero, DocumentoVenta.fecha == doc.fecha,
-                              DocumentoVenta.cliente_id == t.id).first())
+                              DocumentoVenta.cliente_id == t.id, DocumentoVenta.tipo == tipo).first())
     t = buscar_tercero(session, nit_limpio(doc.emisor.nit, doc.emisor.dv))
+    soporte = "NC" if doc.tipo == "NC" else ("DS" if doc.tipo == "DS" else "FE")
     return t and (session.query(Gasto).filter(Gasto.numero == doc.numero, Gasto.fecha == doc.fecha,
-                                              Gasto.proveedor_id == t.id).first())
+                                              Gasto.proveedor_id == t.id, Gasto.tipo_soporte == soporte).first())
 
 
 def importar_venta(session, doc: DocumentoDIAN, leido) -> DocumentoVenta:
@@ -227,8 +236,6 @@ def importar_archivo(session, nombre: str, contenido: bytes, forzar: str | None 
                     msg = f"Gasto {g.numero} de {g.proveedor.nombre} por {pesos(g.total)} → {g.categoria.nombre}"
                     if not g.revisado:
                         msg += " (revisar categoría)"
-                    if g.tipo_soporte == "NC" and g.referencia is None:
-                        msg += " — nota crédito sin factura asociada: indique en el gasto la factura que afecta"
                     if g.tipo_soporte == "NC" and g.referencia is None:
                         msg += " — nota crédito sin factura asociada: indique en el gasto la factura que afecta"
                     resultados.append(Resultado(etiqueta, True, msg, f"/gastos/{g.id}"))

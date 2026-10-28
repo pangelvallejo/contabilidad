@@ -309,5 +309,3 @@ def leer_archivo(nombre: str, contenido: bytes, _nivel=0) -> list[ArchivoLeido]:
         return [ArchivoLeido(nombre, None, contenido, None, None, str(e))]
     except Exception as e:  # noqa: BLE001 — XML con una estructura que el lector no previó
         return [ArchivoLeido(nombre, None, contenido, None, None, f"No se pudo interpretar el XML ({type(e).__name__}: {e}).")]
-    except Exception as e:  # noqa: BLE001 — XML con una estructura que el lector no previó
-        return [ArchivoLeido(nombre, None, contenido, None, None, f"No se pudo interpretar el XML ({type(e).__name__}: {e}).")]

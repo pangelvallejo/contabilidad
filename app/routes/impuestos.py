@@ -99,7 +99,7 @@ def eliminar_pago(id):
     s = Session()
     p = s.get(PagoImpuesto, id) or abort(404)
     try:
-        llevaba_reteiva = p.formulario == "2593" and bool(p.bimestre) and contab._lleva_reteiva(s, p)
+        llevaba_reteiva = p.formulario == "2593" and bool(p.bimestre) and contab.pago_lleva_reteiva(s, p)
         bancos.liberar(s, "impuesto", p.id)
         contab.borrar_asientos(s, f"impuesto:{p.id}")
         anio, bimestre, formulario = p.anio, p.bimestre, p.formulario

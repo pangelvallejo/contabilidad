@@ -153,6 +153,29 @@ def probar(session) -> str:
         imap.logout()
 
 
+def _cabeceras(imap, uids):
+    """Message-ID de muchos mensajes con pocas peticiones: {uid: message_id}."""
+    res = {}
+    for i in range(0, len(uids), 300):
+        lote = uids[i:i + 300]
+        try:
+            estado, partes = imap.uid("fetch", b",".join(lote).decode(), "(UID BODY.PEEK[HEADER.FIELDS (MESSAGE-ID)])")
+        except Exception:  # noqa: BLE001 — se vuelve al modo mensaje a mensaje
+            estado, partes = "NO", []
+        if estado != "OK" or not partes:
+            for uid in lote:
+                estado, partes = imap.uid("fetch", uid, "(BODY.PEEK[HEADER.FIELDS (MESSAGE-ID)])")
+                if estado == "OK" and partes and isinstance(partes[0], tuple):
+                    res[uid] = email.message_from_bytes(partes[0][1]).get("Message-ID")
+            continue
+        for parte in partes:
+            if isinstance(parte, tuple) and len(parte) >= 2:
+                m = re.search(rb"UID (\d+)", parte[0] or b"")
+                if m:
+                    res[m.group(1)] = email.message_from_bytes(parte[1]).get("Message-ID")
+    return res
+
+
 def _adjuntos(msg):
     """Adjuntos a importar. Si el XML y el PDF vienen sueltos (no en ZIP), se empaquetan juntos en un ZIP en
     memoria para que el PDF quede guardado como soporte del documento, igual que cuando llegan comprimidos."""
@@ -167,14 +190,36 @@ def _adjuntos(msg):
         nombre = nombre.replace("\\", "/").rsplit("/", 1)[-1]
         destino = zips if nombre.lower().endswith(".zip") else (xmls if nombre.lower().endswith(".xml") else pdfs)
         destino.append((nombre, contenido))
-    res = list(zips)
+    import io
+    import zipfile
+    res = []
+    if zips and pdfs and not xmls:
+        # 'Factura.zip' (con el XML) más 'Factura.pdf' suelto: el PDF se mete en el ZIP para que quede como soporte
+        for nombre, contenido in zips:
+            try:
+                buf = io.BytesIO(contenido)
+                with zipfile.ZipFile(buf, "a", zipfile.ZIP_DEFLATED) as z:
+                    existentes = set(z.namelist())
+                    for pn, pc in pdfs:
+                        if pn not in existentes:
+                            z.writestr(pn, pc)
+                res.append((nombre, buf.getvalue()))
+            except zipfile.BadZipFile:
+                res.append((nombre, contenido))
+    else:
+        res.extend(zips)
     if xmls and pdfs:
-        import io
-        import zipfile
         buf = io.BytesIO()
+        usados = set()
         with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
             for nombre, contenido in xmls + pdfs:
-                z.writestr(nombre, contenido)
+                base, punto, ext = nombre.rpartition(".")
+                n, candidato = 1, nombre
+                while candidato.lower() in usados:  # dos adjuntos con el mismo nombre no se pisan
+                    n += 1
+                    candidato = f"{base} ({n}).{ext}" if punto else f"{nombre} ({n})"
+                usados.add(candidato.lower())
+                z.writestr(candidato, contenido)
         res.append((xmls[0][0][:-4] + ".zip", buf.getvalue()))
     else:
         res.extend(xmls)
@@ -209,21 +254,22 @@ def revisar(session, limite=50) -> ResultadoCorreo:
             return res
         ids = datos[0].split()
         procesados = {m.mensaje_id for m in session.query(CorreoProcesado.mensaje_id)}
+        cabeceras = _cabeceras(imap, ids)  # un FETCH por cada 300 mensajes, no uno por mensaje
         nuevos = 0
         for uid in ids:  # del más antiguo al más reciente; se procesan hasta `limite` mensajes nuevos por revisión
             if nuevos >= limite:
                 break
-            estado, partes = imap.uid("fetch", uid, "(BODY.PEEK[HEADER.FIELDS (MESSAGE-ID SUBJECT)])")
-            if estado != "OK" or not partes or not isinstance(partes[0], tuple):
-                continue
-            cab = email.message_from_bytes(partes[0][1])
-            mid = _clave_mensaje(cab.get("Message-ID"), uid)
+            mid = _clave_mensaje(cabeceras.get(uid), uid)
             if mid in procesados:
                 continue
             procesados.add(mid)
             nuevos += 1
             estado, partes = imap.uid("fetch", uid, "(BODY.PEEK[])")
             if estado != "OK" or not partes or not isinstance(partes[0], tuple):
+                # Se deja constancia para que no vuelva a gastar cupo en cada revisión
+                session.add(CorreoProcesado(mensaje_id=mid, asunto=f"(mensaje {uid.decode()})",
+                                            resultado="No se pudo descargar el mensaje del buzón"))
+                session.commit()
                 continue
             msg = email.message_from_bytes(partes[0][1])
             asunto = _decodificar(msg.get("Subject"))

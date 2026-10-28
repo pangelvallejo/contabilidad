@@ -30,7 +30,7 @@ NOMBRES = {
     "naturaleza": ("naturaleza", "tipo", "tipo movimiento", "tipo de movimiento", "d c", "dc", "signo", "db cr",
                    "debito credito", "tipo transaccion"),
 }
-SALIDAS = ("d", "db", "dr", "debito", "debit", "retiro", "salida", "egreso", "cargo", "pago", "-")
+SALIDAS = ("d", "db", "dr", "debito", "debit", "retiro", "salida", "egreso", "cargo", "-")
 
 
 def _norm(t):
@@ -64,6 +64,8 @@ def _numero(v):
     try:
         valor = Decimal(t)
     except InvalidOperation:
+        return CERO
+    if not valor.is_finite():  # 'nan' o 'inf' de una celda vacía exportada por una hoja de cálculo
         return CERO
     return -valor if neg else valor
 
@@ -133,6 +135,10 @@ def extraer(filas, mapa, fila_encabezado):
     lineas = []
     omitidas = 0
     inicio = fila_encabezado + 1 if fila_encabezado is not None else 0
+    # La columna de naturaleza (D/C) solo manda cuando el archivo trae los valores sin signo: si hay negativos, el
+    # signo ya viene en el valor y "Tipo" describe la operación (Pago, Transferencia…), no el sentido.
+    con_signo = "valor" in mapa and any(
+        _numero(f[mapa["valor"]]) < 0 for f in filas[inicio:] if f and mapa["valor"] < len(f))
     for fila in filas[inicio:]:
         if not fila or all(c in (None, "") for c in fila):
             continue
@@ -148,7 +154,7 @@ def extraer(filas, mapa, fila_encabezado):
             continue
         if "valor" in mapa:
             valor = _numero(celda("valor"))
-            nat = _norm(celda("naturaleza")) if "naturaleza" in mapa else ""
+            nat = _norm(celda("naturaleza")) if "naturaleza" in mapa and not con_signo else ""
             if valor > 0 and nat and (nat in SALIDAS or nat.startswith(("debit", "retiro", "salida", "egreso", "cargo"))):
                 valor = -valor  # el banco trae el valor sin signo y el sentido en otra columna
         else:

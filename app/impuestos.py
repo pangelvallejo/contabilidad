@@ -175,7 +175,7 @@ def proyeccion_anual(session, anio, corte: date | None = None) -> ProyeccionAnua
     iva = resumen_iva(session, inicio, corte)
     return ProyeccionAnual(anio, corte, ingresos, proyectados, t, redondeo_dian(max(proyectados, CERO) * t), anticipos,
                            iva.neto, contab.redondear(iva.neto * factor, "1"),
-                           proyectados > uvt(anio, session) * cfg.SIMPLE_LIMITE_UVT, dias)
+                           proyectados >= uvt(anio, session) * cfg.SIMPLE_LIMITE_UVT, dias)
 
 
 # ---------------------------------------------------------------------- SIMPLE
@@ -293,7 +293,7 @@ def declaracion_simple(session, anio) -> DeclaracionSimple:
                     CERO)
     return DeclaracionSimple(anio, ingresos, contab.redondear(ingresos / uvt(anio, session)), t, impuesto,
                              contab.redondear(electronicos), descuento, anticipos,
-                             ingresos > uvt(anio, session) * cfg.SIMPLE_LIMITE_UVT)
+                             ingresos >= uvt(anio, session) * cfg.SIMPLE_LIMITE_UVT)
 
 
 def causar_simple_anual(session, anio):

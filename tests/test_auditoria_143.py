@@ -330,6 +330,13 @@ def test_correo_procesa_los_mas_antiguos_primero(monkeypatch, s):
             if orden == "search":
                 return "OK", [b" ".join(str(i).encode() for i in range(1, 121))]
             uid = args[0]
+            if isinstance(uid, str):  # FETCH por lotes: "1,2,3" -> una tupla por mensaje con su UID
+                partes = []
+                for u in uid.split(","):
+                    partes.append((f"1 (UID {u} BODY[HEADER.FIELDS (MESSAGE-ID)] {{0}}".encode(),
+                                   f"Message-ID: <m{u}@x>\r\n\r\n".encode()))
+                    partes.append(b")")
+                return "OK", partes
             cuerpo = f"Message-ID: <m{uid.decode()}@x>\r\nSubject: s{uid.decode()}\r\n\r\n".encode()
             return "OK", [(b"1 (BODY[HEADER] {0}", cuerpo), b")"]
 
@@ -367,7 +374,7 @@ def test_pdf_cotizacion_con_descripciones_largas(s):
     s.add(cot)
     s.commit()
     pdf = exportar.cotizacion_pdf(exportar._empresa_dict(s), cot)
-    assert pdf.startswith(b"%PDF") and pdf.count(b"/Type /Page\n") >= 2 or pdf.count(b"/Type /Page") >= 2
+    assert pdf.startswith(b"%PDF") and pdf.count(b"/Type /Page\n") >= 2  # 30 líneas largas: más de una página
 
 
 # ------------------------------------------------------------------ seguridad y sistema

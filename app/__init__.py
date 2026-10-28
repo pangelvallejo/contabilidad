@@ -15,7 +15,7 @@ warnings.filterwarnings("ignore", message=".*Decimal objects natively.*")
 # Si Windows bloquea Pillow, fpdf2 avisa que no podrá insertar imágenes: el programa no las usa.
 warnings.filterwarnings("ignore", message="Pillow could not be imported.*")
 
-VERSION = "1.4.5"
+VERSION = "1.4.6"
 
 
 def _reparaciones_al_actualizar(session):
@@ -60,6 +60,7 @@ def create_app(datos_dir=None, respaldo_automatico=False):
     app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
     app.config["SESSION_COOKIE_HTTPONLY"] = True
 
+    app.jinja_env.globals["SIMPLE_LIMITE_UVT"] = config.SIMPLE_LIMITE_UVT
     app.jinja_env.filters["pesos"] = formato.pesos
     app.jinja_env.filters["numero"] = formato.numero
     app.jinja_env.filters["fecha"] = formato.fecha
@@ -147,7 +148,7 @@ def create_app(datos_dir=None, respaldo_automatico=False):
         from .archivos import ruta_absoluta
         try:
             ruta = ruta_absoluta(relativa)
-            if not ruta.exists():
+            if not ruta.is_file():  # carpetas y rutas inexistentes: 404
                 abort(404)
         except (ValueError, OSError):  # ruta inválida o nombre demasiado largo
             abort(404)

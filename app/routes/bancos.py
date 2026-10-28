@@ -197,8 +197,10 @@ def facturas_proveedor():
 
 # ------------------------------------------------------------------ saldos y otros ingresos
 
-def _cuentas_ingreso(s):
-    return (s.query(Cuenta).filter(Cuenta.movimiento.is_(True), Cuenta.activa.is_(True), Cuenta.codigo.like("4%"),
+def _cuentas_ingreso(s, actual=None):
+    """Cuentas de ingreso activas más la que ya tiene el ingreso que se edita (aunque se haya desactivado)."""
+    return (s.query(Cuenta).filter(Cuenta.movimiento.is_(True), Cuenta.codigo.like("4%"),
+                                   (Cuenta.activa.is_(True)) | (Cuenta.codigo == (actual or "")),
                                    ~Cuenta.codigo.like("4135%"), ~Cuenta.codigo.like("4155%"),
                                    ~Cuenta.codigo.like("4175%")).order_by(Cuenta.codigo).all())
 
@@ -298,10 +300,6 @@ def _llenar_otro_ingreso(s, oi):
         raise ValueError("Los honorarios se registran con factura en Ventas; aquí van intereses, reintegros y otros ingresos.")
     if request.form.get("fecha") and fecha_arg("fecha") is None:
         raise ValueError("La fecha no es válida; use el selector de fecha.")
-    if cta.codigo[:4] in ("4135", "4155", "4175"):
-        raise ValueError("Los honorarios se registran con factura en Ventas; aquí van intereses, reintegros y otros ingresos.")
-    if request.form.get("fecha") and fecha_arg("fecha") is None:
-        raise ValueError("La fecha no es válida; use el selector de fecha.")
     oi.concepto = request.form.get("concepto", "").strip() or cta.nombre
     oi.valor = dinero("valor")
     oi.descuentos = dinero("descuentos")
@@ -357,5 +355,6 @@ def otro_ingreso(id=None):
             oi = s.get(OtroIngreso, id) if id else None
     return render_template("bancos/ingreso_form.html", oi=oi, form=request.form,
                            bancos=_bancos_para_elegir(s, oi.banco_id if oi else None),
-                           cuentas=_cuentas_ingreso(s), terceros=s.query(Tercero).order_by(Tercero.nombre).all(),
+                           cuentas=_cuentas_ingreso(s, oi.cuenta if oi else None),
+                           terceros=s.query(Tercero).order_by(Tercero.nombre).all(),
                            hoy=date.today())
