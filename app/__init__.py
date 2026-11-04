@@ -15,7 +15,7 @@ warnings.filterwarnings("ignore", message=".*Decimal objects natively.*")
 # Si Windows bloquea Pillow, fpdf2 avisa que no podrá insertar imágenes: el programa no las usa.
 warnings.filterwarnings("ignore", message="Pillow could not be imported.*")
 
-VERSION = "1.4.6"
+VERSION = "1.4.7"
 
 
 def _reparaciones_al_actualizar(session):
@@ -75,9 +75,29 @@ def create_app(datos_dir=None, respaldo_automatico=False):
 
     @app.context_processor
     def _contexto():
+        from flask import request
         from .contab import config as cfg
+        from .sistema import es_local
         s = Session()
-        return {"empresa_nombre": cfg(s, "empresa_nombre", ""), "hoy": date.today(), "version": VERSION}
+        return {"empresa_nombre": cfg(s, "empresa_nombre", ""), "hoy": date.today(), "version": VERSION,
+                "local": es_local(request.remote_addr or "")}
+
+    @app.route("/salud")
+    def salud():
+        """Para el acceso directo: si responde, el programa ya está abierto y solo hay que mostrar el navegador."""
+        from flask import jsonify
+        return jsonify(programa="contabilidad", version=VERSION)
+
+    @app.route("/salir-programa", methods=["POST"])
+    def salir_programa():
+        """Cierra el programa desde el menú (solo desde este computador): la alternativa a cerrar la ventana negra."""
+        from flask import render_template, request
+        from .sistema import apagar, es_local
+        if not es_local(request.remote_addr or ""):
+            abort(403)
+        import threading
+        threading.Timer(0.8, apagar).start()
+        return render_template("reiniciando.html", titulo="El programa se cerró", cerrado=True)
 
     @app.before_request
     def _control_acceso():

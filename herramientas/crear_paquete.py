@@ -79,8 +79,12 @@ def main():
         b"@echo off\r\n"
         b"title Contabilidad Angel Lecompte\r\n"
         b'cd /d "%~dp0"\r\n'
-        b"python\\python.exe -m app\r\n"
-        b"pause\r\n")
+        b'if not exist "%USERPROFILE%\\Desktop\\Contabilidad Angel Lecompte.lnk" (\r\n'
+        b'  powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0crear_acceso_directo.ps1" >nul 2>&1\r\n'
+        b")\r\n"
+        b"REM Sin ventana negra: el programa queda abierto en segundo plano y se cierra desde Otros -> Cerrar el programa\r\n"
+        b'start "" "%~dp0python\\pythonw.exe" -m app\r\n'
+        b"exit /b 0\r\n")
     salida = dist / f"Contabilidad-{version()}-windows.zip"
     if salida.exists():
         salida.unlink()

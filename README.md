@@ -32,21 +32,31 @@ del equipo, salvo las copias de seguridad en OneDrive.
 
 **Opción A, sin instalar Python (recomendada):** descargue `Contabilidad-<versión>-windows.zip` desde la
 página de *Releases* del repositorio, descomprímalo en una carpeta que no sincronice OneDrive (por ejemplo
-`C:\Contabilidad`) y abra
-**`Contabilidad.bat`**. El paquete trae su propio Python.
+`C:\Contabilidad`) y abra **`Contabilidad.bat`** una vez: crea el acceso directo del escritorio y abre el
+programa. El paquete trae su propio Python.
 
 **Opción B, con Python instalado:**
 1. Instale Python 3.11 o superior desde <https://www.python.org/downloads/>. En el instalador, marque
    **“Add python.exe to PATH”**.
 2. Descargue esta carpeta (botón *Code → Download ZIP* en GitHub) y descomprímala, por ejemplo en
    `Documentos\Contabilidad`.
-3. Doble clic en **`iniciar.bat`**. Cada vez que arranca comprueba que las librerías estén instaladas (la primera vez tarda 1–2 minutos); después abre el
-   programa en el navegador en `http://127.0.0.1:5050`.
+3. Doble clic en **`iniciar.bat`**. La primera vez prepara las librerías (1–2 minutos), crea el acceso directo
+   y abre el programa en el navegador en `http://127.0.0.1:5050`.
 
-Opcional: clic derecho en `crear_acceso_directo.ps1` → *Ejecutar con PowerShell* para tener un acceso
-directo en el escritorio.
+### Uso diario, como cualquier aplicación
 
-Mientras use el programa, deje abierta la ventana negra (puede minimizarla); ciérrela para salir.
+La primera vez que se abre (con `Contabilidad.bat` o `iniciar.bat`) el programa crea el acceso directo
+**Contabilidad Angel Lecompte** en el escritorio y en el menú Inicio. Desde entonces:
+
+- Doble clic en el acceso directo abre el programa en el navegador, sin ventana negra. Si ya estaba abierto,
+  solo muestra el navegador.
+- Cerrar la pestaña del navegador no cierra el programa: sigue en segundo plano (revisa el correo y hace los
+  respaldos). Para cerrarlo del todo use el menú **Otros → Cerrar el programa**.
+- Si algo falla al arrancar aparece un cuadro de diálogo con la causa; el detalle queda en `programa.log` dentro
+  de la carpeta de datos.
+
+Si el acceso directo no se creó (por ejemplo, PowerShell está restringido), clic derecho en
+`crear_acceso_directo.ps1` → *Ejecutar con PowerShell*.
 
 ### Si Windows bloquea el programa al abrirlo
 

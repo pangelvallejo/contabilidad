@@ -130,6 +130,14 @@ def _cerrar_base():
         pass
 
 
+def apagar():
+    """Cierra la base con cuidado y termina el proceso (desde el menú Otros → Cerrar el programa)."""
+    from .respaldo import _lock
+    with _lock:
+        _cerrar_base()
+    os._exit(0)
+
+
 def reiniciar(script: Path | None = None):
     """Lanza el script indicado (o el iniciador) en una ventana nueva y cierra este proceso."""
     from .respaldo import _lock

@@ -12,5 +12,14 @@ if not exist .venv\Scripts\python.exe (
   )
 )
 .venv\Scripts\python.exe -m pip install -q --disable-pip-version-check -r requirements.txt
-.venv\Scripts\python.exe -m app
-pause
+if errorlevel 1 (
+  echo No se pudieron instalar las librerias. Revise la conexion a internet y vuelva a intentarlo.
+  pause
+  exit /b 1
+)
+if not exist "%USERPROFILE%\Desktop\Contabilidad Angel Lecompte.lnk" (
+  powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0crear_acceso_directo.ps1" >nul 2>&1
+)
+REM Sin ventana negra: el programa queda abierto en segundo plano y se cierra desde Otros -> Cerrar el programa
+start "" "%~dp0.venv\Scripts\pythonw.exe" -m app
+exit /b 0
