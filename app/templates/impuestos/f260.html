@@ -15,6 +15,7 @@
       <tr><td>Tarifa consolidada</td><td class="n">{{ dec.tarifa|pct }}</td></tr>
       <tr class="res"><td>Impuesto SIMPLE consolidado</td><td class="n">{{ dec.impuesto|pesos }}</td></tr>
       <tr><td>(−) Descuento por ventas con tarjetas y medios electrónicos (0,5% de {{ dec.ingresos_medios_electronicos|pesos }})</td><td class="n">{{ dec.descuento_medios_electronicos|pesos }}</td></tr>
+      {% if dec.descuento_pension %}<tr><td>(−) Aportes a pensión descontados en los recibos 2593</td><td class="n">{{ dec.descuento_pension|pesos }}</td></tr>{% endif %}
       <tr><td>Impuesto neto</td><td class="n">{{ dec.impuesto_neto|pesos }}</td></tr>
       <tr><td>(−) Anticipos pagados en recibos 2593</td><td class="n">{{ dec.anticipos|pesos }}</td></tr>
       <tr class="res"><td>{{ 'Saldo a pagar' if dec.saldo >= 0 else 'Saldo a favor' }}</td><td class="n">{{ (dec.saldo if dec.saldo >= 0 else -dec.saldo)|pesos }}</td></tr>
@@ -23,7 +24,7 @@
   <div class="tarjeta">
     <h2>Contabilizar y pagar</h2>
     <form method="post"><input type="hidden" name="anio" value="{{ anio }}">
-      <p class="nota">Registra al 31 de diciembre el gasto del impuesto, cruzado contra los anticipos, y deja el saldo por pagar en la cuenta 240405. Puede repetirlo; el asiento se actualiza.</p>
+      <p class="nota">Los recibos 2593 pagados en el año ya están en el gasto (540505). Al 31 de diciembre se registra la diferencia con el impuesto anual: el saldo por pagar queda en la cuenta 240405 y, si los anticipos superaron el impuesto, el saldo a favor en la 135595. Puede repetirlo; el asiento se actualiza.</p>
       <button class="primario" formaction="/impuestos/f260?anio={{ anio }}">Causar impuesto SIMPLE {{ anio }}</button>
     </form>
     <hr style="border:0;border-top:1px solid var(--borde);margin:16px 0">

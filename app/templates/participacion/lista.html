@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block titulo %}Cuentas en participación{% endblock %}
+{% block contenido %}
+<div class="encabezado">
+  <div><h1>Cuentas en participación {{ anio }}</h1>
+    <p class="sub">Ingresos que el socio gestor factura a su nombre y le certifica a usted. Se reconocen sin factura de venta, no generan IVA y sí pagan SIMPLE.</p></div>
+  <div class="acciones">
+    <a class="btn primario" href="/participacion/certificacion/nueva">Reconocer ingreso certificado</a>
+    <a class="btn" href="/participacion/contrato/nuevo">Nuevo contrato</a>
+    <a class="btn" href="/participacion/?anio={{ anio }}{{ '&contrato=%d'|format(contrato_id) if contrato_id }}&xlsx=1">Excel</a>
+  </div>
+</div>
+
+<div class="rejilla k4" style="margin-bottom:20px">
+  <div class="kpi" style="--tono: var(--serie-1)"><div class="etq">Ingreso reconocido en {{ anio }}</div><div class="val">{{ tot.reconocido|pesos }}</div><div class="det">Hace parte de los ingresos brutos del SIMPLE</div></div>
+  <div class="kpi" style="--tono: var(--ok)"><div class="etq">Transferido por el gestor en {{ anio }}</div><div class="val">{{ tot.cobrado|pesos }}</div></div>
+  <div class="kpi" style="--tono: var(--sello)"><div class="etq">Por cobrar al gestor (31/12/{{ anio }})</div><div class="val">{{ tot.por_cobrar|pesos }}</div><div class="det">Cuenta 138010</div></div>
+</div>
+
+<div class="tarjeta tabla-scroll">
+  <h2>Contratos</h2>
+  {% if contratos %}
+  <table>
+    <tr><th>Contrato</th><th>Socio gestor</th><th class="n">% pactado</th><th>Desde</th><th>Estado</th><th></th></tr>
+    {% for k in contratos %}
+    <tr><td>{{ k.nombre }}{% if k.soporte_archivo %} <a href="/archivo/{{ k.soporte_archivo }}" target="_blank">contrato</a>{% endif %}</td>
+      <td>{{ k.gestor.nombre }} <span class="nota">{{ k.gestor.nit }}</span></td>
+      <td class="n">{{ (k.porcentaje|string).rstrip('0').rstrip('.') ~ ' %' if k.porcentaje else '' }}</td>
+      <td>{{ k.fecha_inicio|fecha if k.fecha_inicio else '' }}</td>
+      <td>{% if k.activo %}<span class="etiqueta ok">activo</span>{% else %}<span class="etiqueta Nota">inactivo</span>{% endif %}</td>
+      <td style="white-space:nowrap"><a class="btn peq" href="/participacion/certificacion/nueva?contrato={{ k.id }}">Reconocer ingreso</a> <a class="btn peq" href="/participacion/contrato/{{ k.id }}">Editar</a></td></tr>
+    {% endfor %}
+  </table>
+  {% else %}<p class="vacio">Registre el contrato con el socio gestor (por ejemplo AM Legal S.A.S.) para empezar a reconocer los ingresos que le certifica.</p>{% endif %}
+</div>
+
+<form class="filtros">
+  <div><label>Año</label><input type="number" name="anio" value="{{ anio }}" style="width:90px"></div>
+  <div><label>Contrato</label><select name="contrato"><option value="">Todos</option>{% for k in contratos %}<option value="{{ k.id }}" {{ 'selected' if k.id == contrato_id }}>{{ k.nombre }}</option>{% endfor %}</select></div>
+  <button>Ver</button>
+</form>
+<div class="tarjeta tabla-scroll">
+  <h2>Certificaciones del socio gestor</h2>
+  {% if certs %}
+  <table>
+    <tr><th>Fecha</th><th>Contrato</th><th>Periodo certificado</th><th class="n">Ingresos del contrato</th><th class="n">%</th><th class="n">Ingreso reconocido</th><th class="n">Cobrado</th><th class="n">Por cobrar</th><th></th></tr>
+    {% for c in certs %}
+    <tr><td>{{ c.fecha|fecha }}</td>
+      <td>{{ c.contrato.nombre }}{% if c.referencia %} <span class="nota">{{ c.referencia }}</span>{% endif %}{% if c.soporte_archivo %} <a href="/archivo/{{ c.soporte_archivo }}" target="_blank">certificación</a>{% endif %}</td>
+      <td>{% if c.periodo_desde or c.periodo_hasta %}{{ c.periodo_desde|fecha if c.periodo_desde }} – {{ c.periodo_hasta|fecha if c.periodo_hasta }}{% endif %}</td>
+      <td class="n">{{ c.ingresos_contrato|pesos if c.ingresos_contrato is not none else '' }}</td>
+      <td class="n">{{ (c.porcentaje|string).rstrip('0').rstrip('.') if c.porcentaje else '' }}</td>
+      <td class="n">{{ c.valor|pesos }}</td><td class="n">{{ c.cobrado|pesos if c.cobrado else '' }}</td>
+      <td class="n">{% if c.saldo > 0 %}<span class="etiqueta adv">{{ c.saldo|pesos }}</span>{% else %}<span class="etiqueta ok">cobrada</span>{% endif %}</td>
+      <td><a class="btn peq" href="/participacion/certificacion/{{ c.id }}">Abrir</a></td></tr>
+    {% endfor %}
+    <tr class="total"><td colspan="5">Total</td><td class="n">{{ total_valor|pesos }}</td><td class="n">{{ total_cobrado|pesos }}</td><td class="n">{{ total_saldo|pesos }}</td><td></td></tr>
+  </table>
+  {% else %}<p class="vacio">No hay certificaciones en {{ anio }}.</p>{% endif %}
+</div>
+<p class="nota">Base legal: contrato de cuentas en participación (arts. 507 a 514 del Código de Comercio). El socio gestor factura y declara el IVA; usted reconoce su parte con la certificación (art. 18 del Estatuto Tributario). Asiento: débito 138010 (por cobrar al gestor) y crédito 415510 (ingresos por cuentas en participación). En la exógena se reporta en el formato 1007, concepto 4001, a nombre del gestor; confírmelo con su contador.</p>
+{% endblock %}

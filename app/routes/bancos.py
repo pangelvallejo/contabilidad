@@ -59,13 +59,15 @@ def conciliacion():
     categorias = {m.id: bancos.sugerir_categoria_bancaria(m.descripcion) for m in movs if m.estado == "pendiente"}
     corte = fecha_arg("corte", date.today())
     pendientes = s.query(MovimientoBanco).filter_by(banco_id=banco.id, estado="pendiente").count()
+    from .participacion import pendientes as participacion_pendientes
     return render_template(
         "bancos/conciliacion.html", banco=banco, movs=movs, sugerencias=sugerencias, categorias_sug=categorias,
         estado=estado, bancos=_bancos_para_elegir(s, banco.id), pendientes=pendientes, pagina=pagina, paginas=paginas,
         saldo_libros=reportes.saldo_cuenta(s, banco.cuenta, corte), saldo_extracto=bancos.saldo_extracto(s, banco.id, corte),
         corte=corte, categorias=s.query(CategoriaGasto).filter_by(activa=True).order_by(CategoriaGasto.nombre).all(),
         clientes=s.query(Tercero).filter_by(es_cliente=True).order_by(Tercero.nombre).all(),
-        proveedores=s.query(Tercero).filter_by(es_proveedor=True).order_by(Tercero.nombre).all())
+        proveedores=s.query(Tercero).filter_by(es_proveedor=True).order_by(Tercero.nombre).all(),
+        certificaciones=participacion_pendientes(s))
 
 
 @bp.route("/movimiento/<int:id>", methods=["POST"])
@@ -148,6 +150,24 @@ def accion(id):
             mov.origen_tipo, mov.origen_id, mov.estado, mov.creado_aqui = "recaudo", rec.id, "conciliado", True
             flash("Recaudo registrado y aplicado a las facturas más antiguas." if rec.aplicaciones
                   else "Recaudo registrado como anticipo (el cliente no tiene facturas pendientes).", "ok")
+        elif accion == "participacion":
+            from ..models import CertificacionParticipacion, PagoParticipacion
+            if mov.valor <= 0:
+                raise ValueError("Solo las entradas de dinero se registran como pago del socio gestor.")
+            c = s.get(CertificacionParticipacion, request.form.get("certificacion_id", type=int) or 0)
+            if c is None:
+                raise ValueError("Elija la certificación de cuentas en participación que paga esta transferencia.")
+            if mov.valor > c.saldo:
+                raise ValueError("La transferencia supera el saldo por cobrar de esa certificación.")
+            p = PagoParticipacion(fecha=mov.fecha, banco_id=mov.banco_id, valor=mov.valor,
+                                  referencia=(mov.referencia or mov.descripcion or "")[:80] or None)
+            c.pagos.append(p)
+            s.flush()
+            s.refresh(p)
+            contab.contabilizar_pago_participacion(s, p)
+            mov.origen_tipo, mov.origen_id, mov.estado, mov.creado_aqui = "pagoparticipacion", p.id, "conciliado", True
+            from ..formato import pesos
+            flash(f"Pago de {c.contrato.gestor.nombre} aplicado a la certificación; por cobrar {pesos(c.saldo)}.", "ok")
         elif accion == "ingreso":
             # Rendimientos, reintegros u otros ingresos sin factura: asiento banco contra la cuenta elegida
             cuenta = request.form.get("cuenta", "421005")

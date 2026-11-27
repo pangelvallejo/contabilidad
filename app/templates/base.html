@@ -20,6 +20,7 @@
     <h4><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11"/><path d="m7 10 5 5 5-5"/><path d="M4 19h16"/></svg>Ingresos</h4>
     <a href="/ventas" class="{{ 'activo' if ruta.startswith('/ventas') and ruta != '/ventas/importar' }}">Facturas de venta</a>
     <a href="/ventas/importar" class="{{ 'activo' if ruta == '/ventas/importar' }}">Importar XML de facturas</a>
+    <a href="/participacion/" class="{{ 'activo' if ruta.startswith('/participacion') }}">Cuentas en participación</a>
     <a href="/recaudos" class="{{ 'activo' if ruta.startswith('/recaudos') }}">Recaudos</a>
     <a href="/cartera" class="{{ 'activo' if ruta.startswith('/cartera') }}">Cartera por cobrar</a>
     <a href="/certificados" class="{{ 'activo' if ruta.startswith('/certificados') }}">Certificados reteIVA</a>
@@ -33,7 +34,8 @@
     <a href="/informes/cuentas-por-pagar" class="{{ 'activo' if ruta.startswith('/informes/cuentas-por-pagar') }}">Cuentas por pagar</a>
     <h4><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h6"/></svg>Impuestos</h4>
     <a href="/impuestos/iva" class="{{ 'activo' if ruta.startswith('/impuestos/iva') }}">IVA por bimestre</a>
-    <a href="/impuestos/simple" class="{{ 'activo' if ruta.startswith('/impuestos/simple') }}">Recibo 2593 (SIMPLE + IVA)</a>
+    <a href="/impuestos/simple" class="{{ 'activo' if ruta == '/impuestos/simple' }}">Recibo 2593 (SIMPLE + IVA)</a>
+    <a href="/impuestos/recibos" class="{{ 'activo' if ruta.startswith('/impuestos/recibos') }}">Adjuntar formularios 2593</a>
     <a href="/impuestos/f260" class="{{ 'activo' if ruta.startswith('/impuestos/f260') }}">Declaración SIMPLE (F260)</a>
     <a href="/impuestos/f300" class="{{ 'activo' if ruta.startswith('/impuestos/f300') }}">Declaración IVA (F300)</a>
     <a href="/impuestos/exogena" class="{{ 'activo' if ruta.startswith('/impuestos/exogena') }}">Exógena</a>

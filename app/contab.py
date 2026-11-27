@@ -27,6 +27,8 @@ CTA_PROVEEDORES = "220505"
 CTA_ANTICIPOS_CLIENTES = "280505"
 CTA_SOCIOS = "235505"
 CTA_CAJA = "110505"
+CTA_PARTICIPACION_POR_COBRAR = "138010"
+CTA_INGRESOS_PARTICIPACION = "415510"
 CTA_GASTOS_BANCARIOS = "530505"  # GMF y cargos que el banco descuenta de los rendimientos
 
 TIPOS_ASIENTO = {
@@ -38,6 +40,7 @@ TIPOS_ASIENTO = {
     "FC": "Gasto / compra",
     "CE": "Comprobante de egreso",
     "IM": "Pago de impuestos",
+    "CP": "Cuentas en participación",
     "AJ": "Ajuste / manual",
     "CI": "Cierre de ejercicio",
 }
@@ -218,6 +221,26 @@ def contabilizar_otro_ingreso(session, oi):
                     tercero_id=oi.tercero_id, lineas=lineas)
 
 
+def contabilizar_certificacion_participacion(session, c):
+    """Ingreso certificado por el socio gestor: Dr cuenta por cobrar al gestor / Cr ingresos por cuentas en
+    participación. Sin IVA: el gestor lo factura y lo declara."""
+    t = c.contrato.gestor_id
+    desc = f"Cuentas en participación {c.contrato.nombre} {c.referencia or ''}".strip()
+    lineas = [(CTA_PARTICIPACION_POR_COBRAR, c.valor, 0, t, desc), (CTA_INGRESOS_PARTICIPACION, 0, c.valor, t, desc)]
+    guardar_asiento(session, origen=f"participacion:{c.id}", tipo="CP", fecha=c.fecha, descripcion=desc,
+                    tercero_id=t, lineas=lineas)
+
+
+def contabilizar_pago_participacion(session, p):
+    """Transferencia del gestor: Dr banco / Cr cuenta por cobrar al gestor."""
+    c = p.certificacion
+    t = c.contrato.gestor_id
+    desc = f"Pago cuentas en participación {c.contrato.nombre} {p.referencia or ''}".strip()
+    lineas = [(p.banco.cuenta, p.valor, 0, t, desc), (CTA_PARTICIPACION_POR_COBRAR, 0, p.valor, t, desc)]
+    guardar_asiento(session, origen=f"pagoparticipacion:{p.id}", tipo="RC", fecha=p.fecha, descripcion=desc,
+                    tercero_id=t, lineas=lineas)
+
+
 # ------------------------------------------------------------------ gastos
 
 def contabilizar_gasto(session, g):
@@ -309,10 +332,17 @@ def contabilizar_pago_impuesto(session, p, forzar=False):
     periodo = f"bimestre {p.bimestre} de {p.anio}" if p.bimestre else str(p.anio)
     desc = f"Formulario {p.formulario} {periodo}"
     if p.formulario == "2593":
-        # El anticipo del bimestre 6 se paga en enero: ya es un pago del impuesto causado al cierre (pasivo),
-        # no un anticipo del año en curso.
-        cta_simple = CTA_SIMPLE_POR_PAGAR if p.fecha.year > p.anio else CTA_ANTICIPO_SIMPLE
-        lineas = [(cta_simple, p.valor_simple, 0, None, "Anticipo SIMPLE"),
+        # El anticipo bimestral (que incluye el ICA consolidado) se reconoce como gasto del impuesto SIMPLE del año
+        # al pagarlo; al cierre, causar_simple_anual ajusta la diferencia con el impuesto anual. El del bimestre 6 se
+        # paga en enero: cancela el pasivo que dejó el cierre del año anterior.
+        cta_simple = CTA_SIMPLE_POR_PAGAR if p.fecha.year > p.anio else CTA_GASTO_SIMPLE
+        if cta_simple == CTA_GASTO_SIMPLE and p.id is not None:
+            # Los pagos contabilizados antes de la 1.6 quedaron como anticipo (135595) y el cierre del año ya los
+            # cruzó: al recontabilizarlos se conserva esa cuenta para no duplicar el gasto.
+            previo = session.query(Asiento).filter_by(origen=f"impuesto:{p.id}").first()
+            if previo is not None and any(l.cuenta == CTA_ANTICIPO_SIMPLE for l in previo.lineas):
+                cta_simple = CTA_ANTICIPO_SIMPLE
+        lineas = [(cta_simple, p.valor_simple, 0, None, "Anticipo SIMPLE (incluye ICA consolidado)"),
                   (CTA_IVA_PAGADO_2593, p.valor_iva, 0, None, "IVA bimestral"),
                   (p.banco.cuenta, 0, p.total, None, desc)]
         if p.bimestre:

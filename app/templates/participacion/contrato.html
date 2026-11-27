@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block titulo %}{{ 'Editar contrato' if c else 'Nuevo contrato' }}{% endblock %}
+{% block contenido %}
+{% set v = form if form else {} %}
+<div class="encabezado">
+  <div><h1>{{ 'Contrato: ' ~ c.nombre if c else 'Nuevo contrato de cuentas en participación' }}</h1>
+    <p class="sub">El socio gestor es quien factura al cliente y le certifica a usted la parte de los ingresos que le corresponde.</p></div>
+  <div class="acciones"><a class="btn" href="/participacion/">Volver</a></div>
+</div>
+<form method="post" enctype="multipart/form-data" class="tarjeta">
+  <div class="campos">
+    <div><label>Nombre del contrato</label><input name="nombre" required placeholder="Cuentas en participación AM Legal" value="{{ v.get('nombre') or (c.nombre if c else '') }}"></div>
+    <div><label>Socio gestor</label>
+      <select name="gestor_id" id="gestor" required><option value="">Seleccione…</option>{% for t in terceros %}<option value="{{ t.id }}" {{ 'selected' if (v.get('gestor_id') or (c.gestor_id|string if c else '')) == t.id|string }}>{{ t.nombre }} ({{ t.nit }})</option>{% endfor %}<option value="nuevo" {{ 'selected' if v.get('gestor_id') == 'nuevo' or (not c and not terceros) }}>+ Crear el socio gestor…</option></select></div>
+    <div class="nuevo-gestor"><label>NIT del socio gestor (sin DV)</label><input name="nuevo_nit" value="{{ v.get('nuevo_nit', '') }}"></div>
+    <div class="nuevo-gestor"><label>Razón social del socio gestor</label><input name="nuevo_nombre" value="{{ v.get('nuevo_nombre', '') }}" placeholder="AM Legal S.A.S."></div>
+    <div><label>% de participación pactado (opcional)</label><input class="n" name="porcentaje" value="{{ v.get('porcentaje') or ((c.porcentaje|string).rstrip('0').rstrip('.') if c and c.porcentaje else '') }}" placeholder="Ej. 40"></div>
+    <div><label>Fecha de inicio (opcional)</label><input type="date" name="fecha_inicio" value="{{ v.get('fecha_inicio') or (c.fecha_inicio if c and c.fecha_inicio else '') }}"></div>
+    <div><label>Contrato firmado (PDF)</label><input type="file" name="soporte">{% if c and c.soporte_archivo %}<span class="nota">Actual: <a href="/archivo/{{ c.soporte_archivo }}" target="_blank">ver</a></span>{% endif %}</div>
+    {% if c %}<div><label class="check"><input type="checkbox" name="activo" {{ 'checked' if c.activo }}> Contrato activo</label></div>{% endif %}
+    <div class="campo ancho"><label>Notas</label><textarea name="notas" rows="2">{{ v.get('notas') or (c.notas if c and c.notas else '') }}</textarea></div>
+  </div>
+  <button class="primario">{{ 'Guardar cambios' if c else 'Registrar contrato' }}</button>
+  {% if c %}<button class="peligro" name="accion" value="borrar" data-confirmar="¿Eliminar este contrato?">Eliminar</button>{% endif %}
+</form>
+<script>
+const g = document.getElementById('gestor');
+const ver = () => document.querySelectorAll('.nuevo-gestor').forEach(e => e.style.display = g.value === 'nuevo' ? '' : 'none');
+g.addEventListener('change', ver); ver();
+</script>
+{% endblock %}

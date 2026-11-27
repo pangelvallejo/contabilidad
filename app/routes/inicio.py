@@ -5,7 +5,8 @@ from flask import Blueprint, render_template
 
 from .. import bancos, cartera, impuestos, reportes
 from ..db import Session
-from ..models import CERO, DocumentoVenta, Gasto, Recaudo, Tercero, Vencimiento
+from ..models import (CERO, CertificacionParticipacion, DocumentoVenta, Gasto, PagoParticipacion, Recaudo, Tercero,
+                      Vencimiento)
 
 bp = Blueprint("inicio", __name__)
 
@@ -56,6 +57,11 @@ def alertas(s, hoy):
         if facturado is None:
             res.append(("info", f"Honorarios mensuales sin facturar este mes: {t.nombre}", t.retainer_mensual,
                         f"/ventas?cliente={t.id}"))
+    from .participacion import pendientes as participacion_pendientes
+    por_cobrar = [c for c in participacion_pendientes(s) if c.fecha <= hoy - timedelta(days=30)]
+    if por_cobrar:
+        res.append(("advertencia", f"{len(por_cobrar)} certificación(es) de cuentas en participación sin pago del gestor "
+                    "hace más de 30 días", sum((c.saldo for c in por_cobrar), CERO), "/participacion/"))
     for v in (s.query(Vencimiento).filter(Vencimiento.cumplido.is_(False), Vencimiento.fecha <= hoy + timedelta(days=30))
               .order_by(Vencimiento.fecha)):
         nivel = "critico" if v.fecha < hoy else "advertencia"
@@ -75,6 +81,13 @@ def tablero():
     ventas_mes = impuestos.resumen_iva(s, inicio_mes, hoy)
     ventas_anio = impuestos.resumen_iva(s, inicio_anio, hoy)
     recaudado_mes = sum((r.valor for r in s.query(Recaudo).filter(Recaudo.fecha.between(inicio_mes, hoy))), CERO)
+    recaudado_mes += sum((p.valor for p in s.query(PagoParticipacion).filter(PagoParticipacion.fecha.between(inicio_mes, hoy))),
+                         CERO)
+
+    def participacion(desde):
+        return sum((c.valor for c in s.query(CertificacionParticipacion)
+                    .filter(CertificacionParticipacion.fecha.between(desde, hoy))), CERO)
+    part_mes, part_anio = participacion(inicio_mes), participacion(inicio_anio)
     filas_cartera, tot_cartera = cartera.cartera_por_edades(s, hoy)
     recibo = impuestos.recibo_2593(s, hoy.year, bim)
     serie = reportes.serie_mensual(s, hoy.year)
@@ -84,6 +97,7 @@ def tablero():
 
     return render_template(
         "tablero.html", ventas_mes=ventas_mes, ventas_anio=ventas_anio, recaudado_mes=recaudado_mes,
+        part_mes=part_mes, part_anio=part_anio,
         filas_cartera=filas_cartera[:5], tot_cartera=tot_cartera, edades=cartera.EDADES, recibo=recibo,
         serie=[x for x in serie if x[0] <= hoy.month], por_categoria=por_categoria[:8], gastos_mes=gastos_mes,
         alertas=alertas(s, hoy), nombre_bimestre=impuestos.nombre_bimestre(bim),

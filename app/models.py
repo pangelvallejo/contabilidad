@@ -320,6 +320,69 @@ class OtroIngreso(Base):
         return self.valor - self.descuentos
 
 
+class ContratoParticipacion(Base):
+    """Contrato de cuentas en participación (arts. 507 a 514 C.Co.): el socio gestor factura al cliente a su
+    nombre y certifica a la firma, como partícipe, la parte de los ingresos que le corresponde (art. 18 E.T.)."""
+    __tablename__ = "contratos_participacion"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    nombre: Mapped[str] = mapped_column(String(160))
+    gestor_id: Mapped[int] = mapped_column(ForeignKey("terceros.id"))
+    porcentaje: Mapped[Decimal | None] = mapped_column(Numeric(7, 4))  # participación pactada, para sugerir el valor
+    fecha_inicio: Mapped[date | None] = mapped_column(Date)
+    activo: Mapped[bool] = mapped_column(Boolean, default=True)
+    notas: Mapped[str | None] = mapped_column(Text)
+    soporte_archivo: Mapped[str | None] = mapped_column(String(250))
+    creado: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+
+    gestor: Mapped[Tercero] = relationship()
+    certificaciones: Mapped[list["CertificacionParticipacion"]] = relationship(back_populates="contrato")
+
+
+class CertificacionParticipacion(Base):
+    """Certificación del socio gestor: reconoce el ingreso de la firma sin factura de venta. No genera IVA (lo
+    factura y declara el gestor) y hace parte de los ingresos brutos del SIMPLE."""
+    __tablename__ = "certificaciones_participacion"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    contrato_id: Mapped[int] = mapped_column(ForeignKey("contratos_participacion.id"))
+    fecha: Mapped[date] = mapped_column(Date, index=True)          # fecha en que se reconoce el ingreso
+    periodo_desde: Mapped[date | None] = mapped_column(Date)
+    periodo_hasta: Mapped[date | None] = mapped_column(Date)
+    ingresos_contrato: Mapped[Decimal | None] = mapped_column(Dinero)  # lo que facturó el gestor en el periodo
+    porcentaje: Mapped[Decimal | None] = mapped_column(Numeric(7, 4))
+    valor: Mapped[Decimal] = mapped_column(Dinero)                  # ingreso certificado a favor de la firma
+    referencia: Mapped[str | None] = mapped_column(String(80))
+    notas: Mapped[str | None] = mapped_column(Text)
+    soporte_archivo: Mapped[str | None] = mapped_column(String(250))
+    creado: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+
+    contrato: Mapped[ContratoParticipacion] = relationship(back_populates="certificaciones")
+    pagos: Mapped[list["PagoParticipacion"]] = relationship(back_populates="certificacion", cascade="all, delete-orphan",
+                                                            order_by="PagoParticipacion.fecha")
+
+    @property
+    def cobrado(self):
+        return sum((p.valor for p in self.pagos), CERO)
+
+    @property
+    def saldo(self):
+        return self.valor - self.cobrado
+
+
+class PagoParticipacion(Base):
+    """Transferencia del socio gestor que paga (total o parcialmente) una certificación."""
+    __tablename__ = "pagos_participacion"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    certificacion_id: Mapped[int] = mapped_column(ForeignKey("certificaciones_participacion.id", ondelete="CASCADE"))
+    fecha: Mapped[date] = mapped_column(Date, index=True)
+    banco_id: Mapped[int] = mapped_column(ForeignKey("bancos.id"))
+    valor: Mapped[Decimal] = mapped_column(Dinero)
+    referencia: Mapped[str | None] = mapped_column(String(80))
+    creado: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+
+    certificacion: Mapped[CertificacionParticipacion] = relationship(back_populates="pagos")
+    banco: Mapped[Banco] = relationship()
+
+
 TIPOS_SOPORTE = {
     "FE": "Factura electrónica",
     "NC": "Nota crédito de proveedor",
@@ -423,6 +486,11 @@ class PagoImpuesto(Base):
     banco_id: Mapped[int] = mapped_column(ForeignKey("bancos.id"))
     numero_formulario: Mapped[str | None] = mapped_column(String(40))
     archivo: Mapped[str | None] = mapped_column(String(250))
+    # Datos leídos del Formulario 2593 adjunto (informativos)
+    ingresos_declarados: Mapped[Decimal | None] = mapped_column(Dinero)   # casilla 39
+    componente_ica: Mapped[Decimal | None] = mapped_column(Dinero)        # casilla 76, incluido en valor_simple
+    aportes_pension: Mapped[Decimal | None] = mapped_column(Dinero)       # descuento por aportes a pensión
+    recibo_490: Mapped[str | None] = mapped_column(String(20))            # casilla 80
 
     banco: Mapped[Banco] = relationship()
 

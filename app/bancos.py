@@ -222,6 +222,14 @@ def candidatos(session, mov: MovimientoBanco, dias=5, usados=None):
                                                     OtroIngreso.fecha.between(desde, hasta)):
             if oi.neto == mov.valor and ("otroingreso", oi.id) not in usados:
                 res.append(("otroingreso", oi.id, f"{oi.concepto[:40]} {oi.fecha:%d/%m}", oi.neto))
+        from .models import PagoParticipacion
+        for pp in session.query(PagoParticipacion).filter(PagoParticipacion.banco_id == mov.banco_id,
+                                                          PagoParticipacion.fecha.between(desde, hasta),
+                                                          PagoParticipacion.valor == mov.valor):
+            if ("pagoparticipacion", pp.id) not in usados:
+                res.append(("pagoparticipacion", pp.id,
+                            f"Cuentas en participación {pp.certificacion.contrato.gestor.nombre[:30]} {pp.fecha:%d/%m}",
+                            pp.valor))
     else:
         v = -mov.valor
         for p in session.query(PagoGasto).filter(PagoGasto.cuenta_pago == cuenta, PagoGasto.fecha.between(desde, hasta),
@@ -289,14 +297,14 @@ def sugerir_categoria_bancaria(descripcion: str):
     return None
 
 
-TIPOS_ORIGEN = {"recaudo", "pagogasto", "gasto", "impuesto", "asiento", "otroingreso"}
+TIPOS_ORIGEN = {"recaudo", "pagogasto", "gasto", "impuesto", "asiento", "otroingreso", "pagoparticipacion"}
 
 
 def origen_existe(session, tipo, oid) -> bool:
     from .models import Gasto
-    from .models import OtroIngreso
+    from .models import OtroIngreso, PagoParticipacion
     modelo = {"recaudo": Recaudo, "pagogasto": PagoGasto, "gasto": Gasto, "impuesto": PagoImpuesto, "asiento": Asiento,
-              "otroingreso": OtroIngreso}
+              "otroingreso": OtroIngreso, "pagoparticipacion": PagoParticipacion}
     return tipo in modelo and session.get(modelo[tipo], oid) is not None
 
 
@@ -341,6 +349,12 @@ def deshacer(session, mov: MovimientoBanco):
         if a is not None:
             contab.verificar_periodo(session, a.fecha)
             session.delete(a)
+    elif tipo == "pagoparticipacion":
+        from .models import PagoParticipacion
+        pp = session.get(PagoParticipacion, oid)
+        if pp is not None:
+            contab.borrar_asientos(session, f"pagoparticipacion:{pp.id}")
+            session.delete(pp)
     elif tipo == "otroingreso":
         from .models import OtroIngreso
         oi = session.get(OtroIngreso, oid)
