@@ -27,7 +27,10 @@ def _porcentaje(nombre):
     if not texto:
         return None
     try:
-        p = d(texto)
+        from decimal import Decimal
+        p = Decimal(texto.replace(" ", "").replace(",", "."))  # un porcentaje nunca lleva separador de miles
+        if not p.is_finite():
+            raise ValueError(texto)
     except Exception as e:  # noqa: BLE001
         raise ValueError(f"El porcentaje '{texto}' no es un número válido (por ejemplo 30 o 33,33).") from e
     if p <= 0 or p > CIEN:
@@ -60,7 +63,8 @@ def resumen(s, desde, hasta):
     reconocido = sum((c.valor for c in certs), CERO)
     cobrado = sum((p.valor for p in s.query(PagoParticipacion).filter(PagoParticipacion.fecha.between(desde, hasta))),
                   CERO)
-    por_cobrar = sum((c.saldo for c in s.query(CertificacionParticipacion)
+    por_cobrar = sum((c.valor - sum((p.valor for p in c.pagos if p.fecha <= hasta), CERO)
+                      for c in s.query(CertificacionParticipacion)
                       .options(selectinload(CertificacionParticipacion.pagos))
                       .filter(CertificacionParticipacion.fecha <= hasta)), CERO)
     return {"reconocido": reconocido, "cobrado": cobrado, "por_cobrar": por_cobrar}

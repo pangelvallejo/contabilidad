@@ -282,3 +282,87 @@ def test_causacion_anual_ajusta_el_gasto_ya_reconocido(s):
     assert dec.descuento_pension == D("100000")
     assert _saldo(s, "540505") == dec.impuesto_neto
     assert abs(_saldo(s, "240405")) == dec.impuesto_neto - D("1670000")
+
+
+# ------------------------------------------------------------------ regresiones de la revisión
+
+def test_pago_antiguo_conserva_la_cuenta_de_anticipo_al_recontabilizar(s):
+    from app import contab
+    from app.models import PagoImpuesto
+    b = _banco(s)
+    p = PagoImpuesto(formulario="2593", anio=2025, bimestre=3, fecha=date(2025, 7, 15), valor_simple=D("500000"),
+                     valor_iva=0, banco_id=b.id)
+    s.add(p)
+    s.flush()
+    # asiento como lo dejaba la versión 1.5
+    contab.guardar_asiento(s, origen=f"impuesto:{p.id}", tipo="IM", fecha=p.fecha, descripcion="2593", tercero_id=None,
+                           lineas=[("135595", p.valor_simple, 0, None, None), (b.cuenta, 0, p.valor_simple, None, None)])
+    contab.contabilizar_pago_impuesto(s, p)
+    assert _saldo(s, "135595", date(2025, 12, 31)) == D("500000") and _saldo(s, "540505", date(2025, 12, 31)) == 0
+
+
+def test_base_caja_no_duplica_ingreso_ya_certificado(cliente_web, s):
+    from app import contab
+    from app.models import CertificacionParticipacion
+    k = _contrato(s)
+    contab.set_config(s, "simple_base", "caja")
+    c = CertificacionParticipacion(contrato=k, fecha=date(2026, 2, 15), valor=D("30000000"), referencia="CERT-1")
+    s.add(c)
+    s.flush()
+    contab.contabilizar_certificacion_participacion(s, c)
+    s.commit()
+    html, filas, fechas, ingresos = _leer(cliente_web, [pdf_2593()])
+    assert ingresos["0"].replace(".", "").split(",")[0] in ("0", "000")
+    html = _registrar(cliente_web, s, filas, fechas, {"0": "30.000.000"})
+    assert "No se registró nada" in html
+    assert s.query(CertificacionParticipacion).count() == 1
+
+
+def test_dos_formularios_del_mismo_bimestre_no_se_marcan_ambos(cliente_web, s):
+    html, filas, _, ingresos = _leer(cliente_web, [pdf_2593(), pdf_2593(numero="25930000000099", recibo_490="4911000000099")])
+    assert len(filas) == 2 and "otro formulario del mismo bimestre" in html
+    assert html.count('name="pagar_') == 2 and html.count("checked> registrar") == 1
+
+
+def test_completar_pago_conserva_banco_y_fecha(cliente_web, s):
+    from app import contab
+    from app.models import Banco, PagoImpuesto
+    otro = s.query(Banco).order_by(Banco.id.desc()).first()
+    p = PagoImpuesto(formulario="2593", anio=2026, bimestre=1, fecha=date(2026, 5, 20), valor_simple=D("1670000"),
+                     valor_iva=0, banco_id=otro.id)
+    s.add(p)
+    s.flush()
+    contab.contabilizar_pago_impuesto(s, p)
+    s.commit()
+    html, filas, fechas, ingresos = _leer(cliente_web, [pdf_2593()])
+    assert "completar pago" in html
+    _registrar(cliente_web, s, filas, fechas, ingresos)
+    p = s.get(PagoImpuesto, p.id)
+    assert p.banco_id == otro.id and p.fecha == date(2026, 5, 20) and p.numero_formulario == "25930000000017"
+    assert s.query(PagoImpuesto).count() == 1
+
+
+def test_porcentaje_con_tres_decimales(cliente_web, s):
+    from app.models import ContratoParticipacion
+    k = _contrato(s)
+    for _ in range(2):  # se guarda y se vuelve a guardar con lo que muestra el formulario
+        k = s.get(ContratoParticipacion, k.id)
+        pct = (str(k.porcentaje) if k.porcentaje != D("40") else "33,333").rstrip("0").rstrip(".")
+        cliente_web.post(f"/participacion/contrato/{k.id}", data={"nombre": k.nombre, "gestor_id": k.gestor_id,
+                                                                  "porcentaje": pct, "activo": "on"})
+    assert s.get(ContratoParticipacion, k.id).porcentaje == D("33.333")
+
+
+def test_por_cobrar_al_corte(s):
+    from app import contab
+    from app.models import CertificacionParticipacion, PagoParticipacion
+    from app.routes.participacion import resumen
+    k = _contrato(s)
+    c = CertificacionParticipacion(contrato=k, fecha=date(2026, 12, 31), valor=D("10000000"))
+    s.add(c)
+    s.flush()
+    contab.contabilizar_certificacion_participacion(s, c)
+    c.pagos.append(PagoParticipacion(fecha=date(2027, 1, 10), banco_id=_banco(s).id, valor=D("10000000")))
+    s.flush()
+    assert resumen(s, date(2026, 1, 1), date(2026, 12, 31))["por_cobrar"] == D("10000000")
+    assert resumen(s, date(2027, 1, 1), date(2027, 12, 31))["por_cobrar"] == 0

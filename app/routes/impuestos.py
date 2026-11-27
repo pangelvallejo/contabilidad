@@ -216,6 +216,13 @@ def _leer_guardado(relativa):
     return recibos_dian.leer_2593(ruta.read_bytes())
 
 
+def _ingreso_registrado(s, anio, bimestre):
+    """Ingresos del bimestre ya contabilizados, por causación aunque el SIMPLE se liquide por caja: incluye las
+    certificaciones de cuentas en participación aún no pagadas por el gestor."""
+    inicio, fin = impuestos.rango_bimestre(anio, bimestre)
+    return impuestos.ingresos_brutos(s, inicio, fin, base="causacion")
+
+
 def _propuesta(s, r, archivo):
     """Lo que se registraría con un 2593: pago, gasto por impuesto e ingreso por reconocer."""
     from ..models import CertificacionParticipacion
@@ -223,7 +230,7 @@ def _propuesta(s, r, archivo):
     pagos = s.query(PagoImpuesto).filter_by(formulario="2593", anio=r.anio, bimestre=r.bimestre).all()
     mismo = next((p for p in pagos if p.numero_formulario == r.numero), None)
     igual = next((p for p in pagos if p.total == r.total and not p.numero_formulario), None)
-    registrado = impuestos.ingresos_brutos(s, inicio, fin)
+    registrado = _ingreso_registrado(s, r.anio, r.bimestre)
     cert = s.query(CertificacionParticipacion).filter_by(referencia=f"Formulario 2593 {r.numero}").first()
     nit = (contab.config(s, "empresa_nit", "") or "").split("-")[0].replace(".", "").strip()
     avisos = list(r.advertencias)
@@ -308,8 +315,11 @@ def recibos():
                     valor = dinero(f"ingreso_{i}")
                     if valor <= 0:
                         continue
-                    if valor > r.ingresos:
-                        raise ValueError(f"El ingreso a reconocer del bimestre {r.bimestre} supera los ingresos declarados.")
+                    pendiente = r.ingresos - _ingreso_registrado(s, r.anio, r.bimestre)
+                    if valor > pendiente:
+                        from ..formato import pesos
+                        raise ValueError(f"El ingreso a reconocer del bimestre {r.bimestre} de {r.anio} supera lo declarado "
+                                         f"que aún no está en la contabilidad ({pesos(max(pendiente, contab.CERO))}).")
                     c = CertificacionParticipacion(contrato=contrato, fecha=fin, periodo_desde=inicio, periodo_hasta=fin,
                                                    valor=valor, referencia=referencia,
                                                    notas=f"Ingresos declarados en el 2593: {r.ingresos:,.0f}".replace(",", "."))
@@ -329,9 +339,9 @@ def recibos():
                     continue  # ya registrado
                 p = next((p for p in pagos if p.total == r.total and not p.numero_formulario), None)
                 if p is None:
-                    p = PagoImpuesto(formulario="2593", anio=r.anio, bimestre=r.bimestre)
+                    p = PagoImpuesto(formulario="2593", anio=r.anio, bimestre=r.bimestre, fecha=fecha, banco_id=banco_id)
                     s.add(p)
-                p.fecha, p.banco_id = fecha, banco_id
+                # Un pago que ya existía (quizá conciliado con el extracto) conserva su banco y su fecha
                 p.valor_simple, p.valor_iva = r.componente_ica + r.simple_a_pagar, r.iva_a_pagar
                 p.numero_formulario, p.archivo, p.recibo_490 = r.numero, archivo, r.recibo_490
                 p.ingresos_declarados, p.componente_ica, p.aportes_pension = r.ingresos, r.componente_ica, r.aportes_pension
@@ -373,7 +383,14 @@ def recibos():
             if any(x["r"].numero == r.numero for x in propuestas):
                 continue
             nombre = f"2593_{r.anio}_bim{r.bimestre}_{r.numero}.pdf"
-            propuestas.append(_propuesta(s, r, archivos.guardar("impuestos", nombre, contenido)))
+            x = _propuesta(s, r, archivos.guardar("impuestos", nombre, contenido))
+            if any((y["r"].anio, y["r"].bimestre) == (r.anio, r.bimestre) for y in propuestas):
+                # Otro 2593 del mismo bimestre (por ejemplo, una corrección): no se marca por defecto
+                x["avisos"].append("Hay otro formulario del mismo bimestre en esta carga; marque solo el que corresponde.")
+                x["por_reconocer"] = contab.CERO
+                if x["estado"] in ("nuevo", "completar"):
+                    x["estado"] = "otro"
+            propuestas.append(x)
         if not propuestas and not errores:
             errores.append("Seleccione uno o varios PDF del Formulario 2593.")
         propuestas.sort(key=lambda x: (x["r"].anio, x["r"].bimestre))

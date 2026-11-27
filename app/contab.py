@@ -336,6 +336,12 @@ def contabilizar_pago_impuesto(session, p, forzar=False):
         # al pagarlo; al cierre, causar_simple_anual ajusta la diferencia con el impuesto anual. El del bimestre 6 se
         # paga en enero: cancela el pasivo que dejó el cierre del año anterior.
         cta_simple = CTA_SIMPLE_POR_PAGAR if p.fecha.year > p.anio else CTA_GASTO_SIMPLE
+        if cta_simple == CTA_GASTO_SIMPLE and p.id is not None:
+            # Los pagos contabilizados antes de la 1.6 quedaron como anticipo (135595) y el cierre del año ya los
+            # cruzó: al recontabilizarlos se conserva esa cuenta para no duplicar el gasto.
+            previo = session.query(Asiento).filter_by(origen=f"impuesto:{p.id}").first()
+            if previo is not None and any(l.cuenta == CTA_ANTICIPO_SIMPLE for l in previo.lineas):
+                cta_simple = CTA_ANTICIPO_SIMPLE
         lineas = [(cta_simple, p.valor_simple, 0, None, "Anticipo SIMPLE (incluye ICA consolidado)"),
                   (CTA_IVA_PAGADO_2593, p.valor_iva, 0, None, "IVA bimestral"),
                   (p.banco.cuenta, 0, p.total, None, desc)]
