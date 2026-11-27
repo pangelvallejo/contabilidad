@@ -106,9 +106,19 @@ pruebas, construye el paquete portable con Windows y lo adjunta al lanzamiento
    intereses que abona el banco u otros ingresos sin factura se registran en *Ingresos sin factura*
    (o con el botón *Otro ingreso* de la conciliación): entran a los ingresos brutos del SIMPLE, no
    generan IVA y van a la exógena con el tercero que indique. Mire *Flujo de caja y proyección*.
-6. **Antes del vencimiento del 2593** → *Recibo 2593*: copie los valores al portal de la DIAN, pague y
-   registre el pago; el bimestre queda bloqueado contra cambios accidentales.
-7. **Cierre del año** → *Declaración SIMPLE (F260)*, *Declaración IVA (F300)*, *Exógena* y
+6. **Cuentas en participación** → cuando el socio gestor (quien factura al cliente) le certifica su parte,
+   regístrela en *Cuentas en participación*: el ingreso se reconoce sin factura de venta (arts. 507 a 514
+   del Código de Comercio y art. 18 del E.T.), no genera IVA (lo factura y declara el gestor) y sí suma a
+   los ingresos brutos del SIMPLE. Asiento: débito 138010 (por cobrar al gestor), crédito 415510. Las
+   transferencias del gestor se aplican en la certificación o con el botón *Pago cuentas en participación*
+   de la conciliación. En la exógena se reportan en el 1007, concepto 4001, a nombre del gestor.
+7. **Antes del vencimiento del 2593** → *Recibo 2593*: copie los valores al portal de la DIAN y pague.
+   Luego descargue el formulario pagado y adjúntelo en *Adjuntar formularios 2593* (se pueden subir varios
+   a la vez): el programa lee el bimestre, los ingresos declarados, el anticipo, el ICA consolidado, el
+   descuento por aportes a pensión y el número y la fecha del recibo 490, registra el pago con su gasto por
+   impuesto (540505) y, si los ingresos del bimestre vienen de cuentas en participación, los reconoce en
+   el mismo paso. El bimestre queda bloqueado contra cambios accidentales.
+8. **Cierre del año** → *Declaración SIMPLE (F260)*, *Declaración IVA (F300)*, *Exógena* y
    *Cierre del año*. Entregue al contador el *Paquete para el contador*.
 
 ## Informes y gestión

@@ -5,7 +5,7 @@
   <div><h1>Recibo electrónico 2593 · {{ anio }}</h1>
     <p class="sub">Anticipo bimestral del impuesto unificado SIMPLE más el IVA del bimestre. Ingresos brutos por
       {{ 'causación (fecha de factura)' if base == 'causacion' else 'caja (fecha de recaudo)' }}; se cambia en Configuración.</p></div>
-  <div class="acciones"><a class="btn" href="/impuestos/f260?anio={{ anio }}">Declaración anual SIMPLE</a></div>
+  <div class="acciones"><a class="btn primario" href="/impuestos/recibos">Adjuntar formularios 2593 (PDF)</a><a class="btn" href="/impuestos/f260?anio={{ anio }}">Declaración anual SIMPLE</a></div>
 </div>
 <form class="filtros"><div><label>Año</label><input type="number" name="anio" value="{{ anio }}" style="width:90px"></div><button>Ver</button></form>
 
@@ -30,7 +30,8 @@
 
 <div class="rejilla k2">
   <form class="tarjeta" method="post" action="/impuestos/pago" enctype="multipart/form-data">
-    <h2>Registrar pago de un recibo 2593</h2>
+    <h2>Registrar pago de un recibo 2593 a mano</h2>
+    <p class="nota">Más fácil: <a href="/impuestos/recibos">adjunte el PDF del formulario 2593</a> y el programa toma los valores.</p>
     <input type="hidden" name="formulario" value="2593"><input type="hidden" name="anio" value="{{ anio }}">
     <input type="hidden" name="volver" value="/impuestos/simple?anio={{ anio }}">
     <div class="campos">

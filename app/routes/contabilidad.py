@@ -158,6 +158,11 @@ def paquete():
     otros = (s.query(OtroIngreso).options(selectinload(OtroIngreso.banco), selectinload(OtroIngreso.tercero),
                                           selectinload(OtroIngreso.cuenta_rel))
              .filter(OtroIngreso.fecha.between(desde, hasta)).order_by(OtroIngreso.fecha).all())
+    from ..models import CertificacionParticipacion, ContratoParticipacion
+    certs = (s.query(CertificacionParticipacion)
+             .options(selectinload(CertificacionParticipacion.pagos),
+                      selectinload(CertificacionParticipacion.contrato).selectinload(ContratoParticipacion.gestor))
+             .filter(CertificacionParticipacion.fecha.between(desde, hasta)).order_by(CertificacionParticipacion.fecha).all())
     iva = impuestos.resumen_iva(s, desde, hasta)
     cart, _ = cartera.cartera_por_edades(s, hasta)
     hojas = {
@@ -189,6 +194,11 @@ def paquete():
                            [[o.fecha, o.concepto, f"{o.cuenta} {o.cuenta_rel.nombre}", o.banco.nombre,
                              o.tercero.nombre if o.tercero else "", o.tercero.nit if o.tercero else "", o.valor,
                              o.descuentos] for o in otros]),
+        "Cuentas en participación": (
+            ["Fecha", "Contrato", "Socio gestor", "NIT", "Periodo desde", "Periodo hasta", "Ingreso reconocido",
+             "Cobrado", "Por cobrar", "Referencia"],
+            [[c.fecha, c.contrato.nombre, c.contrato.gestor.nombre, c.contrato.gestor.nit, c.periodo_desde or "",
+              c.periodo_hasta or "", c.valor, c.cobrado, c.saldo, c.referencia or ""] for c in certs]),
         "IVA": (["Concepto", "Valor"],
                 [["Ingresos gravados", iva.ingresos_gravados], ["IVA generado", iva.iva_generado_neto],
                  ["IVA descontable", iva.iva_descontable], ["ReteIVA", iva.reteiva], ["Neto", iva.neto]]),

@@ -15,7 +15,7 @@ warnings.filterwarnings("ignore", message=".*Decimal objects natively.*")
 # Si Windows bloquea Pillow, fpdf2 avisa que no podrá insertar imágenes: el programa no las usa.
 warnings.filterwarnings("ignore", message="Pillow could not be imported.*")
 
-VERSION = "1.5.0"
+VERSION = "1.6.0"
 
 
 def _reparaciones_al_actualizar(session):
@@ -176,9 +176,9 @@ def create_app(datos_dir=None, respaldo_automatico=False):
         return send_file(ruta, as_attachment=ruta.suffix.lower() in (".xml", ".zip", ".html", ".htm", ".svg"))
 
     from .routes import (ajustes, bancos, buscar, contabilidad, cotizaciones, gastos, impuestos, informes, inicio,
-                         planeacion, terceros, ventas)
+                         participacion, planeacion, terceros, ventas)
     for bp in (inicio.bp, ventas.bp, gastos.bp, terceros.bp, impuestos.bp, contabilidad.bp, ajustes.bp, buscar.bp,
-               planeacion.bp, bancos.bp, informes.bp, cotizaciones.bp):
+               planeacion.bp, bancos.bp, informes.bp, cotizaciones.bp, participacion.bp):
         app.register_blueprint(bp)
 
     if respaldo_automatico:  # modo normal (no pruebas): depreciaciones del mes y tareas en segundo plano

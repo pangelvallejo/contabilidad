@@ -51,10 +51,10 @@
 </div>
 
 <div class="franja">
-  <div class="kpi" style="--tono: var(--serie-1)"><div class="etq">Ingresos del mes, sin IVA</div><div class="val">{{ ventas_mes.ingresos_gravados|pesos }}</div>
-    <div class="det">IVA generado {{ ventas_mes.iva_generado_neto|pesos }}</div></div>
-  <div class="kpi" style="--tono: var(--serie-1)"><div class="etq">Ingresos del año, sin IVA</div><div class="val">{{ ventas_anio.ingresos_gravados|pesos }}</div>
-    <div class="det">{{ ventas_anio.ventas|length }} documentos emitidos</div></div>
+  <div class="kpi" style="--tono: var(--serie-1)"><div class="etq">Ingresos del mes, sin IVA</div><div class="val">{{ (ventas_mes.ingresos_gravados + part_mes)|pesos }}</div>
+    <div class="det">{% if part_mes %}Facturado {{ ventas_mes.ingresos_gravados|pesos }}, cuentas en participación {{ part_mes|pesos }}{% else %}IVA generado {{ ventas_mes.iva_generado_neto|pesos }}{% endif %}</div></div>
+  <div class="kpi" style="--tono: var(--serie-1)"><div class="etq">Ingresos del año, sin IVA</div><div class="val">{{ (ventas_anio.ingresos_gravados + part_anio)|pesos }}</div>
+    <div class="det">{% if part_anio %}Facturado {{ ventas_anio.ingresos_gravados|pesos }}, cuentas en participación {{ part_anio|pesos }}{% else %}{{ ventas_anio.ventas|length }} documentos emitidos{% endif %}</div></div>
   <div class="kpi" style="--tono: var(--ok)"><div class="etq">Recaudado este mes</div><div class="val">{{ recaudado_mes|pesos }}</div></div>
   <div class="kpi" style="--tono: var(--sello)"><div class="etq">Cartera por cobrar</div><div class="val">{{ tot_cartera.total|pesos }}</div>
     <div class="det">Vencida {{ (tot_cartera.total - tot_cartera['Por vencer'])|pesos }}</div></div>

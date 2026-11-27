@@ -200,6 +200,10 @@ def ingresos_brutos(session, inicio: date, fin: date, base: str | None = None) -
                 cobrable = doc.total - (doc.reteiva_valor if doc.reteiva_aplica else CERO)
                 if cobrable > 0:
                     total += ap.valor * doc.ingreso / cobrable
+        # cuentas en participación: lo que el socio gestor transfirió en el periodo (no lleva IVA)
+        from .models import PagoParticipacion
+        total += sum((p.valor for p in session.query(PagoParticipacion)
+                      .filter(PagoParticipacion.fecha.between(inicio, fin))), CERO)
         # otros ingresos (financieros, recuperaciones) según contabilidad
         total += _saldo_clase(session, inicio, fin, prefijo="42")
         return contab.redondear(total)
@@ -263,10 +267,11 @@ class DeclaracionSimple:
     descuento_medios_electronicos: Decimal
     anticipos: Decimal
     supera_limite: bool
+    descuento_pension: Decimal = CERO  # aportes a pensión descontados en los recibos 2593 del año
 
     @property
     def impuesto_neto(self):
-        return self.impuesto - self.descuento_medios_electronicos
+        return max(self.impuesto - self.descuento_medios_electronicos - self.descuento_pension, CERO)
 
     @property
     def saldo(self):
@@ -289,11 +294,12 @@ def declaracion_simple(session, anio) -> DeclaracionSimple:
                 electronicos += ap.valor * doc.ingreso / cobrable
     descuento = redondeo_dian(electronicos * contab.d(cfg.SIMPLE_DESCUENTO_MEDIOS_ELECTRONICOS))
     descuento = min(descuento, impuesto)
-    anticipos = sum((p.valor_simple for p in session.query(PagoImpuesto).filter_by(formulario="2593", anio=anio)),
-                    CERO)
+    recibos = session.query(PagoImpuesto).filter_by(formulario="2593", anio=anio).all()
+    anticipos = sum((p.valor_simple for p in recibos), CERO)
+    pension = sum((p.aportes_pension or CERO for p in recibos), CERO)
     return DeclaracionSimple(anio, ingresos, contab.redondear(ingresos / uvt(anio, session)), t, impuesto,
                              contab.redondear(electronicos), descuento, anticipos,
-                             ingresos >= uvt(anio, session) * cfg.SIMPLE_LIMITE_UVT)
+                             ingresos >= uvt(anio, session) * cfg.SIMPLE_LIMITE_UVT, pension)
 
 
 def causar_simple_anual(session, anio):
@@ -308,14 +314,24 @@ def causar_simple_anual(session, anio):
     pagados_en_el_anio = sum((p.valor_simple for p in session.query(PagoImpuesto)
                               .filter(PagoImpuesto.formulario == "2593", PagoImpuesto.anio == anio,
                                       PagoImpuesto.fecha <= date(anio, 12, 31))), CERO)
-    contra_anticipos = min(pagados_en_el_anio, dec.impuesto_neto)
-    por_pagar = max(dec.impuesto_neto - contra_anticipos, CERO)
+    # Los pagos del 2593 ya se llevaron al gasto (desde la versión 1.6); los registrados antes quedaron como
+    # anticipo (135595). Se mide lo ya reconocido como gasto y solo se causa la diferencia.
+    ya_gasto = sum((l.debito - l.credito for l in session.query(Movimiento).join(Asiento)
+                    .filter(Movimiento.cuenta == contab.CTA_GASTO_SIMPLE, Asiento.origen.like("impuesto:%"),
+                            Asiento.fecha.between(date(anio, 1, 1), date(anio, 12, 31)))), CERO)
+    en_anticipos = max(pagados_en_el_anio - ya_gasto, CERO)
+    falta = dec.impuesto_neto - ya_gasto
+    if falta >= 0:
+        contra_anticipos = min(en_anticipos, falta)
+        lineas = [(contab.CTA_GASTO_SIMPLE, falta, 0, None, None),
+                  (contab.CTA_ANTICIPO_SIMPLE, 0, contra_anticipos, None, None),
+                  (contab.CTA_SIMPLE_POR_PAGAR, 0, falta - contra_anticipos, None, "Saldo a pagar con la declaración")]
+    else:  # los anticipos superaron el impuesto del año: el exceso queda como saldo a favor
+        lineas = [(contab.CTA_ANTICIPO_SIMPLE, -falta, 0, None, "Saldo a favor del SIMPLE"),
+                  (contab.CTA_GASTO_SIMPLE, 0, -falta, None, None)]
     contab.guardar_asiento(
         session, origen=f"simple:{anio}", tipo="AJ", fecha=date(anio, 12, 31),
-        descripcion=f"Impuesto unificado SIMPLE año gravable {anio}", tercero_id=None, forzar=True,
-        lineas=[(contab.CTA_GASTO_SIMPLE, dec.impuesto_neto, 0, None, None),
-                (contab.CTA_ANTICIPO_SIMPLE, 0, contra_anticipos, None, None),
-                (contab.CTA_SIMPLE_POR_PAGAR, 0, por_pagar, None, None)])
+        descripcion=f"Impuesto unificado SIMPLE año gravable {anio}", tercero_id=None, forzar=True, lineas=lineas)
     return dec
 
 

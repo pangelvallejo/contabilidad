@@ -73,6 +73,11 @@ def generar(session, anio):
             sin_tercero.append(oi)
             continue
         f1007_otros[(concepto, oi.tercero_id)] += oi.valor
+    # Cuentas en participación: ingreso operacional certificado por el socio gestor (confirmar con el contador)
+    from .models import CertificacionParticipacion, ContratoParticipacion
+    for c in (session.query(CertificacionParticipacion).join(ContratoParticipacion)
+              .filter(CertificacionParticipacion.fecha.between(inicio, fin))):
+        f1007_otros[("4001", c.contrato.gestor_id)] += c.valor
 
     f1008 = defaultdict(lambda: CERO)
     for doc, saldo in cartera.documentos_abiertos(session, al=fin):

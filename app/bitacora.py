@@ -4,8 +4,9 @@ from decimal import Decimal
 
 from sqlalchemy import event, inspect
 
-from .models import (Asiento, Banco, Bitacora, CategoriaGasto, Config, DocumentoVenta, Gasto, MovimientoBanco, OtroIngreso,
-                     PagoGasto, PagoImpuesto, Recaudo, Tercero, Vencimiento)
+from .models import (Asiento, Banco, Bitacora, CategoriaGasto, CertificacionParticipacion, Config, ContratoParticipacion,
+                     DocumentoVenta, Gasto, MovimientoBanco, OtroIngreso, PagoGasto, PagoImpuesto, PagoParticipacion,
+                     Recaudo, Tercero, Vencimiento)
 
 VIGILADOS = {
     DocumentoVenta: ("Factura de venta", lambda o: f"{o.tipo} {o.numero}"),
@@ -20,6 +21,9 @@ VIGILADOS = {
     Vencimiento: ("Vencimiento", lambda o: f"{o.obligacion} {o.periodo or ''}"),
     MovimientoBanco: ("Movimiento bancario", lambda o: f"{o.fecha} {o.valor} {o.descripcion[:40]}"),
     OtroIngreso: ("Ingreso sin factura", lambda o: f"{o.fecha} {o.concepto[:40]} {o.valor}"),
+    ContratoParticipacion: ("Contrato de cuentas en participación", lambda o: o.nombre),
+    CertificacionParticipacion: ("Certificación de cuentas en participación", lambda o: f"{o.fecha} {o.valor}"),
+    PagoParticipacion: ("Pago de cuentas en participación", lambda o: f"{o.fecha} {o.valor}"),
 }
 IGNORAR_CAMPOS = {"creado", "importado", "xml_archivo", "pdf_archivo", "soporte_archivo"}
 

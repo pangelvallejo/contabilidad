@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% block titulo %}Adjuntar formularios 2593{% endblock %}
+{% block contenido %}
+<div class="encabezado">
+  <div><h1>Adjuntar formularios 2593</h1>
+    <p class="sub">Adjunte el PDF del recibo electrónico del SIMPLE descargado del portal de la DIAN. El programa lee el bimestre, los ingresos declarados, el anticipo, el ICA consolidado y la fecha de pago, y registra el pago con su gasto por impuesto.</p></div>
+  <div class="acciones"><a class="btn" href="/impuestos/simple">Recibos 2593 por bimestre</a></div>
+</div>
+
+{% for e in errores %}<div class="mensaje error">{{ e }}</div>{% endfor %}
+
+{% if not propuestas %}
+<form method="post" enctype="multipart/form-data" class="tarjeta soltar">
+  <h2>1. Elija los PDF</h2>
+  <p>Puede seleccionar varios a la vez (por ejemplo, todos los bimestres del año). Use el formulario ya pagado: trae el número y la fecha del recibo 490 en las casillas 80 y 81.</p>
+  <input type="file" name="pdf" accept=".pdf,application/pdf" multiple required>
+  <div style="margin-top:14px"><button class="primario" name="accion" value="leer" data-espera="Leyendo…">Leer formularios</button></div>
+</form>
+{% else %}
+<form method="post" class="tarjeta tabla-scroll">
+  <h2>2. Revise lo que se va a registrar</h2>
+  <table>
+    <tr><th>Bimestre y formulario</th><th class="n">Ingresos declarados</th><th class="n">Impuesto pagado</th><th>Fecha de pago</th><th>Pago y gasto</th><th>Ingreso a reconocer</th></tr>
+    {% for x in propuestas %}{% set r = x.r %}{% set i = loop.index0 %}
+    <tr>
+      <td><b>{{ x.nombre }} {{ r.anio }}</b><input type="hidden" name="fila" value="{{ i }}"><input type="hidden" name="archivo_{{ i }}" value="{{ x.archivo }}">
+        <div class="nota"><a href="/archivo/{{ x.archivo }}" target="_blank">{{ r.numero }}</a>{% if r.recibo_490 %} · 490 {{ r.recibo_490 }}{% endif %}</div>
+        {% for a in x.avisos %}<div class="nota adv">{{ a }}</div>{% endfor %}</td>
+      <td class="n">{{ r.ingresos|pesos }}<div class="nota">tarifa {{ (r.tarifa|string).replace('.', ',') }} %</div></td>
+      <td class="n"><b>{{ r.total|pesos }}</b>
+        <div class="nota">ICA {{ r.componente_ica|pesos }} · SIMPLE {{ r.simple_a_pagar|pesos }}{% if r.iva_a_pagar %} · IVA {{ r.iva_a_pagar|pesos }}{% endif %}</div>
+        {% if r.aportes_pension %}<div class="nota">Descontó {{ r.aportes_pension|pesos }} de aportes a pensión</div>{% endif %}</td>
+      <td><input type="date" style="width:150px" name="fecha_{{ i }}" value="{{ x.fecha.isoformat() if x.fecha else '' }}" {{ 'disabled' if x.estado == 'registrado' }}></td>
+      <td>{% if x.estado == 'registrado' %}<span class="etiqueta ok">ya registrado</span>
+        {% else %}<label class="check"><input type="checkbox" name="pagar_{{ i }}" {{ 'checked' if x.estado != 'otro' }}> {{ 'completar pago' if x.estado == 'completar' else ('en cero' if r.total == 0 else 'registrar') }}</label>{% endif %}</td>
+      <td>{% if x.certificado %}<span class="etiqueta ok">ya reconocido</span>
+        {% elif r.ingresos > 0 %}<label class="check"><input type="checkbox" name="reconocer_{{ i }}" {{ 'checked' if x.por_reconocer > 0 }}> reconocer</label>
+          <input class="n" name="ingreso_{{ i }}" value="{{ x.por_reconocer|entrada }}" style="width:140px;display:block;margin-top:4px">
+          {% if x.registrado %}<div class="nota">Ya registrado en el bimestre: {{ x.registrado|pesos }}</div>{% endif %}
+        {% else %}<span class="nota">sin ingresos</span>{% endif %}</td>
+    </tr>
+    {% endfor %}
+    <tr class="total"><td>Total</td><td class="n">{{ propuestas|map(attribute='r.ingresos')|sum|pesos }}</td>
+      <td class="n">{{ propuestas|map(attribute='r.total')|sum|pesos }}</td><td colspan="3"></td></tr>
+  </table>
+
+  <div class="campos" style="margin-top:16px">
+    <div><label>Pagado desde</label><select name="banco_id">{% for b in bancos %}<option value="{{ b.id }}">{{ b.nombre }}</option>{% endfor %}</select></div>
+    <div><label>Ingreso de cuentas en participación del contrato</label>
+      <select name="contrato_id" id="contrato">{% for k in contratos %}<option value="{{ k.id }}">{{ k.nombre }} · {{ k.gestor.nombre }}</option>{% endfor %}<option value="nuevo" {{ 'selected' if not contratos }}>+ Crear el contrato con el socio gestor…</option></select></div>
+    <div class="nuevo-contrato"><label>NIT del socio gestor (sin DV)</label><input name="gestor_nit" inputmode="numeric"></div>
+    <div class="nuevo-contrato"><label>Razón social del socio gestor</label><input name="gestor_nombre" placeholder="AM Legal S.A.S."></div>
+  </div>
+  {% if bloqueado %}
+  <p><label class="check"><input type="checkbox" name="mover_bloqueo"> Permitir registrar en bimestres bloqueados (la contabilidad está bloqueada hasta el {{ tope|fecha }}; al terminar vuelve a quedar bloqueada)</label></p>
+  {% endif %}
+  <button class="primario" name="accion" value="registrar" data-espera="Registrando…">Registrar en la contabilidad</button>
+  <a class="btn" href="/impuestos/recibos">Cancelar</a>
+  <p class="nota">Por cada formulario se registra el pago desde el banco y el gasto por impuesto SIMPLE (cuenta 540505, incluye el ICA consolidado); el IVA, si hay, va contra el IVA por pagar. «Ingreso a reconocer» crea una certificación de cuentas en participación por los ingresos declarados que aún no están en la contabilidad (débito 138010, crédito 415510, sin IVA), con fecha del último día del bimestre. Si en el bimestre también facturó directamente, el valor sugerido ya descuenta lo facturado.</p>
+</form>
+<script>
+const k = document.getElementById('contrato');
+const ver = () => document.querySelectorAll('.nuevo-contrato').forEach(e => e.style.display = k.value === 'nuevo' ? '' : 'none');
+k.addEventListener('change', ver); ver();
+</script>
+{% endif %}
+
+{% if pagos %}
+<div class="tarjeta tabla-scroll">
+  <h2>Formularios 2593 adjuntos</h2>
+  <table>
+    <tr><th>Bimestre</th><th>Formulario</th><th>Fecha de pago</th><th class="n">Ingresos declarados</th><th class="n">ICA</th><th class="n">Total pagado</th></tr>
+    {% for p in pagos %}
+    <tr><td>{{ p.bimestre }} / {{ p.anio }}</td><td><a href="/archivo/{{ p.archivo }}" target="_blank">{{ p.numero_formulario or 'ver PDF' }}</a></td>
+      <td>{{ p.fecha|fecha }}</td><td class="n">{{ p.ingresos_declarados|pesos if p.ingresos_declarados is not none else '' }}</td>
+      <td class="n">{{ p.componente_ica|pesos if p.componente_ica is not none else '' }}</td><td class="n">{{ p.total|pesos }}</td></tr>
+    {% endfor %}
+  </table>
+</div>
+{% endif %}
+{% endblock %}

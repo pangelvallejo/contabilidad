@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block titulo %}{{ 'Certificación' if c else 'Reconocer ingreso' }}{% endblock %}
+{% block contenido %}
+{% set v = form if form and not form.get('accion') in ('pago', 'borrar_pago') else {} %}
+<div class="encabezado">
+  <div><h1>{{ 'Certificación de ' ~ c.contrato.nombre if c else 'Reconocer ingreso certificado por el socio gestor' }}</h1>
+    <p class="sub">El ingreso se reconoce con la certificación, sin factura de venta y sin IVA. Suma a los ingresos brutos del SIMPLE.</p></div>
+  <div class="acciones"><a class="btn" href="/participacion/{{ '?anio=%d'|format(c.fecha.year) if c }}">Volver</a></div>
+</div>
+<form method="post" enctype="multipart/form-data" class="tarjeta">
+  <div class="campos">
+    <div><label>Contrato</label><select name="contrato_id" id="contrato" required>{% for k in contratos %}<option value="{{ k.id }}" data-pct="{{ k.porcentaje if k.porcentaje else '' }}" {{ 'selected' if (v.get('contrato_id')|int if v.get('contrato_id') else (c.contrato_id if c else contrato_sugerido)) == k.id }}>{{ k.nombre }} · {{ k.gestor.nombre }}</option>{% endfor %}</select></div>
+    <div><label>Fecha de la certificación</label><input type="date" name="fecha" required value="{{ v.get('fecha') or (c.fecha if c else hoy) }}"></div>
+    <div><label>Periodo certificado: desde</label><input type="date" name="periodo_desde" value="{{ v.get('periodo_desde') or (c.periodo_desde if c and c.periodo_desde else '') }}"></div>
+    <div><label>Periodo certificado: hasta</label><input type="date" name="periodo_hasta" value="{{ v.get('periodo_hasta') or (c.periodo_hasta if c and c.periodo_hasta else '') }}"></div>
+    <div><label>Ingresos del contrato en el periodo (opcional)</label><input class="n" name="ingresos_contrato" id="base" value="{{ v.get('ingresos_contrato') or (c.ingresos_contrato|entrada if c and c.ingresos_contrato is not none else '') }}" placeholder="Lo que facturó el gestor"></div>
+    <div><label>% de participación</label><input class="n" name="porcentaje" id="pct" value="{{ v.get('porcentaje') or ((c.porcentaje|string).rstrip('0').rstrip('.') if c and c.porcentaje else '') }}"></div>
+    <div><label>Ingreso certificado a su favor</label><input class="n" name="valor" id="valor" required value="{{ v.get('valor') or (c.valor|entrada if c else '') }}" placeholder="0"></div>
+    <div><label>Referencia (número de la certificación)</label><input name="referencia" value="{{ v.get('referencia') or (c.referencia if c and c.referencia else '') }}"></div>
+    <div><label>Certificación (PDF)</label><input type="file" name="soporte">{% if c and c.soporte_archivo %}<span class="nota">Actual: <a href="/archivo/{{ c.soporte_archivo }}" target="_blank">ver</a></span>{% endif %}</div>
+    <div class="campo ancho"><label>Notas</label><textarea name="notas" rows="2">{{ v.get('notas') or (c.notas if c and c.notas else '') }}</textarea></div>
+  </div>
+  <button class="primario">{{ 'Guardar cambios' if c else 'Reconocer ingreso' }}</button>
+  {% if c %}<button class="peligro" name="accion" value="borrar" data-confirmar="¿Eliminar esta certificación y su asiento contable?">Eliminar</button>{% endif %}
+  <p class="nota">Si escribe los ingresos del contrato y el porcentaje, el valor a su favor se calcula solo; puede corregirlo para que quede igual a la certificación. Asiento: débito 138010 (por cobrar al gestor), crédito 415510 (ingresos por cuentas en participación).</p>
+</form>
+
+{% if c %}
+<div class="tarjeta tabla-scroll">
+  <h2>Pagos del socio gestor</h2>
+  <p>Certificado {{ c.valor|pesos }} · cobrado {{ c.cobrado|pesos }} · <b>por cobrar {{ c.saldo|pesos }}</b></p>
+  {% if c.pagos %}
+  <table>
+    <tr><th>Fecha</th><th>Banco</th><th>Referencia</th><th class="n">Valor</th><th></th></tr>
+    {% for p in c.pagos %}
+    <tr><td>{{ p.fecha|fecha }}</td><td>{{ p.banco.nombre }}</td><td>{{ p.referencia or '' }}{% if p.id in conciliados %} <span class="etiqueta ok">conciliado</span>{% endif %}</td><td class="n">{{ p.valor|pesos }}</td>
+      <td><form method="post" style="display:inline"><input type="hidden" name="pago_id" value="{{ p.id }}"><button class="peq peligro" name="accion" value="borrar_pago" data-confirmar="¿Eliminar este pago y su asiento?">×</button></form></td></tr>
+    {% endfor %}
+  </table>
+  {% endif %}
+  {% if c.saldo > 0 %}
+  <form method="post" class="filtros" style="margin-top:12px">
+    <div><label>Fecha de la transferencia</label><input type="date" name="pago_fecha" value="{{ hoy }}"></div>
+    <div><label>Banco</label><select name="banco_id">{% for b in bancos %}<option value="{{ b.id }}">{{ b.nombre }}</option>{% endfor %}</select></div>
+    <div><label>Valor</label><input class="n" name="pago_valor" value="{{ c.saldo|entrada }}"></div>
+    <div><label>Referencia</label><input name="pago_referencia"></div>
+    <button class="primario" name="accion" value="pago">Registrar pago</button>
+  </form>
+  <p class="nota">También puede registrarlo desde Conciliación bancaria, con la línea del extracto: "Pago cuentas en participación".</p>
+  {% endif %}
+</div>
+{% endif %}
+<script>
+const num = v => { v = String(v || '').trim(); if (v.includes(',')) v = v.replace(/\./g, '').replace(',', '.'); else if ((v.match(/\./g) || []).length > 1 || /\.\d{3}$/.test(v)) v = v.replace(/\./g, ''); return parseFloat(v) || 0; };
+const base = document.getElementById('base'), pct = document.getElementById('pct'), valor = document.getElementById('valor'), k = document.getElementById('contrato');
+const calc = () => { const b = num(base.value), p = num(pct.value); if (b > 0 && p > 0) valor.value = Math.round(b * p / 100).toLocaleString('es-CO'); };
+base.addEventListener('input', calc); pct.addEventListener('input', calc);
+const sugerirPct = () => { const o = k.selectedOptions[0]; if (o && o.dataset.pct && !pct.value) pct.value = String(parseFloat(o.dataset.pct)).replace('.', ','); };
+k.addEventListener('change', () => { pct.value = ''; sugerirPct(); calc(); }); sugerirPct();
+</script>
+{% endblock %}

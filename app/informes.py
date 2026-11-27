@@ -46,7 +46,7 @@ PREFIJOS_FLUJO = [("1355", "impuestos"), ("1330", "proveedores"), ("13", "client
 # Los asientos que genera el programa se clasifican por su origen (más fiable que la cuenta: el IVA de una
 # compra de contado es parte del pago al proveedor, no un impuesto pagado).
 ORIGEN_FLUJO = {"recaudo": "clientes", "otroingreso": "otros_ingresos", "gasto": "proveedores",
-                "pagogasto": "proveedores", "impuesto": "impuestos"}
+                "pagogasto": "proveedores", "impuesto": "impuestos", "pagoparticipacion": "clientes"}
 ACTIVIDADES = [("operacion", "Actividades de operación"), ("inversion", "Actividades de inversión"),
                ("financiacion", "Actividades de financiación"), ("otros", "Otros movimientos")]
 
