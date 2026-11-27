@@ -4,19 +4,20 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block titulo %}Contabilidad{% endblock %} · {{ empresa_nombre }}</title>
-  <link rel="stylesheet" href="{{ url_for('static', filename='estilos.css') }}">
+  <link rel="preload" href="{{ url_for('static', filename='fuentes/libre-franklin.woff2') }}" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="{{ url_for('static', filename='estilos.css') }}?v={{ version }}">
   <link rel="icon" href="{{ url_for('static', filename='icono.svg') }}" type="image/svg+xml">
 </head>
 <body>
 <div class="marco">
   <nav class="lateral">
-    <div class="marca">{{ empresa_nombre }}<small>Contabilidad · Régimen SIMPLE</small></div>
+    <div class="marca"><img src="{{ url_for('static', filename='icono.svg') }}" alt=""><div><b>{{ empresa_nombre }}</b><small>Régimen SIMPLE</small></div></div>
     <button type="button" class="menu-boton" onclick="document.querySelector('nav.lateral').classList.toggle('abierta')">☰ Menú</button>
     {% set ruta = request.path %}
     <div class="menu">
-    <form action="/buscar" style="padding:0 14px 8px"><input name="q" type="search" aria-label="Buscar en la contabilidad" placeholder="Buscar…" value="{{ request.args.get('q', '') if ruta == '/buscar' else '' }}" style="font-size:13px;padding:5px 8px"></form>
-    <a href="/" class="{{ 'activo' if ruta == '/' }}">Tablero</a>
-    <h4>Ingresos</h4>
+    <form action="/buscar" class="buscador"><input name="q" type="search" aria-label="Buscar en la contabilidad" placeholder="Buscar factura, NIT…" value="{{ request.args.get('q', '') if ruta == '/buscar' else '' }}"></form>
+    <a href="/" class="inicio {{ 'activo' if ruta == '/' }}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="8" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="15" width="7" height="6" rx="1.5"/></svg>Tablero</a>
+    <h4><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11"/><path d="m7 10 5 5 5-5"/><path d="M4 19h16"/></svg>Ingresos</h4>
     <a href="/ventas" class="{{ 'activo' if ruta.startswith('/ventas') and ruta != '/ventas/importar' }}">Facturas de venta</a>
     <a href="/ventas/importar" class="{{ 'activo' if ruta == '/ventas/importar' }}">Importar XML de facturas</a>
     <a href="/recaudos" class="{{ 'activo' if ruta.startswith('/recaudos') }}">Recaudos</a>
@@ -24,13 +25,13 @@
     <a href="/certificados" class="{{ 'activo' if ruta.startswith('/certificados') }}">Certificados reteIVA</a>
     <a href="/cotizaciones/" class="{{ 'activo' if ruta.startswith('/cotizaciones') }}">Cotizaciones</a>
     <a href="/informes/asuntos" class="{{ 'activo' if ruta.startswith('/informes/asuntos') }}">Asuntos y casos</a>
-    <h4>Gastos</h4>
+    <h4><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 15V4"/><path d="m7 9 5-5 5 5"/><path d="M4 19h16"/></svg>Gastos</h4>
     <a href="/gastos" class="{{ 'activo' if ruta == '/gastos' or ruta.startswith('/gastos/') and ruta not in ('/gastos/importar', '/gastos/nuevo', '/gastos/revisar') }}">Gastos</a>
     <a href="/gastos/importar" class="{{ 'activo' if ruta == '/gastos/importar' }}">Importar XML de proveedores</a>
     <a href="/gastos/nuevo" class="{{ 'activo' if ruta == '/gastos/nuevo' }}">Registrar gasto</a>
     <a href="/gastos/revisar" class="{{ 'activo' if ruta == '/gastos/revisar' }}">Revisar importados</a>
     <a href="/informes/cuentas-por-pagar" class="{{ 'activo' if ruta.startswith('/informes/cuentas-por-pagar') }}">Cuentas por pagar</a>
-    <h4>Impuestos</h4>
+    <h4><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h6"/></svg>Impuestos</h4>
     <a href="/impuestos/iva" class="{{ 'activo' if ruta.startswith('/impuestos/iva') }}">IVA por bimestre</a>
     <a href="/impuestos/simple" class="{{ 'activo' if ruta.startswith('/impuestos/simple') }}">Recibo 2593 (SIMPLE + IVA)</a>
     <a href="/impuestos/f260" class="{{ 'activo' if ruta.startswith('/impuestos/f260') }}">Declaración SIMPLE (F260)</a>
@@ -38,16 +39,16 @@
     <a href="/impuestos/exogena" class="{{ 'activo' if ruta.startswith('/impuestos/exogena') }}">Exógena</a>
     <a href="/impuestos/calendario" class="{{ 'activo' if ruta.startswith('/impuestos/calendario') }}">Calendario tributario</a>
     <a href="/flujo-caja" class="{{ 'activo' if ruta == '/flujo-caja' }}">Flujo de caja y proyección</a>
-    <h4>Bancos</h4>
+    <h4><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 9 12 4l9 5"/><path d="M5 10v8M9.5 10v8M14.5 10v8M19 10v8"/><path d="M3 20h18"/></svg>Bancos</h4>
     <a href="/bancos/" class="{{ 'activo' if ruta == '/bancos/' or ruta == '/bancos/movimientos' }}">Bancos y saldos</a>
     <a href="/bancos/ingresos" class="{{ 'activo' if ruta.startswith('/bancos/ingresos') }}">Ingresos sin factura</a>
     <a href="/bancos/conciliacion" class="{{ 'activo' if ruta.startswith('/bancos/conciliacion') }}">Conciliación bancaria</a>
-    <h4>Informes</h4>
+    <h4><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 20V11M12 20V5M19 20v-6"/></svg>Informes</h4>
     <a href="/informes/" class="{{ 'activo' if ruta == '/informes/' }}">Todos los informes</a>
     <a href="/informes/indicadores" class="{{ 'activo' if ruta.startswith('/informes/indicadores') }}">Indicadores</a>
     <a href="/informes/rentabilidad" class="{{ 'activo' if ruta.startswith('/informes/rentabilidad') }}">Rentabilidad por cliente</a>
     <a href="/informes/presupuesto" class="{{ 'activo' if ruta.startswith('/informes/presupuesto') }}">Presupuesto vs. real</a>
-    <h4>Contabilidad</h4>
+    <h4><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 4h11a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3z"/><path d="M5 17a3 3 0 0 1 3-3h11"/></svg>Contabilidad</h4>
     <a href="/contabilidad/resultados" class="{{ 'activo' if ruta.startswith('/contabilidad/resultados') }}">Estado de resultados</a>
     <a href="/contabilidad/balance" class="{{ 'activo' if ruta == '/contabilidad/balance' }}">Balance general</a>
     <a href="/informes/flujo-efectivo" class="{{ 'activo' if ruta.startswith('/informes/flujo-efectivo') }}">Flujo de efectivo</a>
@@ -60,12 +61,13 @@
     <a href="/contabilidad/cierre" class="{{ 'activo' if ruta.startswith('/contabilidad/cierre') }}">Cierre del año</a>
     <a href="/contabilidad/ventas-clientes" class="{{ 'activo' if ruta.startswith('/contabilidad/ventas-clientes') }}">Ventas por cliente</a>
     <a href="/contabilidad/paquete" title="Un solo Excel con todos los libros del año">Paquete para el contador</a>
-    <h4>Otros</h4>
+    <h4><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9 7 7M17 17l2.1 2.1M4.9 19.1 7 17M17 7l2.1-2.1"/></svg>Otros</h4>
     <a href="/terceros" class="{{ 'activo' if ruta.startswith('/terceros') }}">Clientes y proveedores</a>
     <a href="/historial" class="{{ 'activo' if ruta.startswith('/historial') }}">Historial de cambios</a>
     <a href="/configuracion/" class="{{ 'activo' if ruta.startswith('/configuracion') }}">Configuración</a>
     {% if session.get('autenticado') %}<form method="post" action="/salir"><button type="submit" class="enlace">Cerrar sesión</button></form>{% endif %}
     {% if local %}<form method="post" action="/salir-programa"><button type="submit" class="enlace" data-confirmar="¿Cerrar el programa de contabilidad? Sus datos quedan guardados." data-espera="Cerrando…">Cerrar el programa</button></form>{% endif %}
+    <p class="version">Versión {{ version }}</p>
     </div>
   </nav>
   <main>

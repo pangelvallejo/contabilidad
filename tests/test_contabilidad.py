@@ -17,6 +17,19 @@ def importar(s, nombre, xml, **kw):
     return importar_archivo(s, nombre, xml.encode() if isinstance(xml, str) else xml, **kw)
 
 
+def _calendario_sin_cumplir(s):
+    """Al crear la base, el programa da por cumplido lo vencido antes de esa fecha. Las pruebas de flujo de caja
+    simulan una base instalada antes de 2026, para no depender del día en que se ejecutan."""
+    from app.models import PagoImpuesto, Vencimiento
+    pagados = {(p.anio, p.bimestre) for p in s.query(PagoImpuesto).filter_by(formulario="2593")}
+    for v in s.query(Vencimiento):
+        partes = (v.periodo or "").split()
+        pagado = v.obligacion.startswith("Recibo 2593") and len(partes) > 2 and partes[1].isdigit() and \
+            partes[-1].isdigit() and (int(partes[-1]), int(partes[1])) in pagados
+        v.cumplido = pagado
+    s.commit()
+
+
 def cuadra(s):
     from app.models import Asiento
     for a in s.query(Asiento):
@@ -672,6 +685,7 @@ def test_depreciacion_flujo_y_cierre(cliente_web, s):
     assert planeacion.causar_depreciaciones(s, date(2026, 10, 31)) == (7, 0)
     assert planeacion.causar_depreciaciones(s, date(2026, 10, 31)) == (0, 0)  # idempotente
     assert reportes.saldo_cuenta(s, "159220") == -D("59500") * 7
+    _calendario_sin_cumplir(s)  # la base se instala antes de estas fechas, sea cual sea la fecha de hoy
     filas, promedio = planeacion.flujo_de_caja(s, 6, date(2026, 10, 3))
     assert filas[0].cobros_vencidos + filas[0].cobros > 0 and filas[1].impuestos > 0
     assert cliente_web.get("/flujo-caja").status_code == 200
@@ -890,6 +904,7 @@ def test_segunda_auditoria_cierre_y_depreciacion(cliente_web, s):
     textos = " ".join((b.detalle or "") + b.descripcion for b in s.query(Bitacora))
     assert "SecretaDos" not in textos and "SecretaUno" not in textos
     # Flujo de caja incluye obligaciones vencidas; fecha de bloqueo con formato colombiano
+    _calendario_sin_cumplir(s)
     filas, _ = planeacion.flujo_de_caja(s, 3, date(2026, 12, 3))
     assert any("VENCIDO" in o for o, _, _ in filas[0].detalle_impuestos)
     cliente_web.post("/configuracion/", data={"accion": "empresa", "periodo_bloqueado_hasta": "31/12/2026"})

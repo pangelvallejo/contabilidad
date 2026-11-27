@@ -4,7 +4,7 @@
 <div class="encabezado">
   <div>
     <h1>Tablero</h1>
-    <p class="sub">{{ hoy|fecha_larga }} · Bimestre en curso: {{ nombre_bimestre }}</p>
+    <p class="sub">{{ hoy|fecha_larga }}. Bimestre en curso: {{ nombre_bimestre }}.</p>
   </div>
   <div class="acciones">
     <a class="btn primario" href="/ventas/importar">Importar factura emitida</a>
@@ -14,39 +14,30 @@
   </div>
 </div>
 
-<div class="rejilla k4" style="margin-bottom:18px">
-  <div class="kpi"><div class="etq">Ingresos del mes (sin IVA)</div><div class="val">{{ ventas_mes.ingresos_gravados|pesos }}</div>
-    <div class="det">IVA generado {{ ventas_mes.iva_generado_neto|pesos }}</div></div>
-  <div class="kpi"><div class="etq">Ingresos del año (sin IVA)</div><div class="val">{{ ventas_anio.ingresos_gravados|pesos }}</div>
-    <div class="det">{{ ventas_anio.ventas|length }} documentos emitidos</div></div>
-  <div class="kpi"><div class="etq">Saldo en bancos</div><div class="val">{{ total_bancos|pesos }}</div>
-    <div class="det">{% for f in saldos_bancos %}{{ f.banco.nombre }} {{ f.saldo|pesos }}{{ ' · ' if not loop.last }}{% endfor %} · <a href="/bancos/">ver</a></div></div>
-  <div class="kpi"><div class="etq">Recaudado este mes</div><div class="val">{{ recaudado_mes|pesos }}</div></div>
-  <div class="kpi"><div class="etq">Cartera por cobrar</div><div class="val">{{ tot_cartera.total|pesos }}</div>
-    <div class="det">Vencida {{ (tot_cartera.total - tot_cartera['Por vencer'])|pesos }}</div></div>
-  <div class="kpi"><div class="etq">Gastos del mes</div><div class="val">{{ gastos_mes|pesos }}</div></div>
-  <div class="kpi"><div class="etq">Impuestos del año (estimado)</div><div class="val">{{ proyeccion.carga_total|pesos }}</div>
-    <div class="det">SIMPLE {{ proyeccion.simple_proyectado|pesos }} · <a href="/flujo-caja">ver proyección</a></div></div>
-</div>
-
-<div class="rejilla k2">
-  <div class="tarjeta">
-    <h2>Recibo 2593 del bimestre {{ nombre_bimestre }} (estimado a hoy)</h2>
-    <table class="liquidacion">
-      <tr><td>IVA generado</td><td class="n">{{ recibo.iva.iva_generado_neto|pesos }}</td></tr>
-      <tr><td>(−) IVA descontable</td><td class="n">{{ recibo.iva.iva_descontable|pesos }}</td></tr>
-      <tr><td>(−) ReteIVA que le practicaron</td><td class="n">{{ recibo.iva.reteiva|pesos }}</td></tr>
-      <tr><td>IVA a pagar</td><td class="n">{{ recibo.iva_a_pagar|pesos }}</td></tr>
-      <tr><td>Anticipo SIMPLE ({{ recibo.ingresos|pesos }} × {{ recibo.tarifa|pct }})</td><td class="n">{{ recibo.anticipo_simple|pesos }}</td></tr>
-      <tr class="res"><td>Total recibo 2593</td><td class="n">{{ recibo.total|pesos }}</td></tr>
-    </table>
-    <p class="nota">{% if recibo.vencimiento %}Vence el {{ recibo.vencimiento|fecha_larga }}.{% endif %}
-      {% if recibo.iva.neto < 0 %} Saldo de IVA a favor en el bimestre: {{ (-recibo.iva.neto)|pesos }}.{% endif %}
-      <a href="/impuestos/simple">Ver todos los bimestres →</a></p>
+<div class="portada">
+  <div class="tarjeta talon">
+    <div class="cabo">
+      <span class="titulo">Próximo recibo 2593, estimado a hoy</span>
+      <span class="bimestre">Bimestre {{ nombre_bimestre }}</span>
+      <div class="total"><small>Total a pagar (SIMPLE + IVA)</small>{{ recibo.total|pesos }}</div>
+      {% if recibo.vencimiento %}<span class="sello">Vence el {{ recibo.vencimiento|fecha_larga }}</span>{% endif %}
+      <a href="/impuestos/simple">Ver todos los bimestres</a>
+    </div>
+    <div class="detalle">
+      <table class="liquidacion">
+        <tr><td>IVA generado</td><td class="n">{{ recibo.iva.iva_generado_neto|pesos }}</td></tr>
+        <tr><td>(−) IVA descontable</td><td class="n">{{ recibo.iva.iva_descontable|pesos }}</td></tr>
+        <tr><td>(−) ReteIVA que le practicaron</td><td class="n">{{ recibo.iva.reteiva|pesos }}</td></tr>
+        <tr><td>IVA a pagar</td><td class="n">{{ recibo.iva_a_pagar|pesos }}</td></tr>
+        <tr><td>Anticipo SIMPLE ({{ recibo.ingresos|pesos }} × {{ recibo.tarifa|pct }})</td><td class="n">{{ recibo.anticipo_simple|pesos }}</td></tr>
+        <tr class="res"><td>Total recibo 2593</td><td class="n">{{ recibo.total|pesos }}</td></tr>
+      </table>
+      {% if recibo.iva.neto < 0 %}<p class="nota">Saldo de IVA a favor en el bimestre: {{ (-recibo.iva.neto)|pesos }}.</p>{% endif %}
+    </div>
   </div>
 
-  <div class="tarjeta">
-    <h2>Alertas y vencimientos</h2>
+  <div class="tarjeta alertas-hoja">
+    <h2>Pendientes{% if alertas %} <span class="cuenta">{{ alertas|length }}</span>{% endif %}</h2>
     {% if alertas %}
     <ul class="alertas">
       {% for nivel, texto, valor, enlace in alertas %}
@@ -57,6 +48,21 @@
     </ul>
     {% else %}<p class="vacio">Todo al día.</p>{% endif %}
   </div>
+</div>
+
+<div class="franja">
+  <div class="kpi" style="--tono: var(--serie-1)"><div class="etq">Ingresos del mes, sin IVA</div><div class="val">{{ ventas_mes.ingresos_gravados|pesos }}</div>
+    <div class="det">IVA generado {{ ventas_mes.iva_generado_neto|pesos }}</div></div>
+  <div class="kpi" style="--tono: var(--serie-1)"><div class="etq">Ingresos del año, sin IVA</div><div class="val">{{ ventas_anio.ingresos_gravados|pesos }}</div>
+    <div class="det">{{ ventas_anio.ventas|length }} documentos emitidos</div></div>
+  <div class="kpi" style="--tono: var(--ok)"><div class="etq">Recaudado este mes</div><div class="val">{{ recaudado_mes|pesos }}</div></div>
+  <div class="kpi" style="--tono: var(--sello)"><div class="etq">Cartera por cobrar</div><div class="val">{{ tot_cartera.total|pesos }}</div>
+    <div class="det">Vencida {{ (tot_cartera.total - tot_cartera['Por vencer'])|pesos }}</div></div>
+  <div class="kpi" style="--tono: var(--ok)"><div class="etq">Saldo en bancos</div><div class="val {{ 'neg' if total_bancos < 0 }}">{{ total_bancos|pesos }}</div>
+    <div class="det">{% for f in saldos_bancos %}{{ f.banco.nombre }} {{ f.saldo|pesos }}{{ ', ' if not loop.last }}{% endfor %}. <a href="/bancos/">Ver bancos</a></div></div>
+  <div class="kpi" style="--tono: var(--crit)"><div class="etq">Gastos del mes</div><div class="val">{{ gastos_mes|pesos }}</div></div>
+  <div class="kpi" style="--tono: var(--texto-3)"><div class="etq">Impuestos del año, estimado</div><div class="val">{{ proyeccion.carga_total|pesos }}</div>
+    <div class="det">SIMPLE {{ proyeccion.simple_proyectado|pesos }}. <a href="/flujo-caja">Ver proyección</a></div></div>
 </div>
 
 <div class="rejilla k2">
@@ -102,7 +108,7 @@
 </div>
 
 <div class="tarjeta">
-  <div class="encabezado" style="margin:0 0 8px"><h2 style="margin:0">Cartera por edades</h2><a href="/cartera">Ver detalle →</a></div>
+  <div class="encabezado" style="margin:0 0 8px"><h2 style="margin:0">Cartera por edades</h2><a href="/cartera">Ver cartera</a></div>
   {% if filas_cartera %}
   <div class="tabla-scroll"><table>
     <tr><th>Cliente</th>{% for e in edades %}<th class="n">{{ e[0] }}</th>{% endfor %}<th class="n">Total</th></tr>
