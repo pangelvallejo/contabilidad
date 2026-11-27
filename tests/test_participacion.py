@@ -38,17 +38,17 @@ def test_certificacion_reconoce_ingreso_sin_iva_y_suma_al_simple(cliente_web, s)
     k = _contrato(s)
     r = cliente_web.post("/participacion/certificacion/nueva", data={
         "contrato_id": k.id, "fecha": "2026-02-28", "periodo_desde": "2026-01-01", "periodo_hasta": "2026-02-28",
-        "ingresos_contrato": "130.000.000", "porcentaje": "40", "valor": "52.000.000", "referencia": "CERT-1"})
+        "ingresos_contrato": "75.000.000", "porcentaje": "40", "valor": "30.000.000", "referencia": "CERT-1"})
     assert r.status_code == 302
     c = s.query(CertificacionParticipacion).one()
-    assert c.valor == D("52000000") and c.saldo == D("52000000")
-    assert _saldo(s, "138010") == D("52000000")
-    assert _saldo(s, "415510") == D("-52000000")  # naturaleza crédito
+    assert c.valor == D("30000000") and c.saldo == D("30000000")
+    assert _saldo(s, "138010") == D("30000000")
+    assert _saldo(s, "415510") == D("-30000000")  # naturaleza crédito
     # SIMPLE: hace parte de los ingresos brutos; IVA: no genera
-    assert impuestos.ingresos_brutos(s, date(2026, 1, 1), date(2026, 2, 28)) == D("52000000")
+    assert impuestos.ingresos_brutos(s, date(2026, 1, 1), date(2026, 2, 28)) == D("30000000")
     assert impuestos.resumen_iva(s, date(2026, 1, 1), date(2026, 2, 28)).iva_generado_neto == 0
     hojas, _ = exogena.generar(s, 2026)
-    assert any(f[0] == "4001" and f[2] == "900111222" and D("52000000") in [D(str(x)) for x in f if isinstance(x, (int, D))]
+    assert any(f[0] == "4001" and f[2] == "900111222" and D("30000000") in [D(str(x)) for x in f if isinstance(x, (int, D))]
                for f in hojas["1007 Ingresos"][1])
 
 
@@ -152,9 +152,9 @@ def test_lee_el_formulario_2593():
     from app import recibos_dian
     r = recibos_dian.leer_2593(pdf_2593())
     assert (r.anio, r.bimestre, r.numero) == (2026, 1, "25930000000017")
-    assert r.ingresos == D("52000000") and r.tarifa == D("5.9") and r.anticipo == D("3068000")
-    assert r.componente_ica == D("1560000") and r.aportes_pension == D("210000") and r.simple_a_pagar == D("1298000")
-    assert r.total == D("2858000") and r.fecha_pago == date(2026, 5, 21) and r.recibo_490 == "4911000000017"
+    assert r.ingresos == D("30000000") and r.tarifa == D("5.9") and r.anticipo == D("1770000")
+    assert r.componente_ica == D("900000") and r.aportes_pension == D("100000") and r.simple_a_pagar == D("770000")
+    assert r.total == D("1670000") and r.fecha_pago == date(2026, 5, 21) and r.recibo_490 == "4911000000017"
     sin_pago = recibos_dian.leer_2593(pdf_2593(recibo_490=None))
     assert sin_pago.fecha_pago is None and sin_pago.advertencias
 
@@ -195,25 +195,25 @@ def test_adjuntar_2593_registra_pago_gasto_e_ingreso(cliente_web, s):
     from app import contab, impuestos
     from app.models import CertificacionParticipacion, PagoImpuesto
     pdfs = [pdf_2593(),
-            pdf_2593(bimestre=2, numero="25930000000024", ingresos=85_000_000, tarifa="7.3", ica=2_550_000,
-                     pension=840_000, recibo_490="4911000000024", fecha_pago="20260617")]
+            pdf_2593(bimestre=2, numero="25930000000024", ingresos=90_000_000, tarifa="7.3", ica=2_700_000,
+                     pension=500_000, recibo_490="4911000000024", fecha_pago="20260616")]
     html, filas, fechas, ingresos = _leer(cliente_web, pdfs)
     assert len(filas) == 2 and "Enero-Febrero" in html
-    assert fechas == {"0": "2026-05-21", "1": "2026-06-17"}
-    assert ingresos["0"] in ("52000000", "52000000.00", "52.000.000")
+    assert fechas == {"0": "2026-05-21", "1": "2026-06-16"}
+    assert ingresos["0"] in ("30000000", "30000000.00", "30.000.000")
     _registrar(cliente_web, s, filas, fechas, ingresos)
     s.expire_all()
     pagos = s.query(PagoImpuesto).order_by(PagoImpuesto.bimestre).all()
-    assert [(p.bimestre, p.fecha, p.total) for p in pagos] == [(1, date(2026, 5, 21), D("2858000")),
-                                                               (2, date(2026, 6, 17), D("5365000"))]
-    assert pagos[0].ingresos_declarados == D("52000000") and pagos[0].aportes_pension == D("210000")
+    assert [(p.bimestre, p.fecha, p.total) for p in pagos] == [(1, date(2026, 5, 21), D("1670000")),
+                                                               (2, date(2026, 6, 16), D("6070000"))]
+    assert pagos[0].ingresos_declarados == D("30000000") and pagos[0].aportes_pension == D("100000")
     assert pagos[0].archivo and pagos[0].recibo_490 == "4911000000017"
     certs = s.query(CertificacionParticipacion).order_by(CertificacionParticipacion.fecha).all()
-    assert [(c.fecha, c.valor) for c in certs] == [(date(2026, 2, 28), D("52000000")), (date(2026, 4, 30), D("85000000"))]
+    assert [(c.fecha, c.valor) for c in certs] == [(date(2026, 2, 28), D("30000000")), (date(2026, 4, 30), D("90000000"))]
     assert certs[0].contrato.gestor.nit == "900333444"
     # gasto por impuesto reconocido al pagar; ingresos del SIMPLE iguales a los declarados
-    assert _saldo(s, "540505") == D("8223000") and _saldo(s, "135595") == 0
-    assert impuestos.ingresos_brutos(s, date(2026, 1, 1), date(2026, 2, 28)) == D("52000000")
+    assert _saldo(s, "540505") == D("7740000") and _saldo(s, "135595") == 0
+    assert impuestos.ingresos_brutos(s, date(2026, 1, 1), date(2026, 2, 28)) == D("30000000")
     assert contab.periodo_bloqueado_hasta(s) == date(2026, 4, 30)
     # adjuntarlos otra vez no duplica nada
     html, filas, fechas, ingresos = _leer(cliente_web, pdfs)
@@ -250,7 +250,7 @@ def test_ingreso_sugerido_descuenta_lo_facturado(cliente_web, s):
     contab.contabilizar_certificacion_participacion(s, c)
     s.commit()
     _, _, _, ingresos = _leer(cliente_web, [pdf_2593()])
-    assert ingresos["0"].replace(".", "").split(",")[0] in ("40000000", "4000000000")
+    assert ingresos["0"].replace(".", "").split(",")[0] in ("18000000", "1800000000")
 
 
 def test_formulario_en_cero_cumple_el_bimestre(cliente_web, s):
@@ -268,17 +268,17 @@ def test_causacion_anual_ajusta_el_gasto_ya_reconocido(s):
     from app import contab, impuestos
     from app.models import CertificacionParticipacion, PagoImpuesto
     k = _contrato(s)
-    c = CertificacionParticipacion(contrato=k, fecha=date(2026, 2, 28), valor=D("52000000"))
+    c = CertificacionParticipacion(contrato=k, fecha=date(2026, 2, 28), valor=D("30000000"))
     s.add(c)
     s.flush()
     contab.contabilizar_certificacion_participacion(s, c)
-    p = PagoImpuesto(formulario="2593", anio=2026, bimestre=1, fecha=date(2026, 5, 21), valor_simple=D("2858000"),
-                     valor_iva=0, banco_id=_banco(s).id, aportes_pension=D("210000"))
+    p = PagoImpuesto(formulario="2593", anio=2026, bimestre=1, fecha=date(2026, 5, 21), valor_simple=D("1670000"),
+                     valor_iva=0, banco_id=_banco(s).id, aportes_pension=D("100000"))
     s.add(p)
     s.flush()
     contab.contabilizar_pago_impuesto(s, p)
-    assert _saldo(s, "540505") == D("2858000")
+    assert _saldo(s, "540505") == D("1670000")
     dec = impuestos.causar_simple_anual(s, 2026)
-    assert dec.descuento_pension == D("210000")
+    assert dec.descuento_pension == D("100000")
     assert _saldo(s, "540505") == dec.impuesto_neto
-    assert abs(_saldo(s, "240405")) == dec.impuesto_neto - D("2858000")
+    assert abs(_saldo(s, "240405")) == dec.impuesto_neto - D("1670000")

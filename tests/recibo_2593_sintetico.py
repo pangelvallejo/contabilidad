@@ -7,8 +7,8 @@ def _m(v):
     return f"{int(v):,}"
 
 
-def pdf_2593(anio=2026, bimestre=1, numero="25930000000017", nit="9019135774", ingresos=52_000_000, tarifa="5.9",
-             ica=1_560_000, pension=210_000, iva=0, recibo_490="4911000000017", fecha_pago="20260521"):
+def pdf_2593(anio=2026, bimestre=1, numero="25930000000017", nit="9019135774", ingresos=30_000_000, tarifa="5.9",
+             ica=900_000, pension=100_000, iva=0, recibo_490="4911000000017", fecha_pago="20260521"):
     anticipo = round(ingresos * float(tarifa) / 100 / 1000) * 1000
     nacional = anticipo - ica
     neto = nacional - pension
